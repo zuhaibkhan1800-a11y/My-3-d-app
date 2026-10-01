@@ -38,6 +38,7 @@
       white-space: nowrap; 
       border-bottom: 1px solid #333; 
       z-index: 1000; 
+      touch-action: pan-x;
     }
     #top-bar::-webkit-scrollbar { display: none; }
     
@@ -54,6 +55,7 @@
       align-items: center; 
       gap: 4px; 
       flex-shrink: 0; 
+      touch-action: manipulation;
     }
     .btn:active, .btn.active { 
       background: #007aff !important; 
@@ -147,20 +149,26 @@
       z-index: 2000; 
       pointer-events: none; 
     }
+    
+    input[type="file"] { display: none; }
   </style>
 
-  <!-- High-Reliability CDNs -->
+  <!-- High-Reliability CDNs including Loaders -->
   <script src="https://unpkg.com/three@0.128.0/build/three.min.js"></script>
   <script src="https://unpkg.com/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+  <script src="https://unpkg.com/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
+  <script src="https://unpkg.com/three@0.128.0/examples/js/loaders/OBJLoader.js"></script>
 </head>
 <body>
 
 <div id="app-container">
   <div id="top-bar">
     <button class="btn" id="btn-add-cube">🧊 Cube</button>
-    <button class="btn" id="btn-add-man">🧍 Character Mesh</button>
+    <button class="btn" id="btn-add-man">🧍 Character</button>
+    <button class="btn btn-special" id="btn-upload-model">📦 Model Upload</button>
+    <button class="btn btn-special" id="btn-upload-photo">🖼 Photo Upload</button>
     <div style="width: 1px; height: 20px; background: #444;"></div>
-    <button class="btn btn-special" id="btn-auto-rig">🦴 Auto-Rig Skeleton</button>
+    <button class="btn btn-preset" id="btn-auto-rig">🦴 Auto-Rig Skeleton</button>
     <div style="width: 1px; height: 20px; background: #444;"></div>
     <button class="btn btn-danger" id="btn-delete">🗑 Delete</button>
   </div>
@@ -197,6 +205,10 @@
     </div>
   </div>
 </div>
+
+<!-- Hidden file inputs for uploading files -->
+<input type="file" id="input-model" accept=".glb,.gltf,.obj">
+<input type="file" id="input-photo" accept="image/*">
 
 <script>
   let scene, camera, renderer, orbitControls;
@@ -237,7 +249,7 @@
     const light1 = new THREE.DirectionalLight(0xffffff, 1);
     light1.position.set(5, 10, 7);
     scene.add(light1);
-    scene.add(new THREE.AmbientLight(0xffffff, 0.5));
+    scene.add(new THREE.AmbientLight(0xffffff, 0.6));
 
     const grid = new THREE.GridHelper(10, 10, 0x444444, 0x222222);
     scene.add(grid);
@@ -263,19 +275,29 @@
     selectObject(obj);
   }
 
+  function bindBtnClick(id, handler) {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.addEventListener('pointerdown', (e) => e.stopPropagation());
+    el.addEventListener('click', (e) => {
+      e.stopPropagation();
+      handler(e);
+    });
+  }
+
   function setupEvents() {
     // Add Cube
-    document.getElementById('btn-add-cube').onclick = () => {
+    bindBtnClick('btn-add-cube', () => {
       const mesh = new THREE.Mesh(
         new THREE.BoxGeometry(0.8, 0.8, 0.8),
         new THREE.MeshStandardMaterial({ color: 0x007aff })
       );
       mesh.position.set(0, 0.4, 0);
       addObject(mesh, 'Cube');
-    };
+    });
 
-    // Add Humanoid Mesh
-    document.getElementById('btn-add-man').onclick = () => {
+    // Add Character Mesh
+    bindBtnClick('btn-add-man', () => {
       const group = new THREE.Group();
       
       const bodyGeo = new THREE.CylinderGeometry(0.3, 0.2, 1.2, 16);
@@ -291,12 +313,78 @@
 
       characterMesh = group;
       addObject(group, 'Character Body');
+    });
+
+    // Upload 3D Model Button
+    bindBtnClick('btn-upload-model', () => {
+      document.getElementById('input-model').click();
+    });
+
+    document.getElementById('input-model').onchange = (e) => {
+      const file = e.target.files[0];
+      if (!file) return;
+      const url = URL.createObjectURL(file);
+      const ext = file.name.split('.').pop().toLowerCase();
+
+      showToast('Loading Model...');
+
+      if (ext === 'glb' || ext === 'gltf') {
+        if (THREE.GLTFLoader) {
+          new THREE.GLTFLoader().load(url, (gltf) => {
+            addObject(gltf.scene, file.name);
+            characterMesh = gltf.scene;
+            showToast('Model Loaded!');
+          }, undefined, () => showToast('Error loading GLTF'));
+        } else {
+          showToast('GLTF Loader not ready');
+        }
+      } else if (ext === 'obj') {
+        if (THREE.OBJLoader) {
+          new THREE.OBJLoader().load(url, (obj) => {
+            addObject(obj, file.name);
+            characterMesh = obj;
+            showToast('Model Loaded!');
+          }, undefined, () => showToast('Error loading OBJ'));
+        } else {
+          showToast('OBJ Loader not ready');
+        }
+      }
+    };
+
+    // Upload Photo/Texture Button
+    bindBtnClick('btn-upload-photo', () => {
+      document.getElementById('input-photo').click();
+    });
+
+    document.getElementById('input-photo').onchange = (e) => {
+      const file = e.target.files[0];
+      if (!file) return;
+      const url = URL.createObjectURL(file);
+
+      const texture = new THREE.TextureLoader().load(url, () => {
+        if (selectedObject) {
+          selectedObject.traverse((child) => {
+            if (child.isMesh) {
+              child.material.map = texture;
+              child.material.needsUpdate = true;
+            }
+          });
+          showToast('Applied Photo to ' + selectedObject.name);
+        } else {
+          // If no object selected, create a Photo Plane
+          const planeGeo = new THREE.PlaneGeometry(1.5, 1.5);
+          const planeMat = new THREE.MeshBasicMaterial({ map: texture, side: THREE.DoubleSide });
+          const planeMesh = new THREE.Mesh(planeGeo, planeMat);
+          planeMesh.position.set(0, 1, 0);
+          addObject(planeMesh, 'Photo Plane');
+        }
+      });
     };
 
     // Auto Rig Skeleton
-    document.getElementById('btn-auto-rig').onclick = () => {
+    bindBtnClick('btn-auto-rig', () => {
       if(!characterMesh) {
-        showToast('First add "Character Mesh"');
+        showToast('First add or upload a Character Model!');
         return;
       }
 
@@ -319,7 +407,6 @@
       rightLeg.position.set(-0.2, -0.4, 0);
       rootBone.add(rightLeg);
 
-      const skeleton = new THREE.Skeleton([rootBone, chestBone, leftLeg, rightLeg]);
       const helper = new THREE.SkeletonHelper(rootBone);
       
       scene.add(rootBone);
@@ -328,26 +415,26 @@
       skeletonBones = [rootBone, chestBone, leftLeg, rightLeg];
       skeletonBones.forEach(b => { keyframes[b.uuid] = []; });
 
-      showToast('Full Body Auto-Rig Applied!');
+      showToast('Auto-Rig Applied!');
       selectObject(rootBone);
-    };
+    });
 
     // Delete
-    document.getElementById('btn-delete').onclick = () => {
+    bindBtnClick('btn-delete', () => {
       if(selectedObject) {
         scene.remove(selectedObject);
         objectsList = objectsList.filter(o => o !== selectedObject);
         selectObject(null);
         showToast('Deleted');
       }
-    };
+    });
 
     // Animation Controls
-    document.getElementById('btn-play').onclick = () => isPlaying = true;
-    document.getElementById('btn-pause').onclick = () => isPlaying = false;
-    document.getElementById('btn-stop').onclick = () => { isPlaying = false; currentTime = 0; drawTimeline(); };
+    bindBtnClick('btn-play', () => isPlaying = true);
+    bindBtnClick('btn-pause', () => isPlaying = false);
+    bindBtnClick('btn-stop', () => { isPlaying = false; currentTime = 0; drawTimeline(); });
 
-    document.getElementById('btn-add-key').onclick = () => {
+    bindBtnClick('btn-add-key', () => {
       if(!selectedObject) return showToast('Select an Object first!');
       const list = keyframes[selectedObject.uuid] || [];
       list.push({
@@ -358,10 +445,10 @@
       keyframes[selectedObject.uuid] = list;
       drawTimeline();
       showToast('Keyframe added at ' + currentTime.toFixed(1) + 's');
-    };
+    });
 
     // Preset Walk
-    document.getElementById('preset-walk').onclick = () => {
+    bindBtnClick('preset-walk', () => {
       if(skeletonBones.length === 0) return showToast('Click "Auto-Rig Skeleton" first!');
       
       const leftLeg = skeletonBones[2];
@@ -381,11 +468,11 @@
 
       showToast('Walk Preset Loaded!');
       drawTimeline();
-    };
+    });
 
     // Preset Jump
-    document.getElementById('preset-jump').onclick = () => {
-      if(!characterMesh) return showToast('Add Character Body first!');
+    bindBtnClick('preset-jump', () => {
+      if(!characterMesh) return showToast('Add or Upload a Character first!');
       
       keyframes[characterMesh.uuid] = [
         { time: 0, pos: new THREE.Vector3(0, 0, 0), rot: new THREE.Euler(0,0,0) },
@@ -395,7 +482,7 @@
 
       showToast('Jump Preset Loaded!');
       drawTimeline();
-    };
+    });
 
     setupScrubber();
   }
