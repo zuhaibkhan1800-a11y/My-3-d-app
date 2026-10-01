@@ -3,14 +3,14 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>3D Mobile Editor - Rig & Presets</title>
+  <title>3D Mobile Auto-Rig & Animator</title>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; -webkit-user-select: none; touch-action: manipulation; }
     body, html { width: 100%; height: 100%; overflow: hidden; background-color: #1a1a1a; font-family: system-ui, -apple-system, sans-serif; color: #fff; }
     #app-container { display: flex; flex-direction: column; width: 100vw; height: 100vh; position: relative; }
-    #top-bar { height: 50px; background: #252525; display: flex; align-items: center; padding: 0 8px; gap: 6px; overflow-x: auto; white-space: nowrap; border-bottom: 1px solid #333; z-index: 100; pointer-events: auto; }
+    #top-bar { height: 50px; background: #252525; display: flex; align-items: center; padding: 0 8px; gap: 6px; overflow-x: auto; white-space: nowrap; border-bottom: 1px solid #333; z-index: 100; }
     #top-bar::-webkit-scrollbar { display: none; }
-    .btn { background: #3a3a3c; color: #fff; border: 1px solid #48484a; padding: 8px 12px; border-radius: 6px; font-size: 12px; font-weight: 600; cursor: pointer; display: inline-flex; align-items: center; gap: 4px; flex-shrink: 0; pointer-events: auto; }
+    .btn { background: #3a3a3c; color: #fff; border: 1px solid #48484a; padding: 8px 12px; border-radius: 6px; font-size: 12px; font-weight: 600; cursor: pointer; display: inline-flex; align-items: center; gap: 4px; flex-shrink: 0; }
     .btn:active, .btn.active { background: #007aff; border-color: #007aff; }
     .btn-danger { background: #8e0000; border-color: #aa0000; }
     .btn-special { background: #5e5ce6; border-color: #5e5ce6; }
@@ -18,13 +18,13 @@
     .btn-preset { background: #ff9500; border-color: #ff9500; }
     #viewport-container { flex: 1; position: relative; width: 100%; background: #121212; overflow: hidden; }
     #three-canvas { width: 100%; height: 100%; display: block; }
-    #rig-overlay { position: absolute; top: 10px; left: 50%; transform: translateX(-50%); display: none; gap: 10px; z-index: 150; background: rgba(0,0,0,0.85); padding: 8px 16px; border-radius: 30px; border: 1px solid #5e5ce6; pointer-events: auto; }
-    #hierarchy-panel { position: absolute; top: 10px; left: 10px; width: 140px; max-height: 180px; background: rgba(30, 30, 30, 0.9); border: 1px solid #444; border-radius: 8px; padding: 8px; overflow-y: auto; z-index: 50; font-size: 11px; pointer-events: auto; }
+    #rig-overlay { position: absolute; top: 10px; left: 50%; transform: translateX(-50%); display: none; gap: 10px; z-index: 150; background: rgba(0,0,0,0.85); padding: 8px 16px; border-radius: 30px; border: 1px solid #5e5ce6; }
+    #hierarchy-panel { position: absolute; top: 10px; left: 10px; width: 140px; max-height: 180px; background: rgba(30, 30, 30, 0.9); border: 1px solid #444; border-radius: 8px; padding: 8px; overflow-y: auto; z-index: 50; font-size: 11px; }
     .tree-item { padding: 4px 6px; border-radius: 4px; cursor: pointer; margin-bottom: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; background: #2a2a2a; }
     .tree-item.selected { background: #007aff; }
     .tree-item.bone-item { background: #3a2e5c; color: #d0c4ff; margin-left: 8px; }
     .tree-item.bone-item.selected { background: #5e5ce6; color: #fff; }
-    #timeline-container { height: 130px; background: #1e1e1e; border-top: 1px solid #333; display: flex; flex-direction: column; z-index: 100; pointer-events: auto; }
+    #timeline-container { height: 130px; background: #1e1e1e; border-top: 1px solid #333; display: flex; flex-direction: column; z-index: 100; }
     #timeline-controls { height: 36px; background: #282828; display: flex; align-items: center; justify-content: space-between; padding: 0 8px; border-bottom: 1px solid #333; overflow-x: auto; gap: 6px; }
     .playback-group { display: flex; gap: 4px; flex-shrink: 0; }
     #timeline-slider-wrap { flex: 1; height: 94px; position: relative; overflow-x: hidden; background: #181818; touch-action: none; }
@@ -45,7 +45,7 @@
     <button class="btn" id="btn-add-cube">🧊 Cube</button>
     <button class="btn" id="btn-model">📦 Upload Model</button>
     <div style="width: 1px; height: 20px; background: #444; margin: 0 2px;"></div>
-    <button class="btn btn-special" id="btn-start-rig">🦴 Auto-Rig (Legs Incl.)</button>
+    <button class="btn btn-special" id="btn-start-rig">🦴 Auto-Rig (Full Body)</button>
     <div style="width: 1px; height: 20px; background: #444; margin: 0 2px;"></div>
     <button class="btn active" id="mode-select">Select</button>
     <button class="btn" id="mode-move">Move</button>
@@ -56,8 +56,8 @@
   <div id="viewport-container">
     <canvas id="three-canvas"></canvas>
     <div id="rig-overlay">
-      <span style="font-size: 12px; align-self: center;">Joint Marker Adjust:</span>
-      <button class="btn btn-success" id="btn-apply-rig">✓ Apply Rig</button>
+      <span style="font-size: 12px; align-self: center;">Align Joints:</span>
+      <button class="btn btn-success" id="btn-apply-rig">✓ Apply Rig & Skin</button>
       <button class="btn btn-danger" id="btn-cancel-rig">✕ Cancel</button>
     </div>
     <div id="hierarchy-panel">
@@ -126,9 +126,7 @@
     transformControls.size = 0.75;
     scene.add(transformControls);
 
-    transformControls.addEventListener('dragging-changed', (e) => {
-      orbit.enabled = !e.value;
-    });
+    transformControls.addEventListener('dragging-changed', (e) => { orbit.enabled = !e.value; });
 
     scene.add(new THREE.AmbientLight(0xffffff, 0.8));
     const dirLight = new THREE.DirectionalLight(0xffffff, 0.8);
@@ -186,7 +184,6 @@
     }
   };
 
-  // Full Skeleton Mapping (Including Legs)
   const defaultJointDefs = [
     { name: 'Head', pos: [0, 1.8, 0], color: 0x00e5ff },
     { name: 'Neck', pos: [0, 1.5, 0], color: 0x007aff },
@@ -208,7 +205,7 @@
     document.getElementById('rig-overlay').style.display = 'flex';
     transformControls.detach();
     createJointMarkers();
-    showToast('Drag Joint Markers to align with character');
+    showToast('Drag Markers to match character joints');
   };
 
   function createJointMarkers() {
@@ -231,44 +228,94 @@
     jointMarkers = [];
   }
 
+  // --- AUTOMATIC SKINNING & BINDING FIX ---
   document.getElementById('btn-apply-rig').onclick = () => {
     if (!selectedObject) return;
-    
+
     const jPos = {};
     jointMarkers.forEach(m => { jPos[m.userData.jointName] = m.position.clone(); });
 
-    const bones = {};
-    bones['Hips'] = new THREE.Bone(); bones['Hips'].name = 'Hips'; bones['Hips'].position.copy(jPos['Hips']);
-    bones['Neck'] = new THREE.Bone(); bones['Neck'].name = 'Neck'; bones['Neck'].position.copy(jPos['Neck'].clone().sub(jPos['Hips'])); bones['Hips'].add(bones['Neck']);
-    bones['Head'] = new THREE.Bone(); bones['Head'].name = 'Head'; bones['Head'].position.copy(jPos['Head'].clone().sub(jPos['Neck'])); bones['Neck'].add(bones['Head']);
+    const bones = [];
+    const boneMap = {};
 
-    // Arms
-    bones['L_Arm'] = new THREE.Bone(); bones['L_Arm'].name = 'L_Arm'; bones['L_Arm'].position.copy(jPos['L_Shoulder'].clone().sub(jPos['Neck'])); bones['Neck'].add(bones['L_Arm']);
-    bones['L_Elbow'] = new THREE.Bone(); bones['L_Elbow'].name = 'L_Elbow'; bones['L_Elbow'].position.copy(jPos['L_Elbow'].clone().sub(jPos['L_Shoulder'])); bones['L_Arm'].add(bones['L_Elbow']);
+    defaultJointDefs.forEach((j) => {
+      const b = new THREE.Bone();
+      b.name = j.name;
+      b.position.copy(jPos[j.name]);
+      boneMap[j.name] = b;
+      bones.push(b);
+    });
 
-    bones['R_Arm'] = new THREE.Bone(); bones['R_Arm'].name = 'R_Arm'; bones['R_Arm'].position.copy(jPos['R_Shoulder'].clone().sub(jPos['Neck'])); bones['Neck'].add(bones['R_Arm']);
-    bones['R_Elbow'] = new THREE.Bone(); bones['R_Elbow'].name = 'R_Elbow'; bones['R_Elbow'].position.copy(jPos['R_Elbow'].clone().sub(jPos['R_Shoulder'])); bones['R_Arm'].add(bones['R_Elbow']);
+    // Parent Connections
+    boneMap['Hips'].add(boneMap['Neck']);
+    boneMap['Neck'].add(boneMap['Head']);
+    boneMap['Neck'].add(boneMap['L_Shoulder']);
+    boneMap['L_Shoulder'].add(boneMap['L_Elbow']);
+    boneMap['Neck'].add(boneMap['R_Shoulder']);
+    boneMap['R_Shoulder'].add(boneMap['R_Elbow']);
+    boneMap['Hips'].add(boneMap['L_Hip']);
+    boneMap['L_Hip'].add(boneMap['L_Knee']);
+    boneMap['L_Knee'].add(boneMap['L_Ankle']);
+    boneMap['Hips'].add(boneMap['R_Hip']);
+    boneMap['R_Hip'].add(boneMap['R_Knee']);
+    boneMap['R_Knee'].add(boneMap['R_Ankle']);
 
-    // Legs Added
-    bones['L_Leg'] = new THREE.Bone(); bones['L_Leg'].name = 'L_Leg'; bones['L_Leg'].position.copy(jPos['L_Hip'].clone().sub(jPos['Hips'])); bones['Hips'].add(bones['L_Leg']);
-    bones['L_Knee'] = new THREE.Bone(); bones['L_Knee'].name = 'L_Knee'; bones['L_Knee'].position.copy(jPos['L_Knee'].clone().sub(jPos['L_Hip'])); bones['L_Leg'].add(bones['L_Knee']);
-    bones['L_Ankle'] = new THREE.Bone(); bones['L_Ankle'].name = 'L_Ankle'; bones['L_Ankle'].position.copy(jPos['L_Ankle'].clone().sub(jPos['L_Knee'])); bones['L_Knee'].add(bones['L_Ankle']);
+    const skeleton = new THREE.Skeleton(bones);
 
-    bones['R_Leg'] = new THREE.Bone(); bones['R_Leg'].name = 'R_Leg'; bones['R_Leg'].position.copy(jPos['R_Hip'].clone().sub(jPos['Hips'])); bones['Hips'].add(bones['R_Leg']);
-    bones['R_Knee'] = new THREE.Bone(); bones['R_Knee'].name = 'R_Knee'; bones['R_Knee'].position.copy(jPos['R_Knee'].clone().sub(jPos['R_Hip'])); bones['R_Leg'].add(bones['R_Knee']);
-    bones['R_Ankle'] = new THREE.Bone(); bones['R_Ankle'].name = 'R_Ankle'; bones['R_Ankle'].position.copy(jPos['R_Ankle'].clone().sub(jPos['R_Knee'])); bones['R_Knee'].add(bones['R_Ankle']);
+    // Auto-skinningMesh Binding
+    let targetMesh = selectedObject;
+    if (targetMesh.isGroup) {
+      targetMesh.traverse((c) => { if (c.isMesh) targetMesh = c; });
+    }
 
-    const skelHelper = new THREE.SkeletonHelper(bones['Hips']);
+    if (targetMesh && targetMesh.isMesh) {
+      const geometry = targetMesh.geometry.clone();
+      const position = geometry.attributes.position;
+      const skinIndices = [];
+      const skinWeights = [];
+
+      for (let i = 0; i < position.count; i++) {
+        const vertex = new THREE.Vector3().fromBufferAttribute(position, i);
+        targetMesh.localToWorld(vertex);
+
+        let minDist = Infinity;
+        let closestBoneIdx = 0;
+
+        bones.forEach((b, idx) => {
+          const dist = vertex.distanceTo(b.position);
+          if (dist < minDist) {
+            minDist = dist;
+            closestBoneIdx = idx;
+          }
+        });
+
+        skinIndices.push(closestBoneIdx, 0, 0, 0);
+        skinWeights.push(1, 0, 0, 0);
+      }
+
+      geometry.setAttribute('skinIndex', new THREE.Uint16BufferAttribute(skinIndices, 4));
+      geometry.setAttribute('skinWeight', new THREE.Float32BufferAttribute(skinWeights, 4));
+
+      const skinnedMesh = new THREE.SkinnedMesh(geometry, targetMesh.material);
+      skinnedMesh.add(bones[0]); 
+      skinnedMesh.bind(skeleton);
+
+      scene.remove(selectedObject);
+      objectsList = objectsList.filter(o => o !== selectedObject);
+      
+      addObject(skinnedMesh, targetMesh.name || 'RiggedCharacter');
+      selectedObject = skinnedMesh;
+    }
+
+    riggedBonesMap = boneMap;
+    Object.values(boneMap).forEach(b => { keyframes[b.uuid] = []; });
+
+    const skelHelper = new THREE.SkeletonHelper(boneMap['Hips']);
     scene.add(skelHelper);
-    selectedObject.add(bones['Hips']);
-
-    riggedBonesMap = bones;
-    Object.values(bones).forEach(b => { keyframes[b.uuid] = []; });
 
     clearJointMarkers();
     document.getElementById('rig-overlay').style.display = 'none';
-    selectObject(selectedObject);
-    showToast('Legs & Skeleton Rigging Complete!');
+    showToast('Character Mesh & Bones Bound Successfully!');
   };
 
   document.getElementById('btn-cancel-rig').onclick = () => {
@@ -277,7 +324,7 @@
     selectObject(selectedObject);
   };
 
-  // Preset Generator Helper
+  // --- FULL BODY ANIMATION PRESETS (HANDS + LEGS) ---
   function applyAnimationPreset(type) {
     if (!riggedBonesMap['Hips']) { showToast('Apply Rigging first!'); return; }
     
@@ -296,48 +343,58 @@
     };
 
     if (type === 'stand') {
-      ['L_Leg', 'R_Leg', 'L_Knee', 'R_Knee', 'L_Arm', 'R_Arm'].forEach(name => {
+      Object.keys(riggedBonesMap).forEach(name => {
         setKey(name, 0, 0, 0, 0);
         setKey(name, 2.5, 0, 0, 0);
       });
-      showToast('Stand Animation Preset Applied');
+      showToast('Stand Preset Applied');
     } 
     else if (type === 'walk') {
       const times = [0, 1.25, 2.5, 3.75, 5.0];
       times.forEach((t, i) => {
         const sign = (i % 2 === 0) ? 1 : -1;
-        setKey('L_Leg', t, 0.4 * sign, 0, 0);
-        setKey('R_Leg', t, -0.4 * sign, 0, 0);
-        setKey('L_Knee', t, sign > 0 ? 0.3 : 0, 0, 0);
-        setKey('R_Knee', t, sign < 0 ? 0.3 : 0, 0, 0);
-        setKey('L_Arm', t, -0.3 * sign, 0, 0);
-        setKey('R_Arm', t, 0.3 * sign, 0, 0);
+        // Legs
+        setKey('L_Hip', t, 0.5 * sign, 0, 0);
+        setKey('R_Hip', t, -0.5 * sign, 0, 0);
+        setKey('L_Knee', t, sign > 0 ? 0.4 : 0.1, 0, 0);
+        setKey('R_Knee', t, sign < 0 ? 0.4 : 0.1, 0, 0);
+        // Arms (Fixed: Hands will now swing)
+        setKey('L_Shoulder', t, -0.6 * sign, 0, 0);
+        setKey('R_Shoulder', t, 0.6 * sign, 0, 0);
+        setKey('L_Elbow', t, 0.3, 0, 0);
+        setKey('R_Elbow', t, 0.3, 0, 0);
       });
-      showToast('Walk Animation Preset Applied');
+      showToast('Walk Preset Applied');
     }
     else if (type === 'run') {
       const times = [0, 0.75, 1.5, 2.25, 3.0, 3.75, 4.5, 5.0];
       times.forEach((t, i) => {
         const sign = (i % 2 === 0) ? 1 : -1;
-        setKey('L_Leg', t, 0.7 * sign, 0, 0);
-        setKey('R_Leg', t, -0.7 * sign, 0, 0);
-        setKey('L_Knee', t, sign > 0 ? 0.8 : 0.1, 0, 0);
-        setKey('R_Knee', t, sign < 0 ? 0.8 : 0.1, 0, 0);
-        setKey('L_Arm', t, -0.6 * sign, 0, 0);
-        setKey('R_Arm', t, 0.6 * sign, 0, 0);
+        // Legs
+        setKey('L_Hip', t, 0.8 * sign, 0, 0);
+        setKey('R_Hip', t, -0.8 * sign, 0, 0);
+        setKey('L_Knee', t, sign > 0 ? 0.9 : 0.2, 0, 0);
+        setKey('R_Knee', t, sign < 0 ? 0.9 : 0.2, 0, 0);
+        // Arms
+        setKey('L_Shoulder', t, -0.9 * sign, 0, 0);
+        setKey('R_Shoulder', t, 0.9 * sign, 0, 0);
+        setKey('L_Elbow', t, 0.7, 0, 0);
+        setKey('R_Elbow', t, 0.7, 0, 0);
       });
-      showToast('Run Animation Preset Applied');
+      showToast('Run Preset Applied');
     }
     else if (type === 'jump') {
       setKey('Hips', 0, 0, 0, 0, 0, 0, 0);
-      setKey('Hips', 1.0, 0, 0, 0, 0, -0.2, 0); // Crouch
-      setKey('Hips', 2.5, 0, 0, 0, 0, 0.6, 0);  // Air Jump
-      setKey('Hips', 4.0, 0, 0, 0, 0, -0.1, 0); // Land
+      setKey('Hips', 1.0, 0, 0, 0, 0, -0.2, 0);
+      setKey('Hips', 2.5, 0, 0, 0, 0, 0.6, 0);
+      setKey('Hips', 4.0, 0, 0, 0, 0, -0.1, 0);
       setKey('Hips', 5.0, 0, 0, 0, 0, 0, 0);
 
       setKey('L_Knee', 1.0, 0.6, 0, 0); setKey('R_Knee', 1.0, 0.6, 0, 0);
       setKey('L_Knee', 2.5, 0.1, 0, 0); setKey('R_Knee', 2.5, 0.1, 0, 0);
-      showToast('Jump Animation Preset Applied');
+      
+      setKey('L_Shoulder', 2.5, -1.2, 0, 0); setKey('R_Shoulder', 2.5, -1.2, 0, 0);
+      showToast('Jump Preset Applied');
     }
 
     drawTimeline();
@@ -402,120 +459,4 @@
     const list = keyframes[selectedObject.uuid] || [];
     const t = parseFloat(currentTime.toFixed(2));
     const existingIndex = list.findIndex(k => Math.abs(k.time - t) < 0.05);
-    const keyData = { time: t, pos: selectedObject.position.clone(), rot: selectedObject.rotation.clone(), scl: selectedObject.scale.clone() };
-
-    if (existingIndex >= 0) list[existingIndex] = keyData;
-    else list.push(keyData);
-
-    list.sort((a, b) => a.time - b.time);
-    keyframes[selectedObject.uuid] = list;
-    drawTimeline();
-    showToast('Keyframe Set at ' + t + 's');
-  };
-
-  document.getElementById('btn-del-key').onclick = () => {
-    if (!selectedObject) return;
-    let list = keyframes[selectedObject.uuid] || [];
-    keyframes[selectedObject.uuid] = list.filter(k => Math.abs(k.time - currentTime) >= 0.1);
-    drawTimeline();
-    showToast('Keyframe Removed');
-  };
-
-  function updateAnimatedNodes(node) {
-    if (!node) return;
-    const list = keyframes[node.uuid];
-    if (list && list.length > 0) {
-      if (list.length === 1 || currentTime <= list[0].time) {
-        node.position.copy(list[0].pos); node.rotation.copy(list[0].rot); node.scale.copy(list[0].scl);
-      } else if (currentTime >= list[list.length - 1].time) {
-        const last = list[list.length - 1];
-        node.position.copy(last.pos); node.rotation.copy(last.rot); node.scale.copy(last.scl);
-      } else {
-        for (let i = 0; i < list.length - 1; i++) {
-          const k1 = list[i], k2 = list[i + 1];
-          if (currentTime >= k1.time && currentTime <= k2.time) {
-            const factor = (currentTime - k1.time) / (k2.time - k1.time);
-            node.position.lerpVectors(k1.pos, k2.pos, factor);
-            node.rotation.x = THREE.MathUtils.lerp(k1.rot.x, k2.rot.x, factor);
-            node.rotation.y = THREE.MathUtils.lerp(k1.rot.y, k2.rot.y, factor);
-            node.rotation.z = THREE.MathUtils.lerp(k1.rot.z, k2.rot.z, factor);
-            break;
-          }
-        }
-      }
-    }
-    if (node.children) node.children.forEach(c => updateAnimatedNodes(c));
-  }
-
-  function drawTimeline() {
-    const w = tlCanvas.width = document.getElementById('timeline-slider-wrap').clientWidth;
-    const h = tlCanvas.height = 94;
-    tlCtx.fillStyle = '#181818'; tlCtx.fillRect(0, 0, w, h);
-
-    tlCtx.strokeStyle = '#333'; tlCtx.fillStyle = '#aaa'; tlCtx.font = '10px sans-serif';
-    for (let s = 0; s <= duration; s += 0.5) {
-      let x = (s / duration) * (w - 20) + 10;
-      tlCtx.beginPath(); tlCtx.moveTo(x, 0); tlCtx.lineTo(x, s % 1 === 0 ? 15 : 8); tlCtx.stroke();
-      if (s % 1 === 0) tlCtx.fillText(s + 's', x - 5, 26);
-    }
-
-    if (selectedObject && keyframes[selectedObject.uuid]) {
-      keyframes[selectedObject.uuid].forEach(k => {
-        let kx = (k.time / duration) * (w - 20) + 10;
-        tlCtx.fillStyle = '#ffcc00'; tlCtx.beginPath(); tlCtx.arc(kx, 50, 6, 0, Math.PI * 2); tlCtx.fill();
-      });
-    }
-
-    let px = (currentTime / duration) * (w - 20) + 10;
-    tlCtx.strokeStyle = '#ff3b30'; tlCtx.lineWidth = 2;
-    tlCtx.beginPath(); tlCtx.moveTo(px, 0); tlCtx.lineTo(px, h); tlCtx.stroke();
-    timeDisplay.innerText = currentTime.toFixed(2) + 's / ' + duration.toFixed(2) + 's';
-  }
-
-  function setupTimelineEvents() {
-    let isScrubbing = false;
-    function handleScrub(e) {
-      const rect = tlCanvas.getBoundingClientRect();
-      const clientX = e.touches ? e.touches[0].clientX : e.clientX;
-      let x = clientX - rect.left - 10, w = rect.width - 20;
-      currentTime = Math.max(0, Math.min(duration, (x / w) * duration));
-      objectsList.forEach(obj => updateAnimatedNodes(obj));
-      drawTimeline();
-    }
-    const wrap = document.getElementById('timeline-slider-wrap');
-    wrap.addEventListener('mousedown', (e) => { isScrubbing = true; handleScrub(e); });
-    window.addEventListener('mousemove', (e) => { if (isScrubbing) handleScrub(e); });
-    window.addEventListener('mouseup', () => isScrubbing = false);
-    wrap.addEventListener('touchstart', (e) => { isScrubbing = true; handleScrub(e); });
-    window.addEventListener('touchmove', (e) => { if (isScrubbing) handleScrub(e); });
-    window.addEventListener('touchend', () => isScrubbing = false);
-  }
-
-  document.getElementById('btn-play').onclick = () => isPlaying = true;
-  document.getElementById('btn-pause').onclick = () => isPlaying = false;
-  document.getElementById('btn-stop').onclick = () => { isPlaying = false; currentTime = 0; objectsList.forEach(obj => updateAnimatedNodes(obj)); drawTimeline(); };
-
-  function onWindowResize() {
-    const container = document.getElementById('viewport-container');
-    camera.aspect = container.clientWidth / container.clientHeight;
-    camera.updateProjectionMatrix();
-    renderer.setSize(container.clientWidth, container.clientHeight);
-    drawTimeline();
-  }
-
-  function animate() {
-    requestAnimationFrame(animate);
-    if (isPlaying) {
-      currentTime += 0.016;
-      if (currentTime > duration) currentTime = 0;
-      objectsList.forEach(obj => updateAnimatedNodes(obj));
-      drawTimeline();
-    }
-    orbit.update();
-    renderer.render(scene, camera);
-  }
-
-  window.onload = () => { init3D(); drawTimeline(); };
-</script>
-</body>
-</html>
+    const keyData = { time: t, pos: selectedObject.position.clone(), rot: selectedObj
