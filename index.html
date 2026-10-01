@@ -5,33 +5,175 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <title>3D Mobile Auto-Rig & Animator</title>
   <style>
-    * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; -webkit-user-select: none; touch-action: manipulation; }
-    body, html { width: 100%; height: 100%; overflow: hidden; background-color: #1a1a1a; font-family: system-ui, -apple-system, sans-serif; color: #fff; }
-    #app-container { display: flex; flex-direction: column; width: 100vw; height: 100vh; position: relative; }
-    #top-bar { height: 50px; background: #252525; display: flex; align-items: center; padding: 0 8px; gap: 6px; overflow-x: auto; white-space: nowrap; border-bottom: 1px solid #333; z-index: 100; position: relative; }
+    * { 
+      box-sizing: border-box; 
+      margin: 0; 
+      padding: 0; 
+      -webkit-tap-highlight-color: transparent;
+    }
+    body, html { 
+      width: 100%; 
+      height: 100%; 
+      overflow: hidden; 
+      background-color: #1a1a1a; 
+      font-family: system-ui, -apple-system, sans-serif; 
+      color: #fff; 
+    }
+    #app-container { 
+      display: flex; 
+      flex-direction: column; 
+      width: 100vw; 
+      height: 100vh; 
+      position: relative; 
+    }
+    #top-bar { 
+      height: 50px; 
+      background: #252525; 
+      display: flex; 
+      align-items: center; 
+      padding: 0 8px; 
+      gap: 6px; 
+      overflow-x: auto; 
+      white-space: nowrap; 
+      border-bottom: 1px solid #333; 
+      z-index: 9999; 
+      position: relative; 
+      touch-action: pan-x;
+    }
     #top-bar::-webkit-scrollbar { display: none; }
-    .btn { background: #3a3a3c; color: #fff; border: 1px solid #48484a; padding: 8px 12px; border-radius: 6px; font-size: 12px; font-weight: 600; cursor: pointer; display: inline-flex; align-items: center; gap: 4px; flex-shrink: 0; }
-    .btn:active, .btn.active { background: #007aff; border-color: #007aff; }
+    
+    .btn { 
+      background: #3a3a3c; 
+      color: #fff; 
+      border: 1px solid #48484a; 
+      padding: 8px 12px; 
+      border-radius: 6px; 
+      font-size: 12px; 
+      font-weight: 600; 
+      cursor: pointer; 
+      display: inline-flex; 
+      align-items: center; 
+      gap: 4px; 
+      flex-shrink: 0; 
+      z-index: 10000;
+      position: relative;
+      touch-action: manipulation;
+    }
+    .btn:active, .btn.active { 
+      background: #007aff; 
+      border-color: #007aff; 
+    }
     .btn-danger { background: #8e0000; border-color: #aa0000; }
     .btn-special { background: #5e5ce6; border-color: #5e5ce6; }
     .btn-success { background: #28a745; border-color: #28a745; }
     .btn-preset { background: #ff9500; border-color: #ff9500; }
-    #viewport-container { flex: 1; position: relative; width: 100%; background: #121212; overflow: hidden; }
-    #three-canvas { width: 100%; height: 100%; display: block; touch-action: none; }
-    #rig-overlay { position: absolute; top: 10px; left: 50%; transform: translateX(-50%); display: none; gap: 10px; z-index: 150; background: rgba(0,0,0,0.85); padding: 8px 16px; border-radius: 30px; border: 1px solid #5e5ce6; }
-    #hierarchy-panel { position: absolute; top: 10px; left: 10px; width: 140px; max-height: 180px; background: rgba(30, 30, 30, 0.9); border: 1px solid #444; border-radius: 8px; padding: 8px; overflow-y: auto; z-index: 150; font-size: 11px; }
-    .tree-item { padding: 4px 6px; border-radius: 4px; cursor: pointer; margin-bottom: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; background: #2a2a2a; }
+    
+    #viewport-container { 
+      flex: 1; 
+      position: relative; 
+      width: 100%; 
+      background: #121212; 
+      overflow: hidden; 
+    }
+    #three-canvas { 
+      width: 100%; 
+      height: 100%; 
+      display: block; 
+      touch-action: none; 
+      z-index: 1;
+    }
+    #rig-overlay { 
+      position: absolute; 
+      top: 10px; 
+      left: 50%; 
+      transform: translateX(-50%); 
+      display: none; 
+      gap: 10px; 
+      z-index: 9999; 
+      background: rgba(0,0,0,0.85); 
+      padding: 8px 16px; 
+      border-radius: 30px; 
+      border: 1px solid #5e5ce6; 
+    }
+    #hierarchy-panel { 
+      position: absolute; 
+      top: 10px; 
+      left: 10px; 
+      width: 140px; 
+      max-height: 180px; 
+      background: rgba(30, 30, 30, 0.9); 
+      border: 1px solid #444; 
+      border-radius: 8px; 
+      padding: 8px; 
+      overflow-y: auto; 
+      z-index: 9999; 
+      font-size: 11px; 
+      touch-action: pan-y;
+    }
+    .tree-item { 
+      padding: 4px 6px; 
+      border-radius: 4px; 
+      cursor: pointer; 
+      margin-bottom: 2px; 
+      overflow: hidden; 
+      text-overflow: ellipsis; 
+      white-space: nowrap; 
+      background: #2a2a2a; 
+    }
     .tree-item.selected { background: #007aff; }
     .tree-item.bone-item { background: #3a2e5c; color: #d0c4ff; margin-left: 8px; }
     .tree-item.bone-item.selected { background: #5e5ce6; color: #fff; }
-    #timeline-container { height: 130px; background: #1e1e1e; border-top: 1px solid #333; display: flex; flex-direction: column; z-index: 100; position: relative; }
-    #timeline-controls { height: 36px; background: #282828; display: flex; align-items: center; justify-content: space-between; padding: 0 8px; border-bottom: 1px solid #333; overflow-x: auto; gap: 6px; }
+    
+    #timeline-container { 
+      height: 130px; 
+      background: #1e1e1e; 
+      border-top: 1px solid #333; 
+      display: flex; 
+      flex-direction: column; 
+      z-index: 9999; 
+      position: relative; 
+    }
+    #timeline-controls { 
+      height: 36px; 
+      background: #282828; 
+      display: flex; 
+      align-items: center; 
+      justify-content: space-between; 
+      padding: 0 8px; 
+      border-bottom: 1px solid #333; 
+      overflow-x: auto; 
+      gap: 6px; 
+      touch-action: pan-x;
+    }
+    #timeline-controls::-webkit-scrollbar { display: none; }
     .playback-group { display: flex; gap: 4px; flex-shrink: 0; }
-    #timeline-slider-wrap { flex: 1; height: 94px; position: relative; overflow-x: hidden; background: #181818; touch-action: none; }
+    #timeline-slider-wrap { 
+      flex: 1; 
+      height: 94px; 
+      position: relative; 
+      overflow-x: hidden; 
+      background: #181818; 
+      touch-action: none; 
+    }
     #timeline-canvas { height: 100%; display: block; width: 100%; }
     input[type="file"] { display: none; }
-    #toast { position: absolute; bottom: 150px; left: 50%; transform: translateX(-50%); background: rgba(0,0,0,0.85); color: white; padding: 8px 16px; border-radius: 20px; font-size: 12px; display: none; z-index: 200; pointer-events: none; }
+    #toast { 
+      position: absolute; 
+      bottom: 150px; 
+      left: 50%; 
+      transform: translateX(-50%); 
+      background: rgba(0,0,0,0.85); 
+      color: white; 
+      padding: 8px 16px; 
+      border-radius: 20px; 
+      font-size: 12px; 
+      display: none; 
+      z-index: 10000; 
+      pointer-events: none; 
+    }
   </style>
+
+  <!-- Stable Three.js & Controls Loaders -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/TransformControls.js"></script>
@@ -82,8 +224,8 @@
         <button class="btn btn-preset" id="preset-jump">🦘 Jump</button>
       </div>
       <div class="playback-group">
-        <button class="btn" id="btn-add-key" style="background: #28a745;">+ Key</button>
-        <button class="btn" id="btn-del-key" style="background: #dc3545;">- Key</button>
+        <button class="btn btn-success" id="btn-add-key">+ Key</button>
+        <button class="btn btn-danger" id="btn-del-key">- Key</button>
       </div>
     </div>
     <div id="timeline-slider-wrap">
@@ -185,18 +327,27 @@
     { name: 'R_Ankle', pos: [-0.2, 0.05, 0.05], color: 0xff2d55 }
   ];
 
-  function bindUIEvents() {
-    document.getElementById('btn-add-cube').onclick = (e) => {
+  function addTouchClick(id, handler) {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.addEventListener('pointerdown', (e) => { e.stopPropagation(); });
+    el.addEventListener('click', (e) => {
       e.stopPropagation();
+      e.preventDefault();
+      handler(e);
+    });
+  }
+
+  function bindUIEvents() {
+    addTouchClick('btn-add-cube', () => {
       const mesh = new THREE.Mesh(new THREE.BoxGeometry(1, 1, 1), new THREE.MeshStandardMaterial({ color: 0x007aff }));
       mesh.position.set(0, 0.5, 0);
       addObject(mesh, 'Cube');
-    };
+    });
 
-    document.getElementById('btn-model').onclick = (e) => {
-      e.stopPropagation();
+    addTouchClick('btn-model', () => {
       document.getElementById('input-model').click();
-    };
+    });
 
     document.getElementById('input-model').onchange = (e) => {
       const file = e.target.files[0];
@@ -211,17 +362,15 @@
       }
     };
 
-    document.getElementById('btn-start-rig').onclick = (e) => {
-      e.stopPropagation();
+    addTouchClick('btn-start-rig', () => {
       if (!selectedObject) { showToast('Select a 3D Model first!'); return; }
       document.getElementById('rig-overlay').style.display = 'flex';
       transformControls.detach();
       createJointMarkers();
       showToast('Drag Markers to match character joints');
-    };
+    });
 
-    document.getElementById('btn-apply-rig').onclick = (e) => {
-      e.stopPropagation();
+    addTouchClick('btn-apply-rig', () => {
       if (!selectedObject) return;
 
       const jPos = {};
@@ -307,20 +456,19 @@
       document.getElementById('rig-overlay').style.display = 'none';
       selectObject(selectedObject);
       showToast('Rigging Applied!');
-    };
+    });
 
-    document.getElementById('btn-cancel-rig').onclick = (e) => {
-      e.stopPropagation();
+    addTouchClick('btn-cancel-rig', () => {
       clearJointMarkers();
       document.getElementById('rig-overlay').style.display = 'none';
       selectObject(selectedObject);
-    };
+    });
 
-    document.getElementById('mode-select').onclick = () => setTransformMode('select', 'mode-select');
-    document.getElementById('mode-move').onclick = () => setTransformMode('translate', 'mode-move');
-    document.getElementById('mode-rotate').onclick = () => setTransformMode('rotate', 'mode-rotate');
+    addTouchClick('mode-select', () => setTransformMode('select', 'mode-select'));
+    addTouchClick('mode-move', () => setTransformMode('translate', 'mode-move'));
+    addTouchClick('mode-rotate', () => setTransformMode('rotate', 'mode-rotate'));
 
-    document.getElementById('btn-delete').onclick = () => {
+    addTouchClick('btn-delete', () => {
       if (selectedObject) {
         delete keyframes[selectedObject.uuid];
         scene.remove(selectedObject);
@@ -328,18 +476,18 @@
         selectObject(null);
         showToast('Deleted');
       }
-    };
+    });
 
-    document.getElementById('preset-stand').onclick = () => applyAnimationPreset('stand');
-    document.getElementById('preset-walk').onclick = () => applyAnimationPreset('walk');
-    document.getElementById('preset-run').onclick = () => applyAnimationPreset('run');
-    document.getElementById('preset-jump').onclick = () => applyAnimationPreset('jump');
+    addTouchClick('preset-stand', () => applyAnimationPreset('stand'));
+    addTouchClick('preset-walk', () => applyAnimationPreset('walk'));
+    addTouchClick('preset-run', () => applyAnimationPreset('run'));
+    addTouchClick('preset-jump', () => applyAnimationPreset('jump'));
 
-    document.getElementById('btn-play').onclick = () => isPlaying = true;
-    document.getElementById('btn-pause').onclick = () => isPlaying = false;
-    document.getElementById('btn-stop').onclick = () => { isPlaying = false; currentTime = 0; objectsList.forEach(obj => updateAnimatedNodes(obj)); drawTimeline(); };
+    addTouchClick('btn-play', () => isPlaying = true);
+    addTouchClick('btn-pause', () => isPlaying = false);
+    addTouchClick('btn-stop', () => { isPlaying = false; currentTime = 0; objectsList.forEach(obj => updateAnimatedNodes(obj)); drawTimeline(); });
 
-    document.getElementById('btn-add-key').onclick = () => {
+    addTouchClick('btn-add-key', () => {
       if (!selectedObject) { showToast('Select an Object or Bone first!'); return; }
       const list = keyframes[selectedObject.uuid] || [];
       const t = parseFloat(currentTime.toFixed(2));
@@ -353,15 +501,15 @@
       keyframes[selectedObject.uuid] = list;
       drawTimeline();
       showToast('Keyframe Set at ' + t + 's');
-    };
+    });
 
-    document.getElementById('btn-del-key').onclick = () => {
+    addTouchClick('btn-del-key', () => {
       if (!selectedObject) return;
       let list = keyframes[selectedObject.uuid] || [];
       keyframes[selectedObject.uuid] = list.filter(k => Math.abs(k.time - currentTime) >= 0.1);
       drawTimeline();
       showToast('Keyframe Removed');
-    };
+    });
   }
 
   function createJointMarkers() {
@@ -430,30 +578,4 @@
         setKey('L_Hip', t, 0.8 * sign, 0, 0);
         setKey('R_Hip', t, -0.8 * sign, 0, 0);
         setKey('L_Knee', t, sign > 0 ? 0.9 : 0.2, 0, 0);
-        setKey('R_Knee', t, sign < 0 ? 0.9 : 0.2, 0, 0);
-        setKey('L_Shoulder', t, -0.9 * sign, 0, 0);
-        setKey('R_Shoulder', t, 0.9 * sign, 0, 0);
-        setKey('L_Elbow', t, 0.7, 0, 0);
-        setKey('R_Elbow', t, 0.7, 0, 0);
-      });
-      showToast('Run Preset Applied');
-    }
-    else if (type === 'jump') {
-      setKey('Hips', 0, 0, 0, 0, 0, 0, 0);
-      setKey('Hips', 1.0, 0, 0, 0, 0, -0.2, 0);
-      setKey('Hips', 2.5, 0, 0, 0, 0, 0.6, 0);
-      setKey('Hips', 4.0, 0, 0, 0, 0, -0.1, 0);
-      setKey('Hips', 5.0, 0, 0, 0, 0, 0, 0);
-
-      setKey('L_Knee', 1.0, 0.6, 0, 0); setKey('R_Knee', 1.0, 0.6, 0, 0);
-      setKey('L_Knee', 2.5, 0.1, 0, 0); setKey('R_Knee', 2.5, 0.1, 0, 0);
-      setKey('L_Shoulder', 2.5, -1.2, 0, 0); setKey('R_Shoulder', 2.5, -1.2, 0, 0);
-      showToast('Jump Preset Applied');
-    }
-
-    drawTimeline();
-  }
-
-  function updateHierarchyUI() {
-    treeRoot.innerHTML = '';
-    objectsLi
+   
