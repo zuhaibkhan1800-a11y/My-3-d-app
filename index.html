@@ -8,9 +8,9 @@
     * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; -webkit-user-select: none; touch-action: manipulation; }
     body, html { width: 100%; height: 100%; overflow: hidden; background-color: #1a1a1a; font-family: system-ui, -apple-system, sans-serif; color: #fff; }
     #app-container { display: flex; flex-direction: column; width: 100vw; height: 100vh; position: relative; }
-    #top-bar { height: 50px; background: #252525; display: flex; align-items: center; padding: 0 8px; gap: 6px; overflow-x: auto; white-space: nowrap; border-bottom: 1px solid #333; z-index: 100; pointer-events: auto; }
+    #top-bar { height: 50px; background: #252525; display: flex; align-items: center; padding: 0 8px; gap: 6px; overflow-x: auto; white-space: nowrap; border-bottom: 1px solid #333; z-index: 100; position: relative; }
     #top-bar::-webkit-scrollbar { display: none; }
-    .btn { background: #3a3a3c; color: #fff; border: 1px solid #48484a; padding: 8px 12px; border-radius: 6px; font-size: 12px; font-weight: 600; cursor: pointer; display: inline-flex; align-items: center; gap: 4px; flex-shrink: 0; pointer-events: auto; }
+    .btn { background: #3a3a3c; color: #fff; border: 1px solid #48484a; padding: 8px 12px; border-radius: 6px; font-size: 12px; font-weight: 600; cursor: pointer; display: inline-flex; align-items: center; gap: 4px; flex-shrink: 0; }
     .btn:active, .btn.active { background: #007aff; border-color: #007aff; }
     .btn-danger { background: #8e0000; border-color: #aa0000; }
     .btn-special { background: #5e5ce6; border-color: #5e5ce6; }
@@ -18,13 +18,13 @@
     .btn-preset { background: #ff9500; border-color: #ff9500; }
     #viewport-container { flex: 1; position: relative; width: 100%; background: #121212; overflow: hidden; }
     #three-canvas { width: 100%; height: 100%; display: block; touch-action: none; }
-    #rig-overlay { position: absolute; top: 10px; left: 50%; transform: translateX(-50%); display: none; gap: 10px; z-index: 150; background: rgba(0,0,0,0.85); padding: 8px 16px; border-radius: 30px; border: 1px solid #5e5ce6; pointer-events: auto; }
-    #hierarchy-panel { position: absolute; top: 10px; left: 10px; width: 140px; max-height: 180px; background: rgba(30, 30, 30, 0.9); border: 1px solid #444; border-radius: 8px; padding: 8px; overflow-y: auto; z-index: 150; font-size: 11px; pointer-events: auto; }
+    #rig-overlay { position: absolute; top: 10px; left: 50%; transform: translateX(-50%); display: none; gap: 10px; z-index: 150; background: rgba(0,0,0,0.85); padding: 8px 16px; border-radius: 30px; border: 1px solid #5e5ce6; }
+    #hierarchy-panel { position: absolute; top: 10px; left: 10px; width: 140px; max-height: 180px; background: rgba(30, 30, 30, 0.9); border: 1px solid #444; border-radius: 8px; padding: 8px; overflow-y: auto; z-index: 150; font-size: 11px; }
     .tree-item { padding: 4px 6px; border-radius: 4px; cursor: pointer; margin-bottom: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; background: #2a2a2a; }
     .tree-item.selected { background: #007aff; }
     .tree-item.bone-item { background: #3a2e5c; color: #d0c4ff; margin-left: 8px; }
     .tree-item.bone-item.selected { background: #5e5ce6; color: #fff; }
-    #timeline-container { height: 130px; background: #1e1e1e; border-top: 1px solid #333; display: flex; flex-direction: column; z-index: 100; pointer-events: auto; }
+    #timeline-container { height: 130px; background: #1e1e1e; border-top: 1px solid #333; display: flex; flex-direction: column; z-index: 100; position: relative; }
     #timeline-controls { height: 36px; background: #282828; display: flex; align-items: center; justify-content: space-between; padding: 0 8px; border-bottom: 1px solid #333; overflow-x: auto; gap: 6px; }
     .playback-group { display: flex; gap: 4px; flex-shrink: 0; }
     #timeline-slider-wrap { flex: 1; height: 94px; position: relative; overflow-x: hidden; background: #181818; touch-action: none; }
@@ -98,7 +98,7 @@
   let scene, camera, renderer, orbit, transformControls;
   let objectsList = [], selectedObject = null, riggedBonesMap = {};
   let currentTime = 0, duration = 5.0, isPlaying = false, keyframes = {};
-  let jointMarkers = [], currentTransformMode = 'translate';
+  let jointMarkers = [];
 
   const canvas3D = document.getElementById('three-canvas');
   const treeRoot = document.getElementById('tree-root');
@@ -115,7 +115,7 @@
     camera = new THREE.PerspectiveCamera(60, container.clientWidth / container.clientHeight, 0.1, 1000);
     camera.position.set(0, 1.5, 3.5);
 
-    renderer = new THREE.WebGLRenderer({ canvas: canvas3D, antialias: true });
+    renderer = new THREE.WebGLRenderer({ canvas: canvas3D, antialias: true, alpha: false });
     renderer.setSize(container.clientWidth, container.clientHeight);
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
 
@@ -126,7 +126,7 @@
     transformControls.size = 0.75;
     scene.add(transformControls);
 
-    transformControls.addEventListener('dragging-changed', (e) => {
+    transformControls.addEventListener('dragging-changed', function (e) {
       orbit.enabled = !e.value;
     });
 
@@ -139,6 +139,7 @@
 
     window.addEventListener('resize', onWindowResize);
     setupTimelineEvents();
+    bindUIEvents();
     animate();
   }
 
@@ -152,9 +153,6 @@
     selectedObject = obj;
     if (obj) {
       transformControls.attach(obj);
-      if (currentTransformMode !== 'select') {
-        transformControls.setMode(currentTransformMode);
-      }
     } else {
       transformControls.detach();
     }
@@ -170,27 +168,6 @@
     selectObject(obj);
     showToast(obj.name + ' Added');
   }
-
-  document.getElementById('btn-add-cube').onclick = () => {
-    const mesh = new THREE.Mesh(new THREE.BoxGeometry(1, 1, 1), new THREE.MeshStandardMaterial({ color: 0x007aff }));
-    mesh.position.set(0, 0.5, 0);
-    addObject(mesh, 'Cube');
-  };
-
-  document.getElementById('btn-model').onclick = () => { document.getElementById('input-model').click(); };
-
-  document.getElementById('input-model').onchange = (e) => {
-    const file = e.target.files[0];
-    if (!file) return;
-    const url = URL.createObjectURL(file);
-    const ext = file.name.split('.').pop().toLowerCase();
-
-    if (ext === 'glb' || ext === 'gltf') {
-      new THREE.GLTFLoader().load(url, (gltf) => addObject(gltf.scene, file.name));
-    } else if (ext === 'obj') {
-      new THREE.OBJLoader().load(url, (obj) => addObject(obj, file.name));
-    }
-  };
 
   const defaultJointDefs = [
     { name: 'Head', pos: [0, 1.8, 0], color: 0x00e5ff },
@@ -208,13 +185,184 @@
     { name: 'R_Ankle', pos: [-0.2, 0.05, 0.05], color: 0xff2d55 }
   ];
 
-  document.getElementById('btn-start-rig').onclick = () => {
-    if (!selectedObject) { showToast('Select a 3D Model first!'); return; }
-    document.getElementById('rig-overlay').style.display = 'flex';
-    transformControls.detach();
-    createJointMarkers();
-    showToast('Drag Markers to match character joints');
-  };
+  function bindUIEvents() {
+    document.getElementById('btn-add-cube').onclick = (e) => {
+      e.stopPropagation();
+      const mesh = new THREE.Mesh(new THREE.BoxGeometry(1, 1, 1), new THREE.MeshStandardMaterial({ color: 0x007aff }));
+      mesh.position.set(0, 0.5, 0);
+      addObject(mesh, 'Cube');
+    };
+
+    document.getElementById('btn-model').onclick = (e) => {
+      e.stopPropagation();
+      document.getElementById('input-model').click();
+    };
+
+    document.getElementById('input-model').onchange = (e) => {
+      const file = e.target.files[0];
+      if (!file) return;
+      const url = URL.createObjectURL(file);
+      const ext = file.name.split('.').pop().toLowerCase();
+
+      if (ext === 'glb' || ext === 'gltf') {
+        new THREE.GLTFLoader().load(url, (gltf) => addObject(gltf.scene, file.name));
+      } else if (ext === 'obj') {
+        new THREE.OBJLoader().load(url, (obj) => addObject(obj, file.name));
+      }
+    };
+
+    document.getElementById('btn-start-rig').onclick = (e) => {
+      e.stopPropagation();
+      if (!selectedObject) { showToast('Select a 3D Model first!'); return; }
+      document.getElementById('rig-overlay').style.display = 'flex';
+      transformControls.detach();
+      createJointMarkers();
+      showToast('Drag Markers to match character joints');
+    };
+
+    document.getElementById('btn-apply-rig').onclick = (e) => {
+      e.stopPropagation();
+      if (!selectedObject) return;
+
+      const jPos = {};
+      jointMarkers.forEach(m => { jPos[m.userData.jointName] = m.position.clone(); });
+
+      const bones = [];
+      const boneMap = {};
+
+      defaultJointDefs.forEach((j) => {
+        const b = new THREE.Bone();
+        b.name = j.name;
+        b.position.copy(jPos[j.name]);
+        boneMap[j.name] = b;
+        bones.push(b);
+      });
+
+      boneMap['Hips'].add(boneMap['Neck']);
+      boneMap['Neck'].add(boneMap['Head']);
+      boneMap['Neck'].add(boneMap['L_Shoulder']);
+      boneMap['L_Shoulder'].add(boneMap['L_Elbow']);
+      boneMap['Neck'].add(boneMap['R_Shoulder']);
+      boneMap['R_Shoulder'].add(boneMap['R_Elbow']);
+      boneMap['Hips'].add(boneMap['L_Hip']);
+      boneMap['L_Hip'].add(boneMap['L_Knee']);
+      boneMap['L_Knee'].add(boneMap['L_Ankle']);
+      boneMap['Hips'].add(boneMap['R_Hip']);
+      boneMap['R_Hip'].add(boneMap['R_Knee']);
+      boneMap['R_Knee'].add(boneMap['R_Ankle']);
+
+      const skeleton = new THREE.Skeleton(bones);
+
+      let targetMesh = selectedObject;
+      if (targetMesh.isGroup) {
+        targetMesh.traverse((c) => { if (c.isMesh) targetMesh = c; });
+      }
+
+      if (targetMesh && targetMesh.isMesh) {
+        const geometry = targetMesh.geometry.clone();
+        const position = geometry.attributes.position;
+        const skinIndices = [];
+        const skinWeights = [];
+
+        for (let i = 0; i < position.count; i++) {
+          const vertex = new THREE.Vector3().fromBufferAttribute(position, i);
+          targetMesh.localToWorld(vertex);
+
+          let minDist = Infinity;
+          let closestBoneIdx = 0;
+
+          bones.forEach((b, idx) => {
+            const dist = vertex.distanceTo(b.position);
+            if (dist < minDist) {
+              minDist = dist;
+              closestBoneIdx = idx;
+            }
+          });
+
+          skinIndices.push(closestBoneIdx, 0, 0, 0);
+          skinWeights.push(1, 0, 0, 0);
+        }
+
+        geometry.setAttribute('skinIndex', new THREE.Uint16BufferAttribute(skinIndices, 4));
+        geometry.setAttribute('skinWeight', new THREE.Float32BufferAttribute(skinWeights, 4));
+
+        const skinnedMesh = new THREE.SkinnedMesh(geometry, targetMesh.material);
+        skinnedMesh.add(bones[0]); 
+        skinnedMesh.bind(skeleton);
+
+        scene.remove(selectedObject);
+        objectsList = objectsList.filter(o => o !== selectedObject);
+        
+        addObject(skinnedMesh, targetMesh.name || 'RiggedCharacter');
+        selectedObject = skinnedMesh;
+      }
+
+      riggedBonesMap = boneMap;
+      Object.values(boneMap).forEach(b => { keyframes[b.uuid] = []; });
+
+      const skelHelper = new THREE.SkeletonHelper(boneMap['Hips']);
+      scene.add(skelHelper);
+
+      clearJointMarkers();
+      document.getElementById('rig-overlay').style.display = 'none';
+      selectObject(selectedObject);
+      showToast('Rigging Applied!');
+    };
+
+    document.getElementById('btn-cancel-rig').onclick = (e) => {
+      e.stopPropagation();
+      clearJointMarkers();
+      document.getElementById('rig-overlay').style.display = 'none';
+      selectObject(selectedObject);
+    };
+
+    document.getElementById('mode-select').onclick = () => setTransformMode('select', 'mode-select');
+    document.getElementById('mode-move').onclick = () => setTransformMode('translate', 'mode-move');
+    document.getElementById('mode-rotate').onclick = () => setTransformMode('rotate', 'mode-rotate');
+
+    document.getElementById('btn-delete').onclick = () => {
+      if (selectedObject) {
+        delete keyframes[selectedObject.uuid];
+        scene.remove(selectedObject);
+        objectsList = objectsList.filter(o => o !== selectedObject);
+        selectObject(null);
+        showToast('Deleted');
+      }
+    };
+
+    document.getElementById('preset-stand').onclick = () => applyAnimationPreset('stand');
+    document.getElementById('preset-walk').onclick = () => applyAnimationPreset('walk');
+    document.getElementById('preset-run').onclick = () => applyAnimationPreset('run');
+    document.getElementById('preset-jump').onclick = () => applyAnimationPreset('jump');
+
+    document.getElementById('btn-play').onclick = () => isPlaying = true;
+    document.getElementById('btn-pause').onclick = () => isPlaying = false;
+    document.getElementById('btn-stop').onclick = () => { isPlaying = false; currentTime = 0; objectsList.forEach(obj => updateAnimatedNodes(obj)); drawTimeline(); };
+
+    document.getElementById('btn-add-key').onclick = () => {
+      if (!selectedObject) { showToast('Select an Object or Bone first!'); return; }
+      const list = keyframes[selectedObject.uuid] || [];
+      const t = parseFloat(currentTime.toFixed(2));
+      const existingIndex = list.findIndex(k => Math.abs(k.time - t) < 0.05);
+      const keyData = { time: t, pos: selectedObject.position.clone(), rot: selectedObject.rotation.clone(), scl: selectedObject.scale.clone() };
+
+      if (existingIndex >= 0) list[existingIndex] = keyData;
+      else list.push(keyData);
+
+      list.sort((a, b) => a.time - b.time);
+      keyframes[selectedObject.uuid] = list;
+      drawTimeline();
+      showToast('Keyframe Set at ' + t + 's');
+    };
+
+    document.getElementById('btn-del-key').onclick = () => {
+      if (!selectedObject) return;
+      let list = keyframes[selectedObject.uuid] || [];
+      keyframes[selectedObject.uuid] = list.filter(k => Math.abs(k.time - currentTime) >= 0.1);
+      drawTimeline();
+      showToast('Keyframe Removed');
+    };
+  }
 
   function createJointMarkers() {
     clearJointMarkers();
@@ -235,100 +383,6 @@
     jointMarkers.forEach(m => scene.remove(m));
     jointMarkers = [];
   }
-
-  document.getElementById('btn-apply-rig').onclick = () => {
-    if (!selectedObject) return;
-
-    const jPos = {};
-    jointMarkers.forEach(m => { jPos[m.userData.jointName] = m.position.clone(); });
-
-    const bones = [];
-    const boneMap = {};
-
-    defaultJointDefs.forEach((j) => {
-      const b = new THREE.Bone();
-      b.name = j.name;
-      b.position.copy(jPos[j.name]);
-      boneMap[j.name] = b;
-      bones.push(b);
-    });
-
-    boneMap['Hips'].add(boneMap['Neck']);
-    boneMap['Neck'].add(boneMap['Head']);
-    boneMap['Neck'].add(boneMap['L_Shoulder']);
-    boneMap['L_Shoulder'].add(boneMap['L_Elbow']);
-    boneMap['Neck'].add(boneMap['R_Shoulder']);
-    boneMap['R_Shoulder'].add(boneMap['R_Elbow']);
-    boneMap['Hips'].add(boneMap['L_Hip']);
-    boneMap['L_Hip'].add(boneMap['L_Knee']);
-    boneMap['L_Knee'].add(boneMap['L_Ankle']);
-    boneMap['Hips'].add(boneMap['R_Hip']);
-    boneMap['R_Hip'].add(boneMap['R_Knee']);
-    boneMap['R_Knee'].add(boneMap['R_Ankle']);
-
-    const skeleton = new THREE.Skeleton(bones);
-
-    let targetMesh = selectedObject;
-    if (targetMesh.isGroup) {
-      targetMesh.traverse((c) => { if (c.isMesh) targetMesh = c; });
-    }
-
-    if (targetMesh && targetMesh.isMesh) {
-      const geometry = targetMesh.geometry.clone();
-      const position = geometry.attributes.position;
-      const skinIndices = [];
-      const skinWeights = [];
-
-      for (let i = 0; i < position.count; i++) {
-        const vertex = new THREE.Vector3().fromBufferAttribute(position, i);
-        targetMesh.localToWorld(vertex);
-
-        let minDist = Infinity;
-        let closestBoneIdx = 0;
-
-        bones.forEach((b, idx) => {
-          const dist = vertex.distanceTo(b.position);
-          if (dist < minDist) {
-            minDist = dist;
-            closestBoneIdx = idx;
-          }
-        });
-
-        skinIndices.push(closestBoneIdx, 0, 0, 0);
-        skinWeights.push(1, 0, 0, 0);
-      }
-
-      geometry.setAttribute('skinIndex', new THREE.Uint16BufferAttribute(skinIndices, 4));
-      geometry.setAttribute('skinWeight', new THREE.Float32BufferAttribute(skinWeights, 4));
-
-      const skinnedMesh = new THREE.SkinnedMesh(geometry, targetMesh.material);
-      skinnedMesh.add(bones[0]); 
-      skinnedMesh.bind(skeleton);
-
-      scene.remove(selectedObject);
-      objectsList = objectsList.filter(o => o !== selectedObject);
-      
-      addObject(skinnedMesh, targetMesh.name || 'RiggedCharacter');
-      selectedObject = skinnedMesh;
-    }
-
-    riggedBonesMap = boneMap;
-    Object.values(boneMap).forEach(b => { keyframes[b.uuid] = []; });
-
-    const skelHelper = new THREE.SkeletonHelper(boneMap['Hips']);
-    scene.add(skelHelper);
-
-    clearJointMarkers();
-    document.getElementById('rig-overlay').style.display = 'none';
-    selectObject(selectedObject);
-    showToast('Rig Attached Successfully!');
-  };
-
-  document.getElementById('btn-cancel-rig').onclick = () => {
-    clearJointMarkers();
-    document.getElementById('rig-overlay').style.display = 'none';
-    selectObject(selectedObject);
-  };
 
   function applyAnimationPreset(type) {
     if (!riggedBonesMap['Hips']) { showToast('Apply Rigging first!'); return; }
@@ -400,65 +454,6 @@
     drawTimeline();
   }
 
-  document.getElementById('preset-stand').onclick = () => applyAnimationPreset('stand');
-  document.getElementById('preset-walk').onclick = () => applyAnimationPreset('walk');
-  document.getElementById('preset-run').onclick = () => applyAnimationPreset('run');
-  document.getElementById('preset-jump').onclick = () => applyAnimationPreset('jump');
-
   function updateHierarchyUI() {
     treeRoot.innerHTML = '';
-    objectsList.forEach((obj) => {
-      const item = document.createElement('div');
-      item.className = 'tree-item' + (selectedObject === obj ? ' selected' : '');
-      item.innerText = obj.name;
-      item.onclick = (e) => { e.stopPropagation(); selectObject(obj); };
-      treeRoot.appendChild(item);
-
-      function renderBones(parentObj) {
-        if (!parentObj.children) return;
-        parentObj.children.forEach(child => {
-          if (child.isBone) {
-            const boneItem = document.createElement('div');
-            boneItem.className = 'tree-item bone-item' + (selectedObject === child ? ' selected' : '');
-            boneItem.innerText = '🦴 ' + child.name;
-            boneItem.onclick = (e) => { e.stopPropagation(); selectObject(child); };
-            treeRoot.appendChild(boneItem);
-            renderBones(child);
-          }
-        });
-      }
-      renderBones(obj);
-    });
-  }
-
-  function setTransformMode(mode, id) {
-    currentTransformMode = mode === 'select' ? 'select' : mode;
-    ['mode-select', 'mode-move', 'mode-rotate'].forEach(b => document.getElementById(b).classList.remove('active'));
-    document.getElementById(id).classList.add('active');
-    
-    if (mode === 'select') {
-      transformControls.detach();
-    } else {
-      if (selectedObject) transformControls.attach(selectedObject);
-      transformControls.setMode(mode);
-    }
-  }
-
-  document.getElementById('mode-select').onclick = () => setTransformMode('select', 'mode-select');
-  document.getElementById('mode-move').onclick = () => setTransformMode('translate', 'mode-move');
-  document.getElementById('mode-rotate').onclick = () => setTransformMode('rotate', 'mode-rotate');
-
-  document.getElementById('btn-delete').onclick = () => {
-    if (selectedObject) {
-      delete keyframes[selectedObject.uuid];
-      scene.remove(selectedObject);
-      objectsList = objectsList.filter(o => o !== selectedObject);
-      selectObject(null);
-      showToast('Deleted');
-    }
-  };
-
-  document.getElementById('btn-add-key').onclick = () => {
-    if (!selectedObject) { showToast('Select an Object or Bone first!'); return; }
-    const list = keyframes[selectedObject.uuid] || [];
-    const t = parseFlo
+    objectsLi
