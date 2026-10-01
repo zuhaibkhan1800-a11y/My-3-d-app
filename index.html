@@ -3,156 +3,33 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>Mobile 3D Animation Editor</title>
+  <title>Mobile 3D Animation Editor - IK Auto Rig</title>
   <style>
-    * {
-      box-sizing: border-box;
-      margin: 0;
-      padding: 0;
-      user-select: none;
-      -webkit-user-select: none;
-      touch-action: manipulation;
-    }
-    body, html {
-      width: 100%;
-      height: 100%;
-      overflow: hidden;
-      background-color: #1a1a1a;
-      font-family: system-ui, -apple-system, sans-serif;
-      color: #fff;
-    }
-    #app-container {
-      display: flex;
-      flex-direction: column;
-      width: 100vw;
-      height: 100vh;
-      position: relative;
-    }
-    #top-bar {
-      height: 50px;
-      background: #252525;
-      display: flex;
-      align-items: center;
-      padding: 0 8px;
-      gap: 6px;
-      overflow-x: auto;
-      white-space: nowrap;
-      border-bottom: 1px solid #333;
-      z-index: 100;
-      pointer-events: auto;
-    }
+    * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; -webkit-user-select: none; touch-action: manipulation; }
+    body, html { width: 100%; height: 100%; overflow: hidden; background-color: #1a1a1a; font-family: system-ui, -apple-system, sans-serif; color: #fff; }
+    #app-container { display: flex; flex-direction: column; width: 100vw; height: 100vh; position: relative; }
+    #top-bar { height: 50px; background: #252525; display: flex; align-items: center; padding: 0 8px; gap: 6px; overflow-x: auto; white-space: nowrap; border-bottom: 1px solid #333; z-index: 100; }
     #top-bar::-webkit-scrollbar { display: none; }
-    .btn {
-      background: #3a3a3c;
-      color: #fff;
-      border: 1px solid #48484a;
-      padding: 8px 12px;
-      border-radius: 6px;
-      font-size: 12px;
-      font-weight: 600;
-      cursor: pointer;
-      display: inline-flex;
-      align-items: center;
-      gap: 4px;
-      flex-shrink: 0;
-      pointer-events: auto;
-    }
-    .btn:active, .btn.active {
-      background: #007aff;
-      border-color: #007aff;
-    }
+    .btn { background: #3a3a3c; color: #fff; border: 1px solid #48484a; padding: 8px 12px; border-radius: 6px; font-size: 12px; font-weight: 600; cursor: pointer; display: inline-flex; align-items: center; gap: 4px; flex-shrink: 0; }
+    .btn:active, .btn.active { background: #007aff; border-color: #007aff; }
     .btn-danger { background: #8e0000; border-color: #aa0000; }
-    #viewport-container {
-      flex: 1;
-      position: relative;
-      width: 100%;
-      background: #121212;
-      overflow: hidden;
-    }
-    #three-canvas {
-      width: 100%;
-      height: 100%;
-      display: block;
-    }
-    #overlay-controls {
-      position: absolute;
-      top: 10px;
-      right: 10px;
-      display: flex;
-      flex-direction: column;
-      gap: 6px;
-      z-index: 50;
-      pointer-events: auto;
-    }
-    #hierarchy-panel {
-      position: absolute;
-      top: 10px;
-      left: 10px;
-      width: 140px;
-      max-height: 180px;
-      background: rgba(30, 30, 30, 0.85);
-      border: 1px solid #444;
-      border-radius: 8px;
-      padding: 8px;
-      overflow-y: auto;
-      z-index: 50;
-      pointer-events: auto;
-      font-size: 11px;
-    }
-    .tree-item {
-      padding: 4px;
-      border-radius: 4px;
-      cursor: pointer;
-      margin-bottom: 2px;
-      overflow: hidden;
-      text-overflow: ellipsis;
-      white-space: nowrap;
-      background: #2a2a2a;
-    }
+    .btn-special { background: #5e5ce6; border-color: #5e5ce6; }
+    .btn-success { background: #28a745; border-color: #28a745; }
+    #viewport-container { flex: 1; position: relative; width: 100%; background: #121212; overflow: hidden; }
+    #three-canvas { width: 100%; height: 100%; display: block; }
+    #rig-overlay { position: absolute; top: 10px; left: 50%; transform: translateX(-50%); display: none; gap: 10px; z-index: 150; background: rgba(0,0,0,0.8); padding: 8px 16px; border-radius: 30px; border: 1px solid #5e5ce6; }
+    #hierarchy-panel { position: absolute; top: 10px; left: 10px; width: 140px; max-height: 180px; background: rgba(30, 30, 30, 0.9); border: 1px solid #444; border-radius: 8px; padding: 8px; overflow-y: auto; z-index: 50; font-size: 11px; }
+    .tree-item { padding: 4px 6px; border-radius: 4px; cursor: pointer; margin-bottom: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; background: #2a2a2a; }
     .tree-item.selected { background: #007aff; }
-    #timeline-container {
-      height: 140px;
-      background: #1e1e1e;
-      border-top: 1px solid #333;
-      display: flex;
-      flex-direction: column;
-      z-index: 100;
-      pointer-events: auto;
-    }
-    #timeline-controls {
-      height: 40px;
-      background: #282828;
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      padding: 0 8px;
-      gap: 6px;
-      border-bottom: 1px solid #333;
-    }
+    .tree-item.bone-item { background: #3a2e5c; color: #d0c4ff; margin-left: 8px; }
+    .tree-item.bone-item.selected { background: #5e5ce6; color: #fff; }
+    #timeline-container { height: 130px; background: #1e1e1e; border-top: 1px solid #333; display: flex; flex-direction: column; z-index: 100; }
+    #timeline-controls { height: 36px; background: #282828; display: flex; align-items: center; justify-content: space-between; padding: 0 8px; border-bottom: 1px solid #333; }
     .playback-group { display: flex; gap: 4px; }
-    #timeline-slider-wrap {
-      flex: 1;
-      height: 100px;
-      position: relative;
-      overflow-x: hidden;
-      background: #181818;
-      touch-action: none;
-    }
+    #timeline-slider-wrap { flex: 1; height: 94px; position: relative; overflow-x: hidden; background: #181818; touch-action: none; }
     #timeline-canvas { height: 100%; display: block; width: 100%; }
     input[type="file"] { display: none; }
-    #toast {
-      position: absolute;
-      bottom: 160px;
-      left: 50%;
-      transform: translateX(-50%);
-      background: rgba(0,0,0,0.85);
-      color: white;
-      padding: 8px 16px;
-      border-radius: 20px;
-      font-size: 12px;
-      display: none;
-      z-index: 200;
-    }
+    #toast { position: absolute; bottom: 150px; left: 50%; transform: translateX(-50%); background: rgba(0,0,0,0.85); color: white; padding: 8px 16px; border-radius: 20px; font-size: 12px; display: none; z-index: 200; }
   </style>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
@@ -165,30 +42,26 @@
 <div id="app-container">
   <div id="top-bar">
     <button class="btn" id="btn-add-cube">🧊 Cube</button>
-    <button class="btn" id="btn-add-sphere">⚽ Sphere</button>
-    <button class="btn" id="btn-add-cylinder">🛢️ Cylinder</button>
+    <button class="btn" id="btn-model">📦 Upload Model</button>
     <div style="width: 1px; height: 20px; background: #444; margin: 0 2px;"></div>
-    <button class="btn" id="btn-photo">📷 Photo</button>
-    <button class="btn" id="btn-model">📦 Model</button>
+    <button class="btn btn-special" id="btn-start-rig">🦴 Auto-Rig System</button>
     <div style="width: 1px; height: 20px; background: #444; margin: 0 2px;"></div>
     <button class="btn active" id="mode-select">Select</button>
     <button class="btn" id="mode-move">Move</button>
     <button class="btn" id="mode-rotate">Rotate</button>
-    <button class="btn" id="mode-scale">Scale</button>
-    <div style="width: 1px; height: 20px; background: #444; margin: 0 2px;"></div>
     <button class="btn btn-danger" id="btn-delete">🗑 Delete</button>
   </div>
 
   <div id="viewport-container">
     <canvas id="three-canvas"></canvas>
-    <div id="hierarchy-panel">
-      <div style="font-weight: bold; margin-bottom: 6px; border-bottom: 1px solid #555;">Objects</div>
-      <div id="tree-root"></div>
+    <div id="rig-overlay">
+      <span style="font-size: 12px; align-self: center;">Place Joint Points:</span>
+      <button class="btn btn-success" id="btn-apply-rig">✓ Apply Rig</button>
+      <button class="btn btn-danger" id="btn-cancel-rig">✕ Cancel</button>
     </div>
-    <div id="overlay-controls">
-      <button class="btn" id="btn-cam-reset">🎯 Reset</button>
-      <button class="btn" id="btn-cam-front">Front</button>
-      <button class="btn" id="btn-cam-top">Top</button>
+    <div id="hierarchy-panel">
+      <div style="font-weight: bold; margin-bottom: 6px; border-bottom: 1px solid #555;">Objects & Bones</div>
+      <div id="tree-root"></div>
     </div>
     <div id="toast">Notification</div>
   </div>
@@ -202,8 +75,8 @@
       </div>
       <span id="time-display" style="font-size: 11px; font-family: monospace;">0.00s / 5.00s</span>
       <div class="playback-group">
-        <button class="btn" id="btn-add-key" style="background: #28a745; border-color: #28a745;">+ Key</button>
-        <button class="btn" id="btn-del-key" style="background: #dc3545; border-color: #dc3545;">- Key</button>
+        <button class="btn" id="btn-add-key" style="background: #28a745;">+ Key</button>
+        <button class="btn" id="btn-del-key" style="background: #dc3545;">- Key</button>
       </div>
     </div>
     <div id="timeline-slider-wrap">
@@ -212,15 +85,13 @@
   </div>
 </div>
 
-<input type="file" id="input-photo" accept="image/*">
 <input type="file" id="input-model" accept=".glb,.gltf,.obj">
 
 <script>
   let scene, camera, renderer, orbit, transformControls;
-  let objectsList = [];
-  let selectedObject = null;
-  let currentTime = 0, duration = 5.0, isPlaying = false;
-  let keyframes = {};
+  let objectsList = [], selectedObject = null;
+  let currentTime = 0, duration = 5.0, isPlaying = false, keyframes = {};
+  let rigMode = false, rigJoints = {}, jointMarkers = [];
 
   const canvas3D = document.getElementById('three-canvas');
   const treeRoot = document.getElementById('tree-root');
@@ -235,7 +106,7 @@
     scene.background = new THREE.Color(0x1a1a1a);
 
     camera = new THREE.PerspectiveCamera(60, container.clientWidth / container.clientHeight, 0.1, 1000);
-    camera.position.set(3, 3, 5);
+    camera.position.set(0, 1.5, 3.5);
 
     renderer = new THREE.WebGLRenderer({ canvas: canvas3D, antialias: true });
     renderer.setSize(container.clientWidth, container.clientHeight);
@@ -248,19 +119,14 @@
     transformControls.size = 0.75;
     scene.add(transformControls);
 
-    transformControls.addEventListener('dragging-changed', (e) => {
-      orbit.enabled = !e.value;
-    });
+    transformControls.addEventListener('dragging-changed', (e) => orbit.enabled = !e.value);
 
     scene.add(new THREE.AmbientLight(0xffffff, 0.8));
     const dirLight = new THREE.DirectionalLight(0xffffff, 0.8);
     dirLight.position.set(5, 10, 7);
     scene.add(dirLight);
 
-    const grid = new THREE.GridHelper(20, 20, 0x555555, 0x333333);
-    scene.add(grid);
-
-    addCube();
+    scene.add(new THREE.GridHelper(20, 20, 0x555555, 0x333333));
 
     window.addEventListener('resize', onWindowResize);
     setupTimelineEvents();
@@ -275,86 +141,28 @@
 
   function selectObject(obj) {
     selectedObject = obj;
-    if (obj) transformControls.attach(obj);
+    if (obj && !rigMode) transformControls.attach(obj);
     else transformControls.detach();
     updateHierarchyUI();
     drawTimeline();
   }
 
   function addObject(obj, name) {
-    obj.name = name || 'Obj_' + (objectsList.length + 1);
+    obj.name = name || 'Model_' + (objectsList.length + 1);
     scene.add(obj);
     objectsList.push(obj);
-    keyframes[obj.uuid] = [];
+    if (!keyframes[obj.uuid]) keyframes[obj.uuid] = [];
     selectObject(obj);
     showToast(obj.name + ' Added');
   }
 
-  function addCube() {
-    const mesh = new THREE.Mesh(
-      new THREE.BoxGeometry(1, 1, 1),
-      new THREE.MeshStandardMaterial({ color: 0x007aff })
-    );
+  document.getElementById('btn-add-cube').onclick = () => {
+    const mesh = new THREE.Mesh(new THREE.BoxGeometry(1, 1, 1), new THREE.MeshStandardMaterial({ color: 0x007aff }));
     mesh.position.set(0, 0.5, 0);
     addObject(mesh, 'Cube');
-  }
-
-  function addSphere() {
-    const mesh = new THREE.Mesh(
-      new THREE.SphereGeometry(0.7, 32, 32),
-      new THREE.MeshStandardMaterial({ color: 0xff9500 })
-    );
-    mesh.position.set(0, 0.7, 0);
-    addObject(mesh, 'Sphere');
-  }
-
-  function addCylinder() {
-    const mesh = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.5, 0.5, 1, 32),
-      new THREE.MeshStandardMaterial({ color: 0x34c759 })
-    );
-    mesh.position.set(0, 0.5, 0);
-    addObject(mesh, 'Cylinder');
-  }
-
-  function updateHierarchyUI() {
-    treeRoot.innerHTML = '';
-    objectsList.forEach((obj) => {
-      const item = document.createElement('div');
-      item.className = 'tree-item' + (selectedObject === obj ? ' selected' : '');
-      item.innerText = obj.name;
-      item.onclick = (e) => {
-        e.stopPropagation();
-        selectObject(obj);
-      };
-      treeRoot.appendChild(item);
-    });
-  }
-
-  document.getElementById('btn-add-cube').onclick = addCube;
-  document.getElementById('btn-add-sphere').onclick = addSphere;
-  document.getElementById('btn-add-cylinder').onclick = addCylinder;
-
-  document.getElementById('btn-photo').onclick = () => document.getElementById('input-photo').click();
-  document.getElementById('btn-model').onclick = () => document.getElementById('input-model').click();
-
-  document.getElementById('input-photo').onchange = (e) => {
-    const file = e.target.files[0];
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = (evt) => {
-      new THREE.TextureLoader().load(evt.target.result, (texture) => {
-        const aspect = texture.image.width / texture.image.height;
-        const mesh = new THREE.Mesh(
-          new THREE.PlaneGeometry(2 * aspect, 2),
-          new THREE.MeshBasicMaterial({ map: texture, side: THREE.DoubleSide })
-        );
-        mesh.position.set(0, 1, 0);
-        addObject(mesh, 'Photo');
-      });
-    };
-    reader.readAsDataURL(file);
   };
+
+  document.getElementById('btn-model').onclick = () => document.getElementById('input-model').click();
 
   document.getElementById('input-model').onchange = (e) => {
     const file = e.target.files[0];
@@ -369,8 +177,121 @@
     }
   };
 
+  // --- PRISMA 3D AUTO-RIG JOINT MATCHING SYSTEM ---
+  const defaultJointDefs = [
+    { name: 'Head', pos: [0, 1.8, 0], color: 0x00e5ff },
+    { name: 'Neck', pos: [0, 1.5, 0], color: 0x007aff },
+    { name: 'L_Shoulder', pos: [0.35, 1.35, 0], color: 0xffcc00 },
+    { name: 'R_Shoulder', pos: [-0.35, 1.35, 0], color: 0xffcc00 },
+    { name: 'L_Elbow', pos: [0.6, 1.0, 0], color: 0xff9500 },
+    { name: 'R_Elbow', pos: [-0.6, 1.0, 0], color: 0xff9500 },
+    { name: 'L_Wrist', pos: [0.8, 0.6, 0], color: 0xff3b30 },
+    { name: 'R_Wrist', pos: [-0.8, 0.6, 0], color: 0xff3b30 },
+    { name: 'Hips', pos: [0, 0.9, 0], color: 0xaf52de },
+    { name: 'L_Knee', pos: [0.2, 0.45, 0], color: 0x34c759 },
+    { name: 'R_Knee', pos: [-0.2, 0.45, 0], color: 0x34c759 },
+    { name: 'L_Ankle', pos: [0.2, 0.05, 0], color: 0xff2d55 },
+    { name: 'R_Ankle', pos: [-0.2, 0.05, 0], color: 0xff2d55 }
+  ];
+
+  document.getElementById('btn-start-rig').onclick = () => {
+    if (!selectedObject) { showToast('Select a 3D Model first!'); return; }
+    rigMode = true;
+    document.getElementById('rig-overlay').style.display = 'flex';
+    transformControls.detach();
+    createJointMarkers();
+    showToast('Drag Joint Circles to match your Model!');
+  };
+
+  function createJointMarkers() {
+    clearJointMarkers();
+    defaultJointDefs.forEach(j => {
+      const geo = new THREE.TorusGeometry(0.06, 0.015, 16, 32);
+      const mat = new THREE.MeshBasicMaterial({ color: j.color, depthTest: false });
+      const marker = new THREE.Mesh(geo, mat);
+      marker.position.set(...j.pos);
+      marker.renderOrder = 999;
+      marker.name = 'Joint_' + j.name;
+      marker.userData = { jointName: j.name };
+      scene.add(marker);
+      jointMarkers.push(marker);
+    });
+    if (jointMarkers.length > 0) transformControls.attach(jointMarkers[0]);
+  }
+
+  function clearJointMarkers() {
+    jointMarkers.forEach(m => scene.remove(m));
+    jointMarkers = [];
+  }
+
+  document.getElementById('btn-apply-rig').onclick = () => {
+    if (!selectedObject) return;
+    
+    // Create Bone Skeleton based on placed Joint Positions
+    const joints = {};
+    jointMarkers.forEach(m => { joints[m.userData.jointName] = m.position.clone(); });
+
+    const hips = new THREE.Bone(); hips.name = 'Hips'; hips.position.copy(joints['Hips']);
+    const neck = new THREE.Bone(); neck.name = 'Neck'; neck.position.copy(joints['Neck'].clone().sub(joints['Hips'])); hips.add(neck);
+    const head = new THREE.Bone(); head.name = 'Head'; head.position.copy(joints['Head'].clone().sub(joints['Neck'])); neck.add(head);
+
+    const lSh = new THREE.Bone(); lSh.name = 'L_Arm'; lSh.position.copy(joints['L_Shoulder'].clone().sub(joints['Neck'])); neck.add(lSh);
+    const lEl = new THREE.Bone(); lEl.name = 'L_Elbow'; lEl.position.copy(joints['L_Elbow'].clone().sub(joints['L_Shoulder'])); lSh.add(lEl);
+    const lWr = new THREE.Bone(); lWr.name = 'L_Wrist'; lWr.position.copy(joints['L_Wrist'].clone().sub(joints['L_Elbow'])); lEl.add(lWr);
+
+    const rSh = new THREE.Bone(); rSh.name = 'R_Arm'; rSh.position.copy(joints['R_Shoulder'].clone().sub(joints['Neck'])); neck.add(rSh);
+    const rEl = new THREE.Bone(); rEl.name = 'R_Elbow'; rEl.position.copy(joints['R_Elbow'].clone().sub(joints['R_Shoulder'])); rSh.add(rEl);
+    const rWr = new THREE.Bone(); rWr.name = 'R_Wrist'; rWr.position.copy(joints['R_Wrist'].clone().sub(joints['R_Elbow'])); rEl.add(rWr);
+
+    const skelHelper = new THREE.SkeletonHelper(hips);
+    scene.add(skelHelper);
+    selectedObject.add(hips);
+
+    // Register all bones for animation
+    const skel = new THREE.Skeleton([hips, neck, head, lSh, lEl, lWr, rSh, rEl, rWr]);
+    skel.bones.forEach(b => { keyframes[b.uuid] = []; });
+
+    clearJointMarkers();
+    rigMode = false;
+    document.getElementById('rig-overlay').style.display = 'none';
+    selectObject(selectedObject);
+    showToast('Skeleton Successfully Bound to Model!');
+  };
+
+  document.getElementById('btn-cancel-rig').onclick = () => {
+    clearJointMarkers();
+    rigMode = false;
+    document.getElementById('rig-overlay').style.display = 'none';
+    selectObject(selectedObject);
+  };
+
+  function updateHierarchyUI() {
+    treeRoot.innerHTML = '';
+    objectsList.forEach((obj) => {
+      const item = document.createElement('div');
+      item.className = 'tree-item' + (selectedObject === obj ? ' selected' : '');
+      item.innerText = obj.name;
+      item.onclick = (e) => { e.stopPropagation(); selectObject(obj); };
+      treeRoot.appendChild(item);
+
+      function renderBones(parentObj) {
+        parentObj.children.forEach(child => {
+          if (child.isBone) {
+            const boneItem = document.createElement('div');
+            boneItem.className = 'tree-item bone-item' + (selectedObject === child ? ' selected' : '');
+            boneItem.innerText = '🦴 ' + child.name;
+            boneItem.onclick = (e) => { e.stopPropagation(); selectObject(child); };
+            treeRoot.appendChild(boneItem);
+            renderBones(child);
+          }
+        });
+      }
+      renderBones(obj);
+    });
+  }
+
   function setTransformMode(mode, id) {
-    ['mode-select', 'mode-move', 'mode-rotate', 'mode-scale'].forEach(b => document.getElementById(b).classList.remove('active'));
+    ['mode-select', 'mode-move', 'mode-rotate'].forEach(b => document.getElementById(b).classList.remove('active'));
     document.getElementById(id).classList.add('active');
     if (mode === 'select') transformControls.detach();
     else {
@@ -382,7 +303,6 @@
   document.getElementById('mode-select').onclick = () => setTransformMode('select', 'mode-select');
   document.getElementById('mode-move').onclick = () => setTransformMode('translate', 'mode-move');
   document.getElementById('mode-rotate').onclick = () => setTransformMode('rotate', 'mode-rotate');
-  document.getElementById('mode-scale').onclick = () => setTransformMode('scale', 'mode-scale');
 
   document.getElementById('btn-delete').onclick = () => {
     if (selectedObject) {
@@ -394,27 +314,13 @@
     }
   };
 
-  document.getElementById('btn-cam-reset').onclick = () => { camera.position.set(3, 3, 5); orbit.target.set(0,0,0); };
-  document.getElementById('btn-cam-front').onclick = () => { camera.position.set(0, 1, 5); orbit.target.set(0,1,0); };
-  document.getElementById('btn-cam-top').onclick = () => { camera.position.set(0, 7, 0); orbit.target.set(0,0,0); };
-
-  // ---------- WORKING KEYFRAME ENGINE ----------
-
+  // --- KEYFRAME ENGINE ---
   document.getElementById('btn-add-key').onclick = () => {
-    if (!selectedObject) {
-      showToast('Select an Object first!');
-      return;
-    }
+    if (!selectedObject) return;
     const list = keyframes[selectedObject.uuid] || [];
     const t = parseFloat(currentTime.toFixed(2));
-    
     const existingIndex = list.findIndex(k => Math.abs(k.time - t) < 0.05);
-    const keyData = {
-      time: t,
-      pos: selectedObject.position.clone(),
-      rot: selectedObject.rotation.clone(),
-      scl: selectedObject.scale.clone()
-    };
+    const keyData = { time: t, pos: selectedObject.position.clone(), rot: selectedObject.rotation.clone(), scl: selectedObject.scale.clone() };
 
     if (existingIndex >= 0) list[existingIndex] = keyData;
     else list.push(keyData);
@@ -425,55 +331,35 @@
     showToast('Keyframe Set at ' + t + 's');
   };
 
-  document.getElementById('btn-del-key').onclick = () => {
-    if (!selectedObject) return;
-    let list = keyframes[selectedObject.uuid] || [];
-    const t = currentTime;
-    keyframes[selectedObject.uuid] = list.filter(k => Math.abs(k.time - t) >= 0.1);
-    drawTimeline();
-    showToast('Keyframe Removed');
-  };
-
-  function updateObjectsAnimation() {
-    objectsList.forEach(obj => {
-      const list = keyframes[obj.uuid];
-      if (!list || list.length === 0) return;
-
+  function updateAnimatedNodes(node) {
+    if (!node) return;
+    const list = keyframes[node.uuid];
+    if (list && list.length > 0) {
       if (list.length === 1 || currentTime <= list[0].time) {
-        obj.position.copy(list[0].pos);
-        obj.rotation.copy(list[0].rot);
-        obj.scale.copy(list[0].scl);
-        return;
-      }
-
-      if (currentTime >= list[list.length - 1].time) {
+        node.position.copy(list[0].pos); node.rotation.copy(list[0].rot); node.scale.copy(list[0].scl);
+      } else if (currentTime >= list[list.length - 1].time) {
         const last = list[list.length - 1];
-        obj.position.copy(last.pos);
-        obj.rotation.copy(last.rot);
-        obj.scale.copy(last.scl);
-        return;
-      }
-
-      for (let i = 0; i < list.length - 1; i++) {
-        const k1 = list[i];
-        const k2 = list[i + 1];
-        if (currentTime >= k1.time && currentTime <= k2.time) {
-          const factor = (currentTime - k1.time) / (k2.time - k1.time);
-          obj.position.lerpVectors(k1.pos, k2.pos, factor);
-          obj.scale.lerpVectors(k1.scl, k2.scl, factor);
-          
-          obj.rotation.x = THREE.MathUtils.lerp(k1.rot.x, k2.rot.x, factor);
-          obj.rotation.y = THREE.MathUtils.lerp(k1.rot.y, k2.rot.y, factor);
-          obj.rotation.z = THREE.MathUtils.lerp(k1.rot.z, k2.rot.z, factor);
-          break;
+        node.position.copy(last.pos); node.rotation.copy(last.rot); node.scale.copy(last.scl);
+      } else {
+        for (let i = 0; i < list.length - 1; i++) {
+          const k1 = list[i], k2 = list[i + 1];
+          if (currentTime >= k1.time && currentTime <= k2.time) {
+            const factor = (currentTime - k1.time) / (k2.time - k1.time);
+            node.position.lerpVectors(k1.pos, k2.pos, factor);
+            node.rotation.x = THREE.MathUtils.lerp(k1.rot.x, k2.rot.x, factor);
+            node.rotation.y = THREE.MathUtils.lerp(k1.rot.y, k2.rot.y, factor);
+            node.rotation.z = THREE.MathUtils.lerp(k1.rot.z, k2.rot.z, factor);
+            break;
+          }
         }
       }
-    });
+    }
+    if (node.children) node.children.forEach(c => updateAnimatedNodes(c));
   }
 
   function drawTimeline() {
     const w = tlCanvas.width = document.getElementById('timeline-slider-wrap').clientWidth;
-    const h = tlCanvas.height = 100;
+    const h = tlCanvas.height = 94;
     tlCtx.fillStyle = '#181818'; tlCtx.fillRect(0, 0, w, h);
 
     tlCtx.strokeStyle = '#333'; tlCtx.fillStyle = '#aaa'; tlCtx.font = '10px sans-serif';
@@ -486,38 +372,30 @@
     if (selectedObject && keyframes[selectedObject.uuid]) {
       keyframes[selectedObject.uuid].forEach(k => {
         let kx = (k.time / duration) * (w - 20) + 10;
-        tlCtx.fillStyle = '#ffcc00';
-        tlCtx.beginPath();
-        tlCtx.arc(kx, 50, 6, 0, Math.PI * 2);
-        tlCtx.fill();
+        tlCtx.fillStyle = '#ffcc00'; tlCtx.beginPath(); tlCtx.arc(kx, 50, 6, 0, Math.PI * 2); tlCtx.fill();
       });
     }
 
     let px = (currentTime / duration) * (w - 20) + 10;
     tlCtx.strokeStyle = '#ff3b30'; tlCtx.lineWidth = 2;
     tlCtx.beginPath(); tlCtx.moveTo(px, 0); tlCtx.lineTo(px, h); tlCtx.stroke();
-    
     timeDisplay.innerText = currentTime.toFixed(2) + 's / ' + duration.toFixed(2) + 's';
   }
 
   function setupTimelineEvents() {
     let isScrubbing = false;
-
     function handleScrub(e) {
       const rect = tlCanvas.getBoundingClientRect();
       const clientX = e.touches ? e.touches[0].clientX : e.clientX;
-      let x = clientX - rect.left - 10;
-      let w = rect.width - 20;
+      let x = clientX - rect.left - 10, w = rect.width - 20;
       currentTime = Math.max(0, Math.min(duration, (x / w) * duration));
-      updateObjectsAnimation();
+      objectsList.forEach(obj => updateAnimatedNodes(obj));
       drawTimeline();
     }
-
     const wrap = document.getElementById('timeline-slider-wrap');
     wrap.addEventListener('mousedown', (e) => { isScrubbing = true; handleScrub(e); });
     window.addEventListener('mousemove', (e) => { if (isScrubbing) handleScrub(e); });
     window.addEventListener('mouseup', () => isScrubbing = false);
-
     wrap.addEventListener('touchstart', (e) => { isScrubbing = true; handleScrub(e); });
     window.addEventListener('touchmove', (e) => { if (isScrubbing) handleScrub(e); });
     window.addEventListener('touchend', () => isScrubbing = false);
@@ -525,7 +403,7 @@
 
   document.getElementById('btn-play').onclick = () => isPlaying = true;
   document.getElementById('btn-pause').onclick = () => isPlaying = false;
-  document.getElementById('btn-stop').onclick = () => { isPlaying = false; currentTime = 0; updateObjectsAnimation(); drawTimeline(); };
+  document.getElementById('btn-stop').onclick = () => { isPlaying = false; currentTime = 0; objectsList.forEach(obj => updateAnimatedNodes(obj)); drawTimeline(); };
 
   function onWindowResize() {
     const container = document.getElementById('viewport-container');
@@ -540,17 +418,4 @@
     if (isPlaying) {
       currentTime += 0.016;
       if (currentTime > duration) currentTime = 0;
-      updateObjectsAnimation();
-      drawTimeline();
-    }
-    orbit.update();
-    renderer.render(scene, camera);
-  }
-
-  window.onload = () => {
-    init3D();
-    drawTimeline();
-  };
-</script>
-</body>
-</html>
+      objectsList.forEach(obj =
