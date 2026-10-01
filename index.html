@@ -8,23 +8,23 @@
     * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; -webkit-user-select: none; touch-action: manipulation; }
     body, html { width: 100%; height: 100%; overflow: hidden; background-color: #1a1a1a; font-family: system-ui, -apple-system, sans-serif; color: #fff; }
     #app-container { display: flex; flex-direction: column; width: 100vw; height: 100vh; position: relative; }
-    #top-bar { height: 50px; background: #252525; display: flex; align-items: center; padding: 0 8px; gap: 6px; overflow-x: auto; white-space: nowrap; border-bottom: 1px solid #333; z-index: 100; }
+    #top-bar { height: 50px; background: #252525; display: flex; align-items: center; padding: 0 8px; gap: 6px; overflow-x: auto; white-space: nowrap; border-bottom: 1px solid #333; z-index: 100; pointer-events: auto; }
     #top-bar::-webkit-scrollbar { display: none; }
-    .btn { background: #3a3a3c; color: #fff; border: 1px solid #48484a; padding: 8px 12px; border-radius: 6px; font-size: 12px; font-weight: 600; cursor: pointer; display: inline-flex; align-items: center; gap: 4px; flex-shrink: 0; }
+    .btn { background: #3a3a3c; color: #fff; border: 1px solid #48484a; padding: 8px 12px; border-radius: 6px; font-size: 12px; font-weight: 600; cursor: pointer; display: inline-flex; align-items: center; gap: 4px; flex-shrink: 0; pointer-events: auto; }
     .btn:active, .btn.active { background: #007aff; border-color: #007aff; }
     .btn-danger { background: #8e0000; border-color: #aa0000; }
     .btn-special { background: #5e5ce6; border-color: #5e5ce6; }
     .btn-success { background: #28a745; border-color: #28a745; }
     .btn-preset { background: #ff9500; border-color: #ff9500; }
     #viewport-container { flex: 1; position: relative; width: 100%; background: #121212; overflow: hidden; }
-    #three-canvas { width: 100%; height: 100%; display: block; }
-    #rig-overlay { position: absolute; top: 10px; left: 50%; transform: translateX(-50%); display: none; gap: 10px; z-index: 150; background: rgba(0,0,0,0.85); padding: 8px 16px; border-radius: 30px; border: 1px solid #5e5ce6; }
-    #hierarchy-panel { position: absolute; top: 10px; left: 10px; width: 140px; max-height: 180px; background: rgba(30, 30, 30, 0.9); border: 1px solid #444; border-radius: 8px; padding: 8px; overflow-y: auto; z-index: 50; font-size: 11px; }
+    #three-canvas { width: 100%; height: 100%; display: block; touch-action: none; }
+    #rig-overlay { position: absolute; top: 10px; left: 50%; transform: translateX(-50%); display: none; gap: 10px; z-index: 150; background: rgba(0,0,0,0.85); padding: 8px 16px; border-radius: 30px; border: 1px solid #5e5ce6; pointer-events: auto; }
+    #hierarchy-panel { position: absolute; top: 10px; left: 10px; width: 140px; max-height: 180px; background: rgba(30, 30, 30, 0.9); border: 1px solid #444; border-radius: 8px; padding: 8px; overflow-y: auto; z-index: 150; font-size: 11px; pointer-events: auto; }
     .tree-item { padding: 4px 6px; border-radius: 4px; cursor: pointer; margin-bottom: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; background: #2a2a2a; }
     .tree-item.selected { background: #007aff; }
     .tree-item.bone-item { background: #3a2e5c; color: #d0c4ff; margin-left: 8px; }
     .tree-item.bone-item.selected { background: #5e5ce6; color: #fff; }
-    #timeline-container { height: 130px; background: #1e1e1e; border-top: 1px solid #333; display: flex; flex-direction: column; z-index: 100; }
+    #timeline-container { height: 130px; background: #1e1e1e; border-top: 1px solid #333; display: flex; flex-direction: column; z-index: 100; pointer-events: auto; }
     #timeline-controls { height: 36px; background: #282828; display: flex; align-items: center; justify-content: space-between; padding: 0 8px; border-bottom: 1px solid #333; overflow-x: auto; gap: 6px; }
     .playback-group { display: flex; gap: 4px; flex-shrink: 0; }
     #timeline-slider-wrap { flex: 1; height: 94px; position: relative; overflow-x: hidden; background: #181818; touch-action: none; }
@@ -98,7 +98,7 @@
   let scene, camera, renderer, orbit, transformControls;
   let objectsList = [], selectedObject = null, riggedBonesMap = {};
   let currentTime = 0, duration = 5.0, isPlaying = false, keyframes = {};
-  let jointMarkers = [];
+  let jointMarkers = [], currentTransformMode = 'translate';
 
   const canvas3D = document.getElementById('three-canvas');
   const treeRoot = document.getElementById('tree-root');
@@ -126,7 +126,9 @@
     transformControls.size = 0.75;
     scene.add(transformControls);
 
-    transformControls.addEventListener('dragging-changed', (e) => { orbit.enabled = !e.value; });
+    transformControls.addEventListener('dragging-changed', (e) => {
+      orbit.enabled = !e.value;
+    });
 
     scene.add(new THREE.AmbientLight(0xffffff, 0.8));
     const dirLight = new THREE.DirectionalLight(0xffffff, 0.8);
@@ -148,8 +150,14 @@
 
   function selectObject(obj) {
     selectedObject = obj;
-    if (obj) transformControls.attach(obj);
-    else transformControls.detach();
+    if (obj) {
+      transformControls.attach(obj);
+      if (currentTransformMode !== 'select') {
+        transformControls.setMode(currentTransformMode);
+      }
+    } else {
+      transformControls.detach();
+    }
     updateHierarchyUI();
     drawTimeline();
   }
@@ -228,7 +236,6 @@
     jointMarkers = [];
   }
 
-  // --- AUTOMATIC SKINNING & BINDING FIX ---
   document.getElementById('btn-apply-rig').onclick = () => {
     if (!selectedObject) return;
 
@@ -246,7 +253,6 @@
       bones.push(b);
     });
 
-    // Parent Connections
     boneMap['Hips'].add(boneMap['Neck']);
     boneMap['Neck'].add(boneMap['Head']);
     boneMap['Neck'].add(boneMap['L_Shoulder']);
@@ -262,7 +268,6 @@
 
     const skeleton = new THREE.Skeleton(bones);
 
-    // Auto-skinningMesh Binding
     let targetMesh = selectedObject;
     if (targetMesh.isGroup) {
       targetMesh.traverse((c) => { if (c.isMesh) targetMesh = c; });
@@ -315,7 +320,8 @@
 
     clearJointMarkers();
     document.getElementById('rig-overlay').style.display = 'none';
-    showToast('Character Mesh & Bones Bound Successfully!');
+    selectObject(selectedObject);
+    showToast('Rig Attached Successfully!');
   };
 
   document.getElementById('btn-cancel-rig').onclick = () => {
@@ -324,7 +330,6 @@
     selectObject(selectedObject);
   };
 
-  // --- FULL BODY ANIMATION PRESETS (HANDS + LEGS) ---
   function applyAnimationPreset(type) {
     if (!riggedBonesMap['Hips']) { showToast('Apply Rigging first!'); return; }
     
@@ -353,12 +358,10 @@
       const times = [0, 1.25, 2.5, 3.75, 5.0];
       times.forEach((t, i) => {
         const sign = (i % 2 === 0) ? 1 : -1;
-        // Legs
         setKey('L_Hip', t, 0.5 * sign, 0, 0);
         setKey('R_Hip', t, -0.5 * sign, 0, 0);
         setKey('L_Knee', t, sign > 0 ? 0.4 : 0.1, 0, 0);
         setKey('R_Knee', t, sign < 0 ? 0.4 : 0.1, 0, 0);
-        // Arms (Fixed: Hands will now swing)
         setKey('L_Shoulder', t, -0.6 * sign, 0, 0);
         setKey('R_Shoulder', t, 0.6 * sign, 0, 0);
         setKey('L_Elbow', t, 0.3, 0, 0);
@@ -370,12 +373,10 @@
       const times = [0, 0.75, 1.5, 2.25, 3.0, 3.75, 4.5, 5.0];
       times.forEach((t, i) => {
         const sign = (i % 2 === 0) ? 1 : -1;
-        // Legs
         setKey('L_Hip', t, 0.8 * sign, 0, 0);
         setKey('R_Hip', t, -0.8 * sign, 0, 0);
         setKey('L_Knee', t, sign > 0 ? 0.9 : 0.2, 0, 0);
         setKey('R_Knee', t, sign < 0 ? 0.9 : 0.2, 0, 0);
-        // Arms
         setKey('L_Shoulder', t, -0.9 * sign, 0, 0);
         setKey('R_Shoulder', t, 0.9 * sign, 0, 0);
         setKey('L_Elbow', t, 0.7, 0, 0);
@@ -392,7 +393,6 @@
 
       setKey('L_Knee', 1.0, 0.6, 0, 0); setKey('R_Knee', 1.0, 0.6, 0, 0);
       setKey('L_Knee', 2.5, 0.1, 0, 0); setKey('R_Knee', 2.5, 0.1, 0, 0);
-      
       setKey('L_Shoulder', 2.5, -1.2, 0, 0); setKey('R_Shoulder', 2.5, -1.2, 0, 0);
       showToast('Jump Preset Applied');
     }
@@ -415,6 +415,7 @@
       treeRoot.appendChild(item);
 
       function renderBones(parentObj) {
+        if (!parentObj.children) return;
         parentObj.children.forEach(child => {
           if (child.isBone) {
             const boneItem = document.createElement('div');
@@ -431,10 +432,13 @@
   }
 
   function setTransformMode(mode, id) {
+    currentTransformMode = mode === 'select' ? 'select' : mode;
     ['mode-select', 'mode-move', 'mode-rotate'].forEach(b => document.getElementById(b).classList.remove('active'));
     document.getElementById(id).classList.add('active');
-    if (mode === 'select') transformControls.detach();
-    else {
+    
+    if (mode === 'select') {
+      transformControls.detach();
+    } else {
       if (selectedObject) transformControls.attach(selectedObject);
       transformControls.setMode(mode);
     }
@@ -457,6 +461,4 @@
   document.getElementById('btn-add-key').onclick = () => {
     if (!selectedObject) { showToast('Select an Object or Bone first!'); return; }
     const list = keyframes[selectedObject.uuid] || [];
-    const t = parseFloat(currentTime.toFixed(2));
-    const existingIndex = list.findIndex(k => Math.abs(k.time - t) < 0.05);
-    const keyData = { time: t, pos: selectedObject.position.clone(), rot: selectedObj
+    const t = parseFlo
