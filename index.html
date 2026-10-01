@@ -3,19 +3,20 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>3D Mobile Auto-Rig & Animator</title>
+  <title>3D Mobile Rig & Animator</title>
   <style>
     * { 
       box-sizing: border-box; 
       margin: 0; 
       padding: 0; 
       -webkit-tap-highlight-color: transparent;
+      user-select: none;
     }
     body, html { 
       width: 100%; 
       height: 100%; 
       overflow: hidden; 
-      background-color: #1a1a1a; 
+      background-color: #121212; 
       font-family: system-ui, -apple-system, sans-serif; 
       color: #fff; 
     }
@@ -27,8 +28,8 @@
       position: relative; 
     }
     #top-bar { 
-      height: 50px; 
-      background: #252525; 
+      height: 52px; 
+      background: #1f1f1f; 
       display: flex; 
       align-items: center; 
       padding: 0 8px; 
@@ -36,16 +37,14 @@
       overflow-x: auto; 
       white-space: nowrap; 
       border-bottom: 1px solid #333; 
-      z-index: 9999; 
-      position: relative; 
-      touch-action: pan-x;
+      z-index: 1000; 
     }
     #top-bar::-webkit-scrollbar { display: none; }
     
     .btn { 
-      background: #3a3a3c; 
+      background: #2c2c2e; 
       color: #fff; 
-      border: 1px solid #48484a; 
+      border: 1px solid #444; 
       padding: 8px 12px; 
       border-radius: 6px; 
       font-size: 12px; 
@@ -55,18 +54,15 @@
       align-items: center; 
       gap: 4px; 
       flex-shrink: 0; 
-      z-index: 10000;
-      position: relative;
-      touch-action: manipulation;
     }
     .btn:active, .btn.active { 
-      background: #007aff; 
-      border-color: #007aff; 
+      background: #007aff !important; 
+      border-color: #007aff !important; 
     }
-    .btn-danger { background: #8e0000; border-color: #aa0000; }
+    .btn-danger { background: #d32f2f; border-color: #d32f2f; }
     .btn-special { background: #5e5ce6; border-color: #5e5ce6; }
-    .btn-success { background: #28a745; border-color: #28a745; }
-    .btn-preset { background: #ff9500; border-color: #ff9500; }
+    .btn-success { background: #2e7d32; border-color: #2e7d32; }
+    .btn-preset { background: #f57c00; border-color: #f57c00; }
     
     #viewport-container { 
       flex: 1; 
@@ -80,133 +76,104 @@
       height: 100%; 
       display: block; 
       touch-action: none; 
-      z-index: 1;
     }
-    #rig-overlay { 
-      position: absolute; 
-      top: 10px; 
-      left: 50%; 
-      transform: translateX(-50%); 
-      display: none; 
-      gap: 10px; 
-      z-index: 9999; 
-      background: rgba(0,0,0,0.85); 
-      padding: 8px 16px; 
-      border-radius: 30px; 
-      border: 1px solid #5e5ce6; 
-    }
+    
     #hierarchy-panel { 
       position: absolute; 
       top: 10px; 
       left: 10px; 
-      width: 140px; 
-      max-height: 180px; 
-      background: rgba(30, 30, 30, 0.9); 
+      width: 130px; 
+      max-height: 160px; 
+      background: rgba(25, 25, 25, 0.85); 
       border: 1px solid #444; 
       border-radius: 8px; 
-      padding: 8px; 
+      padding: 6px; 
       overflow-y: auto; 
-      z-index: 9999; 
+      z-index: 500; 
       font-size: 11px; 
-      touch-action: pan-y;
     }
     .tree-item { 
       padding: 4px 6px; 
       border-radius: 4px; 
       cursor: pointer; 
       margin-bottom: 2px; 
-      overflow: hidden; 
-      text-overflow: ellipsis; 
-      white-space: nowrap; 
       background: #2a2a2a; 
+      text-overflow: ellipsis; 
+      overflow: hidden; 
+      white-space: nowrap; 
     }
     .tree-item.selected { background: #007aff; }
-    .tree-item.bone-item { background: #3a2e5c; color: #d0c4ff; margin-left: 8px; }
-    .tree-item.bone-item.selected { background: #5e5ce6; color: #fff; }
     
     #timeline-container { 
-      height: 130px; 
-      background: #1e1e1e; 
+      height: 120px; 
+      background: #1a1a1a; 
       border-top: 1px solid #333; 
       display: flex; 
       flex-direction: column; 
-      z-index: 9999; 
-      position: relative; 
+      z-index: 1000; 
     }
     #timeline-controls { 
-      height: 36px; 
-      background: #282828; 
+      height: 38px; 
+      background: #242424; 
       display: flex; 
       align-items: center; 
       justify-content: space-between; 
       padding: 0 8px; 
-      border-bottom: 1px solid #333; 
-      overflow-x: auto; 
       gap: 6px; 
-      touch-action: pan-x;
+      overflow-x: auto; 
     }
     #timeline-controls::-webkit-scrollbar { display: none; }
     .playback-group { display: flex; gap: 4px; flex-shrink: 0; }
+    
     #timeline-slider-wrap { 
       flex: 1; 
-      height: 94px; 
       position: relative; 
-      overflow-x: hidden; 
-      background: #181818; 
+      background: #151515; 
       touch-action: none; 
     }
-    #timeline-canvas { height: 100%; display: block; width: 100%; }
-    input[type="file"] { display: none; }
+    #timeline-canvas { width: 100%; height: 100%; display: block; }
+    
     #toast { 
       position: absolute; 
-      bottom: 150px; 
+      bottom: 130px; 
       left: 50%; 
       transform: translateX(-50%); 
       background: rgba(0,0,0,0.85); 
-      color: white; 
-      padding: 8px 16px; 
+      color: #fff; 
+      padding: 6px 14px; 
       border-radius: 20px; 
       font-size: 12px; 
       display: none; 
-      z-index: 10000; 
+      z-index: 2000; 
       pointer-events: none; 
     }
   </style>
 
-  <!-- Stable Three.js & Controls Loaders -->
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/TransformControls.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/OBJLoader.js"></script>
+  <!-- High-Reliability CDNs -->
+  <script src="https://unpkg.com/three@0.128.0/build/three.min.js"></script>
+  <script src="https://unpkg.com/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
 </head>
 <body>
 
 <div id="app-container">
   <div id="top-bar">
     <button class="btn" id="btn-add-cube">🧊 Cube</button>
-    <button class="btn" id="btn-model">📦 Upload Model</button>
-    <div style="width: 1px; height: 20px; background: #444; margin: 0 2px;"></div>
-    <button class="btn btn-special" id="btn-start-rig">🦴 Auto-Rig (Full Body)</button>
-    <div style="width: 1px; height: 20px; background: #444; margin: 0 2px;"></div>
-    <button class="btn active" id="mode-select">Select</button>
-    <button class="btn" id="mode-move">Move</button>
-    <button class="btn" id="mode-rotate">Rotate</button>
+    <button class="btn" id="btn-add-man">🧍 Character Mesh</button>
+    <div style="width: 1px; height: 20px; background: #444;"></div>
+    <button class="btn btn-special" id="btn-auto-rig">🦴 Auto-Rig Skeleton</button>
+    <div style="width: 1px; height: 20px; background: #444;"></div>
     <button class="btn btn-danger" id="btn-delete">🗑 Delete</button>
   </div>
 
   <div id="viewport-container">
     <canvas id="three-canvas"></canvas>
-    <div id="rig-overlay">
-      <span style="font-size: 12px; align-self: center;">Align Joints:</span>
-      <button class="btn btn-success" id="btn-apply-rig">✓ Apply Rig & Skin</button>
-      <button class="btn btn-danger" id="btn-cancel-rig">✕ Cancel</button>
-    </div>
+    
     <div id="hierarchy-panel">
-      <div style="font-weight: bold; margin-bottom: 6px; border-bottom: 1px solid #555;">Objects & Bones</div>
+      <div style="font-weight: bold; margin-bottom: 4px; border-bottom: 1px solid #555;">Scene Objects</div>
       <div id="tree-root"></div>
     </div>
-    <div id="toast">Notification</div>
+    
+    <div id="toast">Ready</div>
   </div>
 
   <div id="timeline-container">
@@ -218,14 +185,11 @@
       </div>
       <span id="time-display" style="font-size: 11px; font-family: monospace;">0.00s / 5.00s</span>
       <div class="playback-group">
-        <button class="btn btn-preset" id="preset-stand">🧍 Stand</button>
-        <button class="btn btn-preset" id="preset-walk">🚶 Walk</button>
-        <button class="btn btn-preset" id="preset-run">🏃 Run</button>
-        <button class="btn btn-preset" id="preset-jump">🦘 Jump</button>
+        <button class="btn btn-preset" id="preset-walk">🚶 Walk Animation</button>
+        <button class="btn btn-preset" id="preset-jump">🦘 Jump Animation</button>
       </div>
       <div class="playback-group">
         <button class="btn btn-success" id="btn-add-key">+ Key</button>
-        <button class="btn btn-danger" id="btn-del-key">- Key</button>
       </div>
     </div>
     <div id="timeline-slider-wrap">
@@ -234,13 +198,11 @@
   </div>
 </div>
 
-<input type="file" id="input-model" accept=".glb,.gltf,.obj">
-
 <script>
-  let scene, camera, renderer, orbit, transformControls;
-  let objectsList = [], selectedObject = null, riggedBonesMap = {};
+  let scene, camera, renderer, orbitControls;
+  let objectsList = [], selectedObject = null;
   let currentTime = 0, duration = 5.0, isPlaying = false, keyframes = {};
-  let jointMarkers = [];
+  let characterMesh = null, skeletonBones = [];
 
   const canvas3D = document.getElementById('three-canvas');
   const treeRoot = document.getElementById('tree-root');
@@ -249,333 +211,301 @@
   const tlCanvas = document.getElementById('timeline-canvas');
   const tlCtx = tlCanvas.getContext('2d');
 
-  function init3D() {
-    const container = document.getElementById('viewport-container');
-    scene = new THREE.Scene();
-    scene.background = new THREE.Color(0x1a1a1a);
-
-    camera = new THREE.PerspectiveCamera(60, container.clientWidth / container.clientHeight, 0.1, 1000);
-    camera.position.set(0, 1.5, 3.5);
-
-    renderer = new THREE.WebGLRenderer({ canvas: canvas3D, antialias: true, alpha: false });
-    renderer.setSize(container.clientWidth, container.clientHeight);
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-
-    orbit = new THREE.OrbitControls(camera, renderer.domElement);
-    orbit.enableDamping = true;
-
-    transformControls = new THREE.TransformControls(camera, renderer.domElement);
-    transformControls.size = 0.75;
-    scene.add(transformControls);
-
-    transformControls.addEventListener('dragging-changed', function (e) {
-      orbit.enabled = !e.value;
-    });
-
-    scene.add(new THREE.AmbientLight(0xffffff, 0.8));
-    const dirLight = new THREE.DirectionalLight(0xffffff, 0.8);
-    dirLight.position.set(5, 10, 7);
-    scene.add(dirLight);
-
-    scene.add(new THREE.GridHelper(20, 20, 0x555555, 0x333333));
-
-    window.addEventListener('resize', onWindowResize);
-    setupTimelineEvents();
-    bindUIEvents();
-    animate();
-  }
-
   function showToast(msg) {
     toastEl.innerText = msg;
     toastEl.style.display = 'block';
     setTimeout(() => { toastEl.style.display = 'none'; }, 2000);
   }
 
+  function init() {
+    const container = document.getElementById('viewport-container');
+    
+    scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x121212);
+
+    camera = new THREE.PerspectiveCamera(60, container.clientWidth / container.clientHeight, 0.1, 1000);
+    camera.position.set(0, 2, 4);
+
+    renderer = new THREE.WebGLRenderer({ canvas: canvas3D, antialias: true });
+    renderer.setSize(container.clientWidth, container.clientHeight);
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+
+    orbitControls = new THREE.OrbitControls(camera, renderer.domElement);
+    orbitControls.enableDamping = true;
+    orbitControls.target.set(0, 1, 0);
+
+    const light1 = new THREE.DirectionalLight(0xffffff, 1);
+    light1.position.set(5, 10, 7);
+    scene.add(light1);
+    scene.add(new THREE.AmbientLight(0xffffff, 0.5));
+
+    const grid = new THREE.GridHelper(10, 10, 0x444444, 0x222222);
+    scene.add(grid);
+
+    setupEvents();
+    window.addEventListener('resize', onResize);
+    animate();
+    showToast('Engine Ready');
+  }
+
   function selectObject(obj) {
     selectedObject = obj;
-    if (obj) {
-      transformControls.attach(obj);
-    } else {
-      transformControls.detach();
-    }
     updateHierarchyUI();
     drawTimeline();
+    if(obj) showToast('Selected: ' + obj.name);
   }
 
   function addObject(obj, name) {
-    obj.name = name || 'Model_' + (objectsList.length + 1);
+    obj.name = name || 'Object_' + (objectsList.length + 1);
     scene.add(obj);
     objectsList.push(obj);
-    if (!keyframes[obj.uuid]) keyframes[obj.uuid] = [];
+    keyframes[obj.uuid] = [];
     selectObject(obj);
-    showToast(obj.name + ' Added');
   }
 
-  const defaultJointDefs = [
-    { name: 'Head', pos: [0, 1.8, 0], color: 0x00e5ff },
-    { name: 'Neck', pos: [0, 1.5, 0], color: 0x007aff },
-    { name: 'L_Shoulder', pos: [0.35, 1.35, 0], color: 0xffcc00 },
-    { name: 'R_Shoulder', pos: [-0.35, 1.35, 0], color: 0xffcc00 },
-    { name: 'L_Elbow', pos: [0.6, 1.0, 0], color: 0xff9500 },
-    { name: 'R_Elbow', pos: [-0.6, 1.0, 0], color: 0xff9500 },
-    { name: 'Hips', pos: [0, 0.9, 0], color: 0xaf52de },
-    { name: 'L_Hip', pos: [0.2, 0.85, 0], color: 0x34c759 },
-    { name: 'R_Hip', pos: [-0.2, 0.85, 0], color: 0x34c759 },
-    { name: 'L_Knee', pos: [0.2, 0.45, 0], color: 0x34c759 },
-    { name: 'R_Knee', pos: [-0.2, 0.45, 0], color: 0x34c759 },
-    { name: 'L_Ankle', pos: [0.2, 0.05, 0.05], color: 0xff2d55 },
-    { name: 'R_Ankle', pos: [-0.2, 0.05, 0.05], color: 0xff2d55 }
-  ];
-
-  function addTouchClick(id, handler) {
-    const el = document.getElementById(id);
-    if (!el) return;
-    el.addEventListener('pointerdown', (e) => { e.stopPropagation(); });
-    el.addEventListener('click', (e) => {
-      e.stopPropagation();
-      e.preventDefault();
-      handler(e);
-    });
-  }
-
-  function bindUIEvents() {
-    addTouchClick('btn-add-cube', () => {
-      const mesh = new THREE.Mesh(new THREE.BoxGeometry(1, 1, 1), new THREE.MeshStandardMaterial({ color: 0x007aff }));
-      mesh.position.set(0, 0.5, 0);
+  function setupEvents() {
+    // Add Cube
+    document.getElementById('btn-add-cube').onclick = () => {
+      const mesh = new THREE.Mesh(
+        new THREE.BoxGeometry(0.8, 0.8, 0.8),
+        new THREE.MeshStandardMaterial({ color: 0x007aff })
+      );
+      mesh.position.set(0, 0.4, 0);
       addObject(mesh, 'Cube');
-    });
-
-    addTouchClick('btn-model', () => {
-      document.getElementById('input-model').click();
-    });
-
-    document.getElementById('input-model').onchange = (e) => {
-      const file = e.target.files[0];
-      if (!file) return;
-      const url = URL.createObjectURL(file);
-      const ext = file.name.split('.').pop().toLowerCase();
-
-      if (ext === 'glb' || ext === 'gltf') {
-        new THREE.GLTFLoader().load(url, (gltf) => addObject(gltf.scene, file.name));
-      } else if (ext === 'obj') {
-        new THREE.OBJLoader().load(url, (obj) => addObject(obj, file.name));
-      }
     };
 
-    addTouchClick('btn-start-rig', () => {
-      if (!selectedObject) { showToast('Select a 3D Model first!'); return; }
-      document.getElementById('rig-overlay').style.display = 'flex';
-      transformControls.detach();
-      createJointMarkers();
-      showToast('Drag Markers to match character joints');
-    });
+    // Add Humanoid Mesh
+    document.getElementById('btn-add-man').onclick = () => {
+      const group = new THREE.Group();
+      
+      const bodyGeo = new THREE.CylinderGeometry(0.3, 0.2, 1.2, 16);
+      const mat = new THREE.MeshStandardMaterial({ color: 0xe5e5ea });
+      const body = new THREE.Mesh(bodyGeo, mat);
+      body.position.y = 1.0;
+      group.add(body);
 
-    addTouchClick('btn-apply-rig', () => {
-      if (!selectedObject) return;
+      const headGeo = new THREE.SphereGeometry(0.25, 16, 16);
+      const head = new THREE.Mesh(headGeo, mat);
+      head.position.y = 1.8;
+      group.add(head);
 
-      const jPos = {};
-      jointMarkers.forEach(m => { jPos[m.userData.jointName] = m.position.clone(); });
+      characterMesh = group;
+      addObject(group, 'Character Body');
+    };
 
-      const bones = [];
-      const boneMap = {};
-
-      defaultJointDefs.forEach((j) => {
-        const b = new THREE.Bone();
-        b.name = j.name;
-        b.position.copy(jPos[j.name]);
-        boneMap[j.name] = b;
-        bones.push(b);
-      });
-
-      boneMap['Hips'].add(boneMap['Neck']);
-      boneMap['Neck'].add(boneMap['Head']);
-      boneMap['Neck'].add(boneMap['L_Shoulder']);
-      boneMap['L_Shoulder'].add(boneMap['L_Elbow']);
-      boneMap['Neck'].add(boneMap['R_Shoulder']);
-      boneMap['R_Shoulder'].add(boneMap['R_Elbow']);
-      boneMap['Hips'].add(boneMap['L_Hip']);
-      boneMap['L_Hip'].add(boneMap['L_Knee']);
-      boneMap['L_Knee'].add(boneMap['L_Ankle']);
-      boneMap['Hips'].add(boneMap['R_Hip']);
-      boneMap['R_Hip'].add(boneMap['R_Knee']);
-      boneMap['R_Knee'].add(boneMap['R_Ankle']);
-
-      const skeleton = new THREE.Skeleton(bones);
-
-      let targetMesh = selectedObject;
-      if (targetMesh.isGroup) {
-        targetMesh.traverse((c) => { if (c.isMesh) targetMesh = c; });
+    // Auto Rig Skeleton
+    document.getElementById('btn-auto-rig').onclick = () => {
+      if(!characterMesh) {
+        showToast('First add "Character Mesh"');
+        return;
       }
 
-      if (targetMesh && targetMesh.isMesh) {
-        const geometry = targetMesh.geometry.clone();
-        const position = geometry.attributes.position;
-        const skinIndices = [];
-        const skinWeights = [];
+      const rootBone = new THREE.Bone();
+      rootBone.name = "Hips";
+      rootBone.position.set(0, 0.9, 0);
 
-        for (let i = 0; i < position.count; i++) {
-          const vertex = new THREE.Vector3().fromBufferAttribute(position, i);
-          targetMesh.localToWorld(vertex);
+      const chestBone = new THREE.Bone();
+      chestBone.name = "Chest";
+      chestBone.position.set(0, 0.6, 0);
+      rootBone.add(chestBone);
 
-          let minDist = Infinity;
-          let closestBoneIdx = 0;
+      const leftLeg = new THREE.Bone();
+      leftLeg.name = "L_Leg";
+      leftLeg.position.set(0.2, -0.4, 0);
+      rootBone.add(leftLeg);
 
-          bones.forEach((b, idx) => {
-            const dist = vertex.distanceTo(b.position);
-            if (dist < minDist) {
-              minDist = dist;
-              closestBoneIdx = idx;
-            }
-          });
+      const rightLeg = new THREE.Bone();
+      rightLeg.name = "R_Leg";
+      rightLeg.position.set(-0.2, -0.4, 0);
+      rootBone.add(rightLeg);
 
-          skinIndices.push(closestBoneIdx, 0, 0, 0);
-          skinWeights.push(1, 0, 0, 0);
-        }
+      const skeleton = new THREE.Skeleton([rootBone, chestBone, leftLeg, rightLeg]);
+      const helper = new THREE.SkeletonHelper(rootBone);
+      
+      scene.add(rootBone);
+      scene.add(helper);
 
-        geometry.setAttribute('skinIndex', new THREE.Uint16BufferAttribute(skinIndices, 4));
-        geometry.setAttribute('skinWeight', new THREE.Float32BufferAttribute(skinWeights, 4));
+      skeletonBones = [rootBone, chestBone, leftLeg, rightLeg];
+      skeletonBones.forEach(b => { keyframes[b.uuid] = []; });
 
-        const skinnedMesh = new THREE.SkinnedMesh(geometry, targetMesh.material);
-        skinnedMesh.add(bones[0]); 
-        skinnedMesh.bind(skeleton);
+      showToast('Full Body Auto-Rig Applied!');
+      selectObject(rootBone);
+    };
 
-        scene.remove(selectedObject);
-        objectsList = objectsList.filter(o => o !== selectedObject);
-        
-        addObject(skinnedMesh, targetMesh.name || 'RiggedCharacter');
-        selectedObject = skinnedMesh;
-      }
-
-      riggedBonesMap = boneMap;
-      Object.values(boneMap).forEach(b => { keyframes[b.uuid] = []; });
-
-      const skelHelper = new THREE.SkeletonHelper(boneMap['Hips']);
-      scene.add(skelHelper);
-
-      clearJointMarkers();
-      document.getElementById('rig-overlay').style.display = 'none';
-      selectObject(selectedObject);
-      showToast('Rigging Applied!');
-    });
-
-    addTouchClick('btn-cancel-rig', () => {
-      clearJointMarkers();
-      document.getElementById('rig-overlay').style.display = 'none';
-      selectObject(selectedObject);
-    });
-
-    addTouchClick('mode-select', () => setTransformMode('select', 'mode-select'));
-    addTouchClick('mode-move', () => setTransformMode('translate', 'mode-move'));
-    addTouchClick('mode-rotate', () => setTransformMode('rotate', 'mode-rotate'));
-
-    addTouchClick('btn-delete', () => {
-      if (selectedObject) {
-        delete keyframes[selectedObject.uuid];
+    // Delete
+    document.getElementById('btn-delete').onclick = () => {
+      if(selectedObject) {
         scene.remove(selectedObject);
         objectsList = objectsList.filter(o => o !== selectedObject);
         selectObject(null);
         showToast('Deleted');
       }
-    });
-
-    addTouchClick('preset-stand', () => applyAnimationPreset('stand'));
-    addTouchClick('preset-walk', () => applyAnimationPreset('walk'));
-    addTouchClick('preset-run', () => applyAnimationPreset('run'));
-    addTouchClick('preset-jump', () => applyAnimationPreset('jump'));
-
-    addTouchClick('btn-play', () => isPlaying = true);
-    addTouchClick('btn-pause', () => isPlaying = false);
-    addTouchClick('btn-stop', () => { isPlaying = false; currentTime = 0; objectsList.forEach(obj => updateAnimatedNodes(obj)); drawTimeline(); });
-
-    addTouchClick('btn-add-key', () => {
-      if (!selectedObject) { showToast('Select an Object or Bone first!'); return; }
-      const list = keyframes[selectedObject.uuid] || [];
-      const t = parseFloat(currentTime.toFixed(2));
-      const existingIndex = list.findIndex(k => Math.abs(k.time - t) < 0.05);
-      const keyData = { time: t, pos: selectedObject.position.clone(), rot: selectedObject.rotation.clone(), scl: selectedObject.scale.clone() };
-
-      if (existingIndex >= 0) list[existingIndex] = keyData;
-      else list.push(keyData);
-
-      list.sort((a, b) => a.time - b.time);
-      keyframes[selectedObject.uuid] = list;
-      drawTimeline();
-      showToast('Keyframe Set at ' + t + 's');
-    });
-
-    addTouchClick('btn-del-key', () => {
-      if (!selectedObject) return;
-      let list = keyframes[selectedObject.uuid] || [];
-      keyframes[selectedObject.uuid] = list.filter(k => Math.abs(k.time - currentTime) >= 0.1);
-      drawTimeline();
-      showToast('Keyframe Removed');
-    });
-  }
-
-  function createJointMarkers() {
-    clearJointMarkers();
-    defaultJointDefs.forEach(j => {
-      const geo = new THREE.TorusGeometry(0.05, 0.012, 16, 32);
-      const mat = new THREE.MeshBasicMaterial({ color: j.color, depthTest: false });
-      const marker = new THREE.Mesh(geo, mat);
-      marker.position.set(...j.pos);
-      marker.renderOrder = 999;
-      marker.userData = { jointName: j.name };
-      scene.add(marker);
-      jointMarkers.push(marker);
-    });
-    if (jointMarkers.length > 0) transformControls.attach(jointMarkers[0]);
-  }
-
-  function clearJointMarkers() {
-    jointMarkers.forEach(m => scene.remove(m));
-    jointMarkers = [];
-  }
-
-  function applyAnimationPreset(type) {
-    if (!riggedBonesMap['Hips']) { showToast('Apply Rigging first!'); return; }
-    
-    Object.values(riggedBonesMap).forEach(b => { keyframes[b.uuid] = []; });
-
-    const setKey = (boneName, time, rx, ry, rz, px = 0, py = 0, pz = 0) => {
-      const b = riggedBonesMap[boneName];
-      if (!b) return;
-      if (!keyframes[b.uuid]) keyframes[b.uuid] = [];
-      keyframes[b.uuid].push({
-        time: time,
-        pos: new THREE.Vector3(b.position.x + px, b.position.y + py, b.position.z + pz),
-        rot: new THREE.Euler(rx, ry, rz),
-        scl: b.scale.clone()
-      });
     };
 
-    if (type === 'stand') {
-      Object.keys(riggedBonesMap).forEach(name => {
-        setKey(name, 0, 0, 0, 0);
-        setKey(name, 2.5, 0, 0, 0);
+    // Animation Controls
+    document.getElementById('btn-play').onclick = () => isPlaying = true;
+    document.getElementById('btn-pause').onclick = () => isPlaying = false;
+    document.getElementById('btn-stop').onclick = () => { isPlaying = false; currentTime = 0; drawTimeline(); };
+
+    document.getElementById('btn-add-key').onclick = () => {
+      if(!selectedObject) return showToast('Select an Object first!');
+      const list = keyframes[selectedObject.uuid] || [];
+      list.push({
+        time: parseFloat(currentTime.toFixed(2)),
+        pos: selectedObject.position.clone(),
+        rot: selectedObject.rotation.clone()
       });
-      showToast('Stand Preset Applied');
-    } 
-    else if (type === 'walk') {
-      const times = [0, 1.25, 2.5, 3.75, 5.0];
-      times.forEach((t, i) => {
-        const sign = (i % 2 === 0) ? 1 : -1;
-        setKey('L_Hip', t, 0.5 * sign, 0, 0);
-        setKey('R_Hip', t, -0.5 * sign, 0, 0);
-        setKey('L_Knee', t, sign > 0 ? 0.4 : 0.1, 0, 0);
-        setKey('R_Knee', t, sign < 0 ? 0.4 : 0.1, 0, 0);
-        setKey('L_Shoulder', t, -0.6 * sign, 0, 0);
-        setKey('R_Shoulder', t, 0.6 * sign, 0, 0);
-        setKey('L_Elbow', t, 0.3, 0, 0);
-        setKey('R_Elbow', t, 0.3, 0, 0);
-      });
-      showToast('Walk Preset Applied');
+      keyframes[selectedObject.uuid] = list;
+      drawTimeline();
+      showToast('Keyframe added at ' + currentTime.toFixed(1) + 's');
+    };
+
+    // Preset Walk
+    document.getElementById('preset-walk').onclick = () => {
+      if(skeletonBones.length === 0) return showToast('Click "Auto-Rig Skeleton" first!');
+      
+      const leftLeg = skeletonBones[2];
+      const rightLeg = skeletonBones[3];
+
+      keyframes[leftLeg.uuid] = [
+        { time: 0, pos: leftLeg.position.clone(), rot: new THREE.Euler(0.5, 0, 0) },
+        { time: 2.5, pos: leftLeg.position.clone(), rot: new THREE.Euler(-0.5, 0, 0) },
+        { time: 5.0, pos: leftLeg.position.clone(), rot: new THREE.Euler(0.5, 0, 0) }
+      ];
+
+      keyframes[rightLeg.uuid] = [
+        { time: 0, pos: rightLeg.position.clone(), rot: new THREE.Euler(-0.5, 0, 0) },
+        { time: 2.5, pos: rightLeg.position.clone(), rot: new THREE.Euler(0.5, 0, 0) },
+        { time: 5.0, pos: rightLeg.position.clone(), rot: new THREE.Euler(-0.5, 0, 0) }
+      ];
+
+      showToast('Walk Preset Loaded!');
+      drawTimeline();
+    };
+
+    // Preset Jump
+    document.getElementById('preset-jump').onclick = () => {
+      if(!characterMesh) return showToast('Add Character Body first!');
+      
+      keyframes[characterMesh.uuid] = [
+        { time: 0, pos: new THREE.Vector3(0, 0, 0), rot: new THREE.Euler(0,0,0) },
+        { time: 2.5, pos: new THREE.Vector3(0, 1.2, 0), rot: new THREE.Euler(0,0,0) },
+        { time: 5.0, pos: new THREE.Vector3(0, 0, 0), rot: new THREE.Euler(0,0,0) }
+      ];
+
+      showToast('Jump Preset Loaded!');
+      drawTimeline();
+    };
+
+    setupScrubber();
+  }
+
+  function updateHierarchyUI() {
+    treeRoot.innerHTML = '';
+    objectsList.forEach(obj => {
+      const item = document.createElement('div');
+      item.className = 'tree-item' + (selectedObject === obj ? ' selected' : '');
+      item.innerText = obj.name;
+      item.onclick = (e) => { e.stopPropagation(); selectObject(obj); };
+      treeRoot.appendChild(item);
+    });
+
+    skeletonBones.forEach(bone => {
+      const item = document.createElement('div');
+      item.className = 'tree-item' + (selectedObject === bone ? ' selected' : '');
+      item.innerText = '🦴 ' + bone.name;
+      item.onclick = (e) => { e.stopPropagation(); selectObject(bone); };
+      treeRoot.appendChild(item);
+    });
+  }
+
+  function setupScrubber() {
+    let active = false;
+    function updateScrub(e) {
+      const rect = tlCanvas.getBoundingClientRect();
+      const x = (e.touches ? e.touches[0].clientX : e.clientX) - rect.left;
+      currentTime = Math.max(0, Math.min(duration, (x / rect.width) * duration));
+      updateAnimations();
+      drawTimeline();
     }
-    else if (type === 'run') {
-      const times = [0, 0.75, 1.5, 2.25, 3.0, 3.75, 4.5, 5.0];
-      times.forEach((t, i) => {
-        const sign = (i % 2 === 0) ? 1 : -1;
-        setKey('L_Hip', t, 0.8 * sign, 0, 0);
-        setKey('R_Hip', t, -0.8 * sign, 0, 0);
-        setKey('L_Knee', t, sign > 0 ? 0.9 : 0.2, 0, 0);
-   
+
+    const wrap = document.getElementById('timeline-slider-wrap');
+    wrap.addEventListener('mousedown', (e) => { active = true; updateScrub(e); });
+    window.addEventListener('mousemove', (e) => { if(active) updateScrub(e); });
+    window.addEventListener('mouseup', () => active = false);
+
+    wrap.addEventListener('touchstart', (e) => { active = true; updateScrub(e); }, {passive: true});
+    window.addEventListener('touchmove', (e) => { if(active) updateScrub(e); }, {passive: true});
+    window.addEventListener('touchend', () => active = false);
+  }
+
+  function updateAnimations() {
+    const all = [...objectsList, ...skeletonBones];
+    all.forEach(obj => {
+      const list = keyframes[obj.uuid];
+      if(list && list.length > 1) {
+        for(let i = 0; i < list.length - 1; i++) {
+          const k1 = list[i], k2 = list[i+1];
+          if(currentTime >= k1.time && currentTime <= k2.time) {
+            const factor = (currentTime - k1.time) / (k2.time - k1.time);
+            obj.position.lerpVectors(k1.pos, k2.pos, factor);
+            obj.rotation.x = THREE.MathUtils.lerp(k1.rot.x, k2.rot.x, factor);
+            obj.rotation.y = THREE.MathUtils.lerp(k1.rot.y, k2.rot.y, factor);
+            obj.rotation.z = THREE.MathUtils.lerp(k1.rot.z, k2.rot.z, factor);
+            break;
+          }
+        }
+      }
+    });
+  }
+
+  function drawTimeline() {
+    const w = tlCanvas.width = document.getElementById('timeline-slider-wrap').clientWidth;
+    const h = tlCanvas.height = 80;
+    tlCtx.fillStyle = '#151515'; tlCtx.fillRect(0, 0, w, h);
+
+    tlCtx.strokeStyle = '#333'; tlCtx.fillStyle = '#888'; tlCtx.font = '10px sans-serif';
+    for(let s = 0; s <= duration; s += 1) {
+      let x = (s / duration) * (w - 20) + 10;
+      tlCtx.beginPath(); tlCtx.moveTo(x, 0); tlCtx.lineTo(x, 10); tlCtx.stroke();
+      tlCtx.fillText(s + 's', x - 5, 22);
+    }
+
+    if(selectedObject && keyframes[selectedObject.uuid]) {
+      keyframes[selectedObject.uuid].forEach(k => {
+        let kx = (k.time / duration) * (w - 20) + 10;
+        tlCtx.fillStyle = '#ffcc00';
+        tlCtx.beginPath(); tlCtx.arc(kx, 45, 5, 0, Math.PI * 2); tlCtx.fill();
+      });
+    }
+
+    let px = (currentTime / duration) * (w - 20) + 10;
+    tlCtx.strokeStyle = '#ff3b30'; tlCtx.lineWidth = 2;
+    tlCtx.beginPath(); tlCtx.moveTo(px, 0); tlCtx.lineTo(px, h); tlCtx.stroke();
+    timeDisplay.innerText = currentTime.toFixed(2) + 's / ' + duration.toFixed(2) + 's';
+  }
+
+  function onResize() {
+    const container = document.getElementById('viewport-container');
+    camera.aspect = container.clientWidth / container.clientHeight;
+    camera.updateProjectionMatrix();
+    renderer.setSize(container.clientWidth, container.clientHeight);
+    drawTimeline();
+  }
+
+  function animate() {
+    requestAnimationFrame(animate);
+    if(isPlaying) {
+      currentTime += 0.016;
+      if(currentTime > duration) currentTime = 0;
+      updateAnimations();
+      drawTimeline();
+    }
+    orbitControls.update();
+    renderer.render(scene, camera);
+  }
+
+  window.onload = init;
+</script>
+</body>
+</html>
