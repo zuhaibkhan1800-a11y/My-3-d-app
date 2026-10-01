@@ -1,35 +1,36 @@
+
 <!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>Mobile 3D Animation Editor - IK Auto Rig</title>
+  <title>Mobile 3D Animation Editor - Fixed Buttons</title>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; -webkit-user-select: none; touch-action: manipulation; }
     body, html { width: 100%; height: 100%; overflow: hidden; background-color: #1a1a1a; font-family: system-ui, -apple-system, sans-serif; color: #fff; }
     #app-container { display: flex; flex-direction: column; width: 100vw; height: 100vh; position: relative; }
-    #top-bar { height: 50px; background: #252525; display: flex; align-items: center; padding: 0 8px; gap: 6px; overflow-x: auto; white-space: nowrap; border-bottom: 1px solid #333; z-index: 100; }
+    #top-bar { height: 50px; background: #252525; display: flex; align-items: center; padding: 0 8px; gap: 6px; overflow-x: auto; white-space: nowrap; border-bottom: 1px solid #333; z-index: 100; pointer-events: auto; }
     #top-bar::-webkit-scrollbar { display: none; }
-    .btn { background: #3a3a3c; color: #fff; border: 1px solid #48484a; padding: 8px 12px; border-radius: 6px; font-size: 12px; font-weight: 600; cursor: pointer; display: inline-flex; align-items: center; gap: 4px; flex-shrink: 0; }
+    .btn { background: #3a3a3c; color: #fff; border: 1px solid #48484a; padding: 8px 12px; border-radius: 6px; font-size: 12px; font-weight: 600; cursor: pointer; display: inline-flex; align-items: center; gap: 4px; flex-shrink: 0; pointer-events: auto; }
     .btn:active, .btn.active { background: #007aff; border-color: #007aff; }
     .btn-danger { background: #8e0000; border-color: #aa0000; }
     .btn-special { background: #5e5ce6; border-color: #5e5ce6; }
     .btn-success { background: #28a745; border-color: #28a745; }
     #viewport-container { flex: 1; position: relative; width: 100%; background: #121212; overflow: hidden; }
     #three-canvas { width: 100%; height: 100%; display: block; }
-    #rig-overlay { position: absolute; top: 10px; left: 50%; transform: translateX(-50%); display: none; gap: 10px; z-index: 150; background: rgba(0,0,0,0.8); padding: 8px 16px; border-radius: 30px; border: 1px solid #5e5ce6; }
-    #hierarchy-panel { position: absolute; top: 10px; left: 10px; width: 140px; max-height: 180px; background: rgba(30, 30, 30, 0.9); border: 1px solid #444; border-radius: 8px; padding: 8px; overflow-y: auto; z-index: 50; font-size: 11px; }
+    #rig-overlay { position: absolute; top: 10px; left: 50%; transform: translateX(-50%); display: none; gap: 10px; z-index: 150; background: rgba(0,0,0,0.8); padding: 8px 16px; border-radius: 30px; border: 1px solid #5e5ce6; pointer-events: auto; }
+    #hierarchy-panel { position: absolute; top: 10px; left: 10px; width: 140px; max-height: 180px; background: rgba(30, 30, 30, 0.9); border: 1px solid #444; border-radius: 8px; padding: 8px; overflow-y: auto; z-index: 50; font-size: 11px; pointer-events: auto; }
     .tree-item { padding: 4px 6px; border-radius: 4px; cursor: pointer; margin-bottom: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; background: #2a2a2a; }
     .tree-item.selected { background: #007aff; }
     .tree-item.bone-item { background: #3a2e5c; color: #d0c4ff; margin-left: 8px; }
     .tree-item.bone-item.selected { background: #5e5ce6; color: #fff; }
-    #timeline-container { height: 130px; background: #1e1e1e; border-top: 1px solid #333; display: flex; flex-direction: column; z-index: 100; }
+    #timeline-container { height: 130px; background: #1e1e1e; border-top: 1px solid #333; display: flex; flex-direction: column; z-index: 100; pointer-events: auto; }
     #timeline-controls { height: 36px; background: #282828; display: flex; align-items: center; justify-content: space-between; padding: 0 8px; border-bottom: 1px solid #333; }
     .playback-group { display: flex; gap: 4px; }
     #timeline-slider-wrap { flex: 1; height: 94px; position: relative; overflow-x: hidden; background: #181818; touch-action: none; }
     #timeline-canvas { height: 100%; display: block; width: 100%; }
     input[type="file"] { display: none; }
-    #toast { position: absolute; bottom: 150px; left: 50%; transform: translateX(-50%); background: rgba(0,0,0,0.85); color: white; padding: 8px 16px; border-radius: 20px; font-size: 12px; display: none; z-index: 200; }
+    #toast { position: absolute; bottom: 150px; left: 50%; transform: translateX(-50%); background: rgba(0,0,0,0.85); color: white; padding: 8px 16px; border-radius: 20px; font-size: 12px; display: none; z-index: 200; pointer-events: none; }
   </style>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
@@ -91,7 +92,7 @@
   let scene, camera, renderer, orbit, transformControls;
   let objectsList = [], selectedObject = null;
   let currentTime = 0, duration = 5.0, isPlaying = false, keyframes = {};
-  let rigMode = false, rigJoints = {}, jointMarkers = [];
+  let rigMode = false, jointMarkers = [];
 
   const canvas3D = document.getElementById('three-canvas');
   const treeRoot = document.getElementById('tree-root');
@@ -119,7 +120,9 @@
     transformControls.size = 0.75;
     scene.add(transformControls);
 
-    transformControls.addEventListener('dragging-changed', (e) => orbit.enabled = !e.value);
+    transformControls.addEventListener('dragging-changed', (e) => {
+      orbit.enabled = !e.value;
+    });
 
     scene.add(new THREE.AmbientLight(0xffffff, 0.8));
     const dirLight = new THREE.DirectionalLight(0xffffff, 0.8);
@@ -141,8 +144,11 @@
 
   function selectObject(obj) {
     selectedObject = obj;
-    if (obj && !rigMode) transformControls.attach(obj);
-    else transformControls.detach();
+    if (obj) {
+      transformControls.attach(obj);
+    } else {
+      transformControls.detach();
+    }
     updateHierarchyUI();
     drawTimeline();
   }
@@ -162,7 +168,9 @@
     addObject(mesh, 'Cube');
   };
 
-  document.getElementById('btn-model').onclick = () => document.getElementById('input-model').click();
+  document.getElementById('btn-model').onclick = () => {
+    document.getElementById('input-model').click();
+  };
 
   document.getElementById('input-model').onchange = (e) => {
     const file = e.target.files[0];
@@ -177,7 +185,6 @@
     }
   };
 
-  // --- PRISMA 3D AUTO-RIG JOINT MATCHING SYSTEM ---
   const defaultJointDefs = [
     { name: 'Head', pos: [0, 1.8, 0], color: 0x00e5ff },
     { name: 'Neck', pos: [0, 1.5, 0], color: 0x007aff },
@@ -227,7 +234,6 @@
   document.getElementById('btn-apply-rig').onclick = () => {
     if (!selectedObject) return;
     
-    // Create Bone Skeleton based on placed Joint Positions
     const joints = {};
     jointMarkers.forEach(m => { joints[m.userData.jointName] = m.position.clone(); });
 
@@ -247,7 +253,6 @@
     scene.add(skelHelper);
     selectedObject.add(hips);
 
-    // Register all bones for animation
     const skel = new THREE.Skeleton([hips, neck, head, lSh, lEl, lWr, rSh, rEl, rWr]);
     skel.bones.forEach(b => { keyframes[b.uuid] = []; });
 
@@ -255,7 +260,7 @@
     rigMode = false;
     document.getElementById('rig-overlay').style.display = 'none';
     selectObject(selectedObject);
-    showToast('Skeleton Successfully Bound to Model!');
+    showToast('Skeleton Successfully Bound!');
   };
 
   document.getElementById('btn-cancel-rig').onclick = () => {
@@ -293,8 +298,9 @@
   function setTransformMode(mode, id) {
     ['mode-select', 'mode-move', 'mode-rotate'].forEach(b => document.getElementById(b).classList.remove('active'));
     document.getElementById(id).classList.add('active');
-    if (mode === 'select') transformControls.detach();
-    else {
+    if (mode === 'select') {
+      transformControls.detach();
+    } else {
       if (selectedObject) transformControls.attach(selectedObject);
       transformControls.setMode(mode);
     }
@@ -314,9 +320,8 @@
     }
   };
 
-  // --- KEYFRAME ENGINE ---
   document.getElementById('btn-add-key').onclick = () => {
-    if (!selectedObject) return;
+    if (!selectedObject) { showToast('Select an Object or Bone first!'); return; }
     const list = keyframes[selectedObject.uuid] || [];
     const t = parseFloat(currentTime.toFixed(2));
     const existingIndex = list.findIndex(k => Math.abs(k.time - t) < 0.05);
@@ -329,6 +334,15 @@
     keyframes[selectedObject.uuid] = list;
     drawTimeline();
     showToast('Keyframe Set at ' + t + 's');
+  };
+
+  document.getElementById('btn-del-key').onclick = () => {
+    if (!selectedObject) return;
+    let list = keyframes[selectedObject.uuid] || [];
+    const t = currentTime;
+    keyframes[selectedObject.uuid] = list.filter(k => Math.abs(k.time - t) >= 0.1);
+    drawTimeline();
+    showToast('Keyframe Removed');
   };
 
   function updateAnimatedNodes(node) {
@@ -418,4 +432,14 @@
     if (isPlaying) {
       currentTime += 0.016;
       if (currentTime > duration) currentTime = 0;
-      objectsList.forEach(obj =
+      objectsList.forEach(obj => updateAnimatedNodes(obj));
+      drawTimeline();
+    }
+    orbit.update();
+    renderer.render(scene, camera);
+  }
+
+  window.onload = () => { init3D(); drawTimeline(); };
+</script>
+</body>
+</html>
