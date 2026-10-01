@@ -33,7 +33,7 @@
       display: flex; 
       align-items: center; 
       padding: 0 8px; 
-      gap: 8px; 
+      gap: 6px; 
       overflow-x: auto; 
       white-space: nowrap; 
       border-bottom: 1px solid #333; 
@@ -47,7 +47,7 @@
       border: 1px solid #444; 
       padding: 8px 12px; 
       border-radius: 6px; 
-      font-size: 13px; 
+      font-size: 12px; 
       font-weight: 600; 
       cursor: pointer; 
       display: inline-flex; 
@@ -56,15 +56,16 @@
       flex-shrink: 0; 
       z-index: 10000;
     }
-    .btn:active { 
+    .btn:active, .btn.active { 
       background: #007aff !important; 
       border-color: #007aff !important; 
     }
-    .btn-highlight { background: #6366f1; border-color: #818cf8; font-weight: bold; } /* Model Button */
-    .btn-photo { background: #059669; border-color: #10b981; font-weight: bold; }     /* Photo Button */
+    .btn-highlight { background: #6366f1; border-color: #818cf8; font-weight: bold; }
+    .btn-photo { background: #059669; border-color: #10b981; font-weight: bold; }
     .btn-danger { background: #d32f2f; border-color: #d32f2f; }
     .btn-success { background: #2e7d32; border-color: #2e7d32; }
     .btn-preset { background: #f57c00; border-color: #f57c00; }
+    .btn-mode { background: #3a3a3c; border-color: #555; }
     
     #viewport-container { 
       flex: 1; 
@@ -84,9 +85,9 @@
       position: absolute; 
       top: 10px; 
       left: 10px; 
-      width: 130px; 
-      max-height: 160px; 
-      background: rgba(25, 25, 25, 0.85); 
+      width: 140px; 
+      max-height: 180px; 
+      background: rgba(25, 25, 25, 0.88); 
       border: 1px solid #444; 
       border-radius: 8px; 
       padding: 6px; 
@@ -153,9 +154,10 @@
     input[type="file"] { display: none !important; }
   </style>
 
-  <!-- CDNs for Three.js & Loaders -->
+  <!-- CDNs for Three.js, Controls & Loaders -->
   <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/build/three.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/TransformControls.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/OBJLoader.js"></script>
 </head>
@@ -163,15 +165,21 @@
 
 <div id="app-container">
   <div id="top-bar">
-    <!-- Highlighted Upload Buttons Placed at the very front -->
-    <button class="btn btn-highlight" onclick="triggerModelUpload()">📦 Upload 3D Model</button>
-    <button class="btn btn-photo" onclick="triggerPhotoUpload()">🖼 Upload Photo</button>
+    <button class="btn btn-highlight" onclick="triggerModelUpload()">📦 Model Upload</button>
+    <button class="btn btn-photo" onclick="triggerPhotoUpload()">🖼 Photo Upload</button>
     
+    <div style="width: 1px; height: 24px; background: #555; margin: 0 2px;"></div>
+    
+    <!-- Transform Mode Controls (Move, Rotate, Scale) -->
+    <button id="btn-translate" class="btn btn-mode active" onclick="setTransformMode('translate')">✢ Move</button>
+    <button id="btn-rotate" class="btn btn-mode" onclick="setTransformMode('rotate')">🔄 Rotate</button>
+    <button id="btn-scale" class="btn btn-mode" onclick="setTransformMode('scale')">⤢ Scale</button>
+
     <div style="width: 1px; height: 24px; background: #555; margin: 0 2px;"></div>
     
     <button class="btn" onclick="addCube()">🧊 Cube</button>
     <button class="btn" onclick="addCharacter()">🧍 Character</button>
-    <button class="btn btn-preset" onclick="autoRig()">🦴 Auto-Rig</button>
+    <button class="btn btn-preset" onclick="autoRigFull()">🦴 Auto-Rig Full</button>
     <button class="btn btn-danger" onclick="deleteSelected()">🗑 Delete</button>
   </div>
 
@@ -179,7 +187,7 @@
     <canvas id="three-canvas"></canvas>
     
     <div id="hierarchy-panel">
-      <div style="font-weight: bold; margin-bottom: 4px; border-bottom: 1px solid #555;">Scene Objects</div>
+      <div style="font-weight: bold; margin-bottom: 4px; border-bottom: 1px solid #555;">Hierarchy</div>
       <div id="tree-root"></div>
     </div>
     
@@ -208,15 +216,14 @@
   </div>
 </div>
 
-<!-- Hidden File Inputs -->
 <input type="file" id="input-model" accept=".glb,.gltf,.obj" onchange="handleModelUpload(event)">
 <input type="file" id="input-photo" accept="image/*" onchange="handlePhotoUpload(event)">
 
 <script>
-  let scene, camera, renderer, orbitControls;
+  let scene, camera, renderer, orbitControls, transformControls;
   let objectsList = [], selectedObject = null;
   let currentTime = 0, duration = 5.0, isPlaying = false, keyframes = {};
-  let characterMesh = null, skeletonBones = [];
+  let characterMesh = null, skeletonBones = [], skeletonHelper = null;
 
   const canvas3D = document.getElementById('three-canvas');
   const treeRoot = document.getElementById('tree-root');
@@ -248,6 +255,14 @@
     orbitControls.enableDamping = true;
     orbitControls.target.set(0, 1, 0);
 
+    // TransformControls setup for Move, Rotate, Scale Gizmos
+    transformControls = new THREE.TransformControls(camera, renderer.domElement);
+    transformControls.size = 0.75;
+    transformControls.addEventListener('dragging-changed', function (event) {
+      orbitControls.enabled = !event.value;
+    });
+    scene.add(transformControls);
+
     const light1 = new THREE.DirectionalLight(0xffffff, 1);
     light1.position.set(5, 10, 7);
     scene.add(light1);
@@ -262,11 +277,25 @@
     showToast('Engine Ready');
   }
 
+  function setTransformMode(mode) {
+    if (transformControls) {
+      transformControls.setMode(mode);
+      document.querySelectorAll('.btn-mode').forEach(b => b.classList.remove('active'));
+      document.getElementById('btn-' + mode).classList.add('active');
+      showToast('Mode: ' + mode.toUpperCase());
+    }
+  }
+
   function selectObject(obj) {
     selectedObject = obj;
+    if (obj) {
+      transformControls.attach(obj);
+      showToast('Selected: ' + obj.name);
+    } else {
+      transformControls.detach();
+    }
     updateHierarchyUI();
     drawTimeline();
-    if(obj) showToast('Selected: ' + obj.name);
   }
 
   function addObject(obj, name) {
@@ -277,17 +306,12 @@
     selectObject(obj);
   }
 
-  /* File Upload Handlers */
-  function triggerModelUpload() {
-    document.getElementById('input-model').click();
-  }
-
+  function triggerModelUpload() { document.getElementById('input-model').click(); }
   function handleModelUpload(e) {
     const file = e.target.files[0];
     if (!file) return;
     const url = URL.createObjectURL(file);
     const ext = file.name.split('.').pop().toLowerCase();
-
     showToast('Loading Model...');
 
     if (ext === 'glb' || ext === 'gltf') {
@@ -305,10 +329,7 @@
     }
   }
 
-  function triggerPhotoUpload() {
-    document.getElementById('input-photo').click();
-  }
-
+  function triggerPhotoUpload() { document.getElementById('input-photo').click(); }
   function handlePhotoUpload(e) {
     const file = e.target.files[0];
     if (!file) return;
@@ -333,7 +354,6 @@
     });
   }
 
-  /* Primitive Controls */
   function addCube() {
     const mesh = new THREE.Mesh(
       new THREE.BoxGeometry(0.8, 0.8, 0.8),
@@ -345,58 +365,70 @@
 
   function addCharacter() {
     const group = new THREE.Group();
-    const bodyGeo = new THREE.CylinderGeometry(0.3, 0.2, 1.2, 16);
     const mat = new THREE.MeshStandardMaterial({ color: 0xe5e5ea });
-    const body = new THREE.Mesh(bodyGeo, mat);
+
+    const body = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.2, 1.0, 16), mat);
     body.position.y = 1.0;
     group.add(body);
 
-    const headGeo = new THREE.SphereGeometry(0.25, 16, 16);
-    const head = new THREE.Mesh(headGeo, mat);
-    head.position.y = 1.8;
+    const head = new THREE.Mesh(new THREE.SphereGeometry(0.25, 16, 16), mat);
+    head.position.y = 1.7;
     group.add(head);
 
     characterMesh = group;
     addObject(group, 'Character Body');
   }
 
-  function autoRig() {
-    if(!characterMesh) return showToast('First add or upload a Character!');
+  // Full Skeleton Auto-Rig (Head, Arms, Spine, Legs)
+  function autoRigFull() {
+    if (skeletonHelper) scene.remove(skeletonHelper);
 
-    const rootBone = new THREE.Bone();
-    rootBone.name = "Hips";
-    rootBone.position.set(0, 0.9, 0);
+    // Hips
+    const hips = new THREE.Bone(); hips.name = "Hips"; hips.position.set(0, 0.9, 0);
+    
+    // Spine, Chest, Neck, Head
+    const chest = new THREE.Bone(); chest.name = "Chest"; chest.position.set(0, 0.4, 0);
+    const neck = new THREE.Bone(); neck.name = "Neck"; neck.position.set(0, 0.3, 0);
+    const head = new THREE.Bone(); head.name = "Head"; head.position.set(0, 0.2, 0);
+    hips.add(chest); chest.add(neck); neck.add(head);
 
-    const chestBone = new THREE.Bone();
-    chestBone.name = "Chest";
-    chestBone.position.set(0, 0.6, 0);
-    rootBone.add(chestBone);
+    // Left Arm
+    const lShoulder = new THREE.Bone(); lShoulder.name = "L_Shoulder"; lShoulder.position.set(0.25, 0.3, 0);
+    const lElbow = new THREE.Bone(); lElbow.name = "L_Elbow"; lElbow.position.set(0.25, 0, 0);
+    chest.add(lShoulder); lShoulder.add(lElbow);
 
-    const leftLeg = new THREE.Bone();
-    leftLeg.name = "L_Leg";
-    leftLeg.position.set(0.2, -0.4, 0);
-    rootBone.add(leftLeg);
+    // Right Arm
+    const rShoulder = new THREE.Bone(); rShoulder.name = "R_Shoulder"; rShoulder.position.set(-0.25, 0.3, 0);
+    const rElbow = new THREE.Bone(); rElbow.name = "R_Elbow"; rElbow.position.set(-0.25, 0, 0);
+    chest.add(rShoulder); rShoulder.add(rElbow);
 
-    const rightLeg = new THREE.Bone();
-    rightLeg.name = "R_Leg";
-    rightLeg.position.set(-0.2, -0.4, 0);
-    rootBone.add(rightLeg);
+    // Left Leg
+    const lHip = new THREE.Bone(); lHip.name = "L_Thigh"; lHip.position.set(0.15, -0.1, 0);
+    const lKnee = new THREE.Bone(); lKnee.name = "L_Knee"; lKnee.position.set(0, -0.4, 0);
+    hips.add(lHip); lHip.add(lKnee);
 
-    const helper = new THREE.SkeletonHelper(rootBone);
-    scene.add(rootBone);
-    scene.add(helper);
+    // Right Leg
+    const rHip = new THREE.Bone(); rHip.name = "R_Thigh"; rHip.position.set(-0.15, -0.1, 0);
+    const rKnee = new THREE.Bone(); rKnee.name = "R_Knee"; rKnee.position.set(0, -0.4, 0);
+    hips.add(rHip); rHip.add(rKnee);
 
-    skeletonBones = [rootBone, chestBone, leftLeg, rightLeg];
+    skeletonBones = [hips, chest, neck, head, lShoulder, lElbow, rShoulder, rElbow, lHip, lKnee, rHip, rKnee];
     skeletonBones.forEach(b => { keyframes[b.uuid] = []; });
 
-    showToast('Auto-Rig Applied!');
-    selectObject(rootBone);
+    scene.add(hips);
+    skeletonHelper = new THREE.SkeletonHelper(hips);
+    scene.add(skeletonHelper);
+
+    showToast('Full Body Rig Created!');
+    selectObject(hips);
   }
 
   function deleteSelected() {
-    if(selectedObject) {
+    if (selectedObject) {
+      transformControls.detach();
       scene.remove(selectedObject);
       objectsList = objectsList.filter(o => o !== selectedObject);
+      skeletonBones = skeletonBones.filter(b => b !== selectedObject);
       selectObject(null);
       showToast('Deleted');
     }
@@ -407,12 +439,13 @@
   function stopAnim() { isPlaying = false; currentTime = 0; drawTimeline(); }
 
   function addKeyframe() {
-    if(!selectedObject) return showToast('Select an Object first!');
+    if (!selectedObject) return showToast('Select an Object or Bone!');
     const list = keyframes[selectedObject.uuid] || [];
     list.push({
       time: parseFloat(currentTime.toFixed(2)),
       pos: selectedObject.position.clone(),
-      rot: selectedObject.rotation.clone()
+      rot: selectedObject.rotation.clone(),
+      scl: selectedObject.scale.clone()
     });
     keyframes[selectedObject.uuid] = list;
     drawTimeline();
@@ -420,20 +453,20 @@
   }
 
   function presetWalk() {
-    if(skeletonBones.length === 0) return showToast('Click "Auto-Rig" first!');
-    const leftLeg = skeletonBones[2];
-    const rightLeg = skeletonBones[3];
+    const lHip = skeletonBones.find(b => b.name === 'L_Thigh');
+    const rHip = skeletonBones.find(b => b.name === 'R_Thigh');
+    if (!lHip || !rHip) return showToast('Click "Auto-Rig Full" first!');
 
-    keyframes[leftLeg.uuid] = [
-      { time: 0, pos: leftLeg.position.clone(), rot: new THREE.Euler(0.5, 0, 0) },
-      { time: 2.5, pos: leftLeg.position.clone(), rot: new THREE.Euler(-0.5, 0, 0) },
-      { time: 5.0, pos: leftLeg.position.clone(), rot: new THREE.Euler(0.5, 0, 0) }
+    keyframes[lHip.uuid] = [
+      { time: 0, pos: lHip.position.clone(), rot: new THREE.Euler(0.6, 0, 0), scl: lHip.scale.clone() },
+      { time: 2.5, pos: lHip.position.clone(), rot: new THREE.Euler(-0.6, 0, 0), scl: lHip.scale.clone() },
+      { time: 5.0, pos: lHip.position.clone(), rot: new THREE.Euler(0.6, 0, 0), scl: lHip.scale.clone() }
     ];
 
-    keyframes[rightLeg.uuid] = [
-      { time: 0, pos: rightLeg.position.clone(), rot: new THREE.Euler(-0.5, 0, 0) },
-      { time: 2.5, pos: rightLeg.position.clone(), rot: new THREE.Euler(0.5, 0, 0) },
-      { time: 5.0, pos: rightLeg.position.clone(), rot: new THREE.Euler(-0.5, 0, 0) }
+    keyframes[rHip.uuid] = [
+      { time: 0, pos: rHip.position.clone(), rot: new THREE.Euler(-0.6, 0, 0), scl: rHip.scale.clone() },
+      { time: 2.5, pos: rHip.position.clone(), rot: new THREE.Euler(0.6, 0, 0), scl: rHip.scale.clone() },
+      { time: 5.0, pos: rHip.position.clone(), rot: new THREE.Euler(-0.6, 0, 0), scl: rHip.scale.clone() }
     ];
 
     showToast('Walk Preset Loaded!');
@@ -441,11 +474,11 @@
   }
 
   function presetJump() {
-    if(!characterMesh) return showToast('Add or Upload a Character first!');
+    if (!characterMesh) return showToast('Add or Upload a Character first!');
     keyframes[characterMesh.uuid] = [
-      { time: 0, pos: new THREE.Vector3(0, 0, 0), rot: new THREE.Euler(0,0,0) },
-      { time: 2.5, pos: new THREE.Vector3(0, 1.2, 0), rot: new THREE.Euler(0,0,0) },
-      { time: 5.0, pos: new THREE.Vector3(0, 0, 0), rot: new THREE.Euler(0,0,0) }
+      { time: 0, pos: new THREE.Vector3(0, 0, 0), rot: new THREE.Euler(0,0,0), scl: new THREE.Vector3(1,1,1) },
+      { time: 2.5, pos: new THREE.Vector3(0, 1.2, 0), rot: new THREE.Euler(0,0,0), scl: new THREE.Vector3(1,1,1) },
+      { time: 5.0, pos: new THREE.Vector3(0, 0, 0), rot: new THREE.Euler(0,0,0), scl: new THREE.Vector3(1,1,1) }
     ];
 
     showToast('Jump Preset Loaded!');
@@ -457,7 +490,7 @@
     objectsList.forEach(obj => {
       const item = document.createElement('div');
       item.className = 'tree-item' + (selectedObject === obj ? ' selected' : '');
-      item.innerText = obj.name;
+      item.innerText = '📦 ' + obj.name;
       item.onclick = () => selectObject(obj);
       treeRoot.appendChild(item);
     });
@@ -495,15 +528,16 @@
     const all = [...objectsList, ...skeletonBones];
     all.forEach(obj => {
       const list = keyframes[obj.uuid];
-      if(list && list.length > 1) {
-        for(let i = 0; i < list.length - 1; i++) {
+      if (list && list.length > 1) {
+        for (let i = 0; i < list.length - 1; i++) {
           const k1 = list[i], k2 = list[i+1];
-          if(currentTime >= k1.time && currentTime <= k2.time) {
+          if (currentTime >= k1.time && currentTime <= k2.time) {
             const factor = (currentTime - k1.time) / (k2.time - k1.time);
             obj.position.lerpVectors(k1.pos, k2.pos, factor);
             obj.rotation.x = THREE.MathUtils.lerp(k1.rot.x, k2.rot.x, factor);
             obj.rotation.y = THREE.MathUtils.lerp(k1.rot.y, k2.rot.y, factor);
             obj.rotation.z = THREE.MathUtils.lerp(k1.rot.z, k2.rot.z, factor);
+            if (k1.scl && k2.scl) obj.scale.lerpVectors(k1.scl, k2.scl, factor);
             break;
           }
         }
@@ -517,47 +551,12 @@
     tlCtx.fillStyle = '#151515'; tlCtx.fillRect(0, 0, w, h);
 
     tlCtx.strokeStyle = '#333'; tlCtx.fillStyle = '#888'; tlCtx.font = '10px sans-serif';
-    for(let s = 0; s <= duration; s += 1) {
+    for (let s = 0; s <= duration; s += 1) {
       let x = (s / duration) * (w - 20) + 10;
       tlCtx.beginPath(); tlCtx.moveTo(x, 0); tlCtx.lineTo(x, 10); tlCtx.stroke();
       tlCtx.fillText(s + 's', x - 5, 22);
     }
 
-    if(selectedObject && keyframes[selectedObject.uuid]) {
+    if (selectedObject && keyframes[selectedObject.uuid]) {
       keyframes[selectedObject.uuid].forEach(k => {
-        let kx = (k.time / duration) * (w - 20) + 10;
-        tlCtx.fillStyle = '#ffcc00';
-        tlCtx.beginPath(); tlCtx.arc(kx, 45, 5, 0, Math.PI * 2); tlCtx.fill();
-      });
-    }
-
-    let px = (currentTime / duration) * (w - 20) + 10;
-    tlCtx.strokeStyle = '#ff3b30'; tlCtx.lineWidth = 2;
-    tlCtx.beginPath(); tlCtx.moveTo(px, 0); tlCtx.lineTo(px, h); tlCtx.stroke();
-    timeDisplay.innerText = currentTime.toFixed(2) + 's / ' + duration.toFixed(2) + 's';
-  }
-
-  function onResize() {
-    const container = document.getElementById('viewport-container');
-    camera.aspect = container.clientWidth / container.clientHeight;
-    camera.updateProjectionMatrix();
-    renderer.setSize(container.clientWidth, container.clientHeight);
-    drawTimeline();
-  }
-
-  function animate() {
-    requestAnimationFrame(animate);
-    if(isPlaying) {
-      currentTime += 0.016;
-      if(currentTime > duration) currentTime = 0;
-      updateAnimations();
-      drawTimeline();
-    }
-    orbitControls.update();
-    renderer.render(scene, camera);
-  }
-
-  window.onload = init;
-</script>
-</body>
-</html>
+        let kx = (k.time / duration) * (w - 20)
