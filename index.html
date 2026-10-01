@@ -37,7 +37,8 @@
       overflow-x: auto; 
       white-space: nowrap; 
       border-bottom: 1px solid #333; 
-      z-index: 9999; 
+      z-index: 100000; 
+      position: relative;
     }
     #top-bar::-webkit-scrollbar { display: none; }
     
@@ -54,7 +55,8 @@
       align-items: center; 
       gap: 4px; 
       flex-shrink: 0; 
-      z-index: 10000;
+      z-index: 100001;
+      pointer-events: auto !important;
     }
     .btn:active, .btn.active { 
       background: #007aff !important; 
@@ -73,6 +75,7 @@
       width: 100%; 
       background: #121212; 
       overflow: hidden; 
+      z-index: 1;
     }
     #three-canvas { 
       width: 100%; 
@@ -94,6 +97,7 @@
       overflow-y: auto; 
       z-index: 500; 
       font-size: 11px; 
+      pointer-events: auto;
     }
     .tree-item { 
       padding: 4px 6px; 
@@ -113,7 +117,8 @@
       border-top: 1px solid #333; 
       display: flex; 
       flex-direction: column; 
-      z-index: 9999; 
+      z-index: 100000; 
+      position: relative;
     }
     #timeline-controls { 
       height: 38px; 
@@ -133,6 +138,7 @@
       position: relative; 
       background: #151515; 
       touch-action: none; 
+      cursor: pointer;
     }
     #timeline-canvas { width: 100%; height: 100%; display: block; }
     
@@ -147,7 +153,7 @@
       border-radius: 20px; 
       font-size: 12px; 
       display: none; 
-      z-index: 2000; 
+      z-index: 200000; 
       pointer-events: none; 
     }
     
@@ -165,22 +171,22 @@
 
 <div id="app-container">
   <div id="top-bar">
-    <button class="btn btn-highlight" onclick="triggerModelUpload()">📦 Model Upload</button>
-    <button class="btn btn-photo" onclick="triggerPhotoUpload()">🖼 Photo Upload</button>
+    <button class="btn btn-highlight" id="btn-upload-model">📦 Model Upload</button>
+    <button class="btn btn-photo" id="btn-upload-photo">🖼 Photo Upload</button>
     
     <div style="width: 1px; height: 24px; background: #555; margin: 0 2px;"></div>
     
-    <!-- Transform Mode Controls (Move, Rotate, Scale) -->
-    <button id="btn-translate" class="btn btn-mode active" onclick="setTransformMode('translate')">✢ Move</button>
-    <button id="btn-rotate" class="btn btn-mode" onclick="setTransformMode('rotate')">🔄 Rotate</button>
-    <button id="btn-scale" class="btn btn-mode" onclick="setTransformMode('scale')">⤢ Scale</button>
+    <!-- Move, Rotate, Scale Mode Controls -->
+    <button id="btn-translate" class="btn btn-mode active">✢ Move</button>
+    <button id="btn-rotate" class="btn btn-mode">🔄 Rotate</button>
+    <button id="btn-scale" class="btn btn-mode">⤢ Scale</button>
 
     <div style="width: 1px; height: 24px; background: #555; margin: 0 2px;"></div>
     
-    <button class="btn" onclick="addCube()">🧊 Cube</button>
-    <button class="btn" onclick="addCharacter()">🧍 Character</button>
-    <button class="btn btn-preset" onclick="autoRigFull()">🦴 Auto-Rig Full</button>
-    <button class="btn btn-danger" onclick="deleteSelected()">🗑 Delete</button>
+    <button class="btn" id="btn-add-cube">🧊 Cube</button>
+    <button class="btn" id="btn-add-char">🧍 Character</button>
+    <button class="btn btn-preset" id="btn-autorig">🦴 Auto-Rig Full</button>
+    <button class="btn btn-danger" id="btn-delete">🗑 Delete</button>
   </div>
 
   <div id="viewport-container">
@@ -197,17 +203,17 @@
   <div id="timeline-container">
     <div id="timeline-controls">
       <div class="playback-group">
-        <button class="btn" onclick="playAnim()">▶ Play</button>
-        <button class="btn" onclick="pauseAnim()">⏸ Pause</button>
-        <button class="btn" onclick="stopAnim()">⏹ Stop</button>
+        <button class="btn" id="btn-play">▶ Play</button>
+        <button class="btn" id="btn-pause">⏸ Pause</button>
+        <button class="btn" id="btn-stop">⏹ Stop</button>
       </div>
       <span id="time-display" style="font-size: 11px; font-family: monospace;">0.00s / 5.00s</span>
       <div class="playback-group">
-        <button class="btn btn-preset" onclick="presetWalk()">🚶 Walk</button>
-        <button class="btn btn-preset" onclick="presetJump()">🦘 Jump</button>
+        <button class="btn btn-preset" id="btn-walk">🚶 Walk</button>
+        <button class="btn btn-preset" id="btn-jump">🦘 Jump</button>
       </div>
       <div class="playback-group">
-        <button class="btn btn-success" onclick="addKeyframe()">+ Key</button>
+        <button class="btn btn-success" id="btn-addkey">+ Key</button>
       </div>
     </div>
     <div id="timeline-slider-wrap">
@@ -216,8 +222,8 @@
   </div>
 </div>
 
-<input type="file" id="input-model" accept=".glb,.gltf,.obj" onchange="handleModelUpload(event)">
-<input type="file" id="input-photo" accept="image/*" onchange="handlePhotoUpload(event)">
+<input type="file" id="input-model" accept=".glb,.gltf,.obj">
+<input type="file" id="input-photo" accept="image/*">
 
 <script>
   let scene, camera, renderer, orbitControls, transformControls;
@@ -255,7 +261,6 @@
     orbitControls.enableDamping = true;
     orbitControls.target.set(0, 1, 0);
 
-    // TransformControls setup for Move, Rotate, Scale Gizmos
     transformControls = new THREE.TransformControls(camera, renderer.domElement);
     transformControls.size = 0.75;
     transformControls.addEventListener('dragging-changed', function (event) {
@@ -271,10 +276,36 @@
     const grid = new THREE.GridHelper(10, 10, 0x444444, 0x222222);
     scene.add(grid);
 
+    bindEvents();
     setupScrubber();
     window.addEventListener('resize', onResize);
     animate();
     showToast('Engine Ready');
+  }
+
+  function bindEvents() {
+    document.getElementById('btn-upload-model').onclick = () => document.getElementById('input-model').click();
+    document.getElementById('btn-upload-photo').onclick = () => document.getElementById('input-photo').click();
+    
+    document.getElementById('input-model').onchange = handleModelUpload;
+    document.getElementById('input-photo').onchange = handlePhotoUpload;
+
+    document.getElementById('btn-translate').onclick = () => setTransformMode('translate');
+    document.getElementById('btn-rotate').onclick = () => setTransformMode('rotate');
+    document.getElementById('btn-scale').onclick = () => setTransformMode('scale');
+
+    document.getElementById('btn-add-cube').onclick = addCube;
+    document.getElementById('btn-add-char').onclick = addCharacter;
+    document.getElementById('btn-autorig').onclick = autoRigFull;
+    document.getElementById('btn-delete').onclick = deleteSelected;
+
+    document.getElementById('btn-play').onclick = () => isPlaying = true;
+    document.getElementById('btn-pause').onclick = () => isPlaying = false;
+    document.getElementById('btn-stop').onclick = () => { isPlaying = false; currentTime = 0; drawTimeline(); };
+
+    document.getElementById('btn-walk').onclick = presetWalk;
+    document.getElementById('btn-jump').onclick = presetJump;
+    document.getElementById('btn-addkey').onclick = addKeyframe;
   }
 
   function setTransformMode(mode) {
@@ -306,7 +337,6 @@
     selectObject(obj);
   }
 
-  function triggerModelUpload() { document.getElementById('input-model').click(); }
   function handleModelUpload(e) {
     const file = e.target.files[0];
     if (!file) return;
@@ -329,7 +359,6 @@
     }
   }
 
-  function triggerPhotoUpload() { document.getElementById('input-photo').click(); }
   function handlePhotoUpload(e) {
     const file = e.target.files[0];
     if (!file) return;
@@ -379,35 +408,27 @@
     addObject(group, 'Character Body');
   }
 
-  // Full Skeleton Auto-Rig (Head, Arms, Spine, Legs)
   function autoRigFull() {
     if (skeletonHelper) scene.remove(skeletonHelper);
 
-    // Hips
     const hips = new THREE.Bone(); hips.name = "Hips"; hips.position.set(0, 0.9, 0);
-    
-    // Spine, Chest, Neck, Head
     const chest = new THREE.Bone(); chest.name = "Chest"; chest.position.set(0, 0.4, 0);
     const neck = new THREE.Bone(); neck.name = "Neck"; neck.position.set(0, 0.3, 0);
     const head = new THREE.Bone(); head.name = "Head"; head.position.set(0, 0.2, 0);
     hips.add(chest); chest.add(neck); neck.add(head);
 
-    // Left Arm
     const lShoulder = new THREE.Bone(); lShoulder.name = "L_Shoulder"; lShoulder.position.set(0.25, 0.3, 0);
     const lElbow = new THREE.Bone(); lElbow.name = "L_Elbow"; lElbow.position.set(0.25, 0, 0);
     chest.add(lShoulder); lShoulder.add(lElbow);
 
-    // Right Arm
     const rShoulder = new THREE.Bone(); rShoulder.name = "R_Shoulder"; rShoulder.position.set(-0.25, 0.3, 0);
     const rElbow = new THREE.Bone(); rElbow.name = "R_Elbow"; rElbow.position.set(-0.25, 0, 0);
     chest.add(rShoulder); rShoulder.add(rElbow);
 
-    // Left Leg
     const lHip = new THREE.Bone(); lHip.name = "L_Thigh"; lHip.position.set(0.15, -0.1, 0);
     const lKnee = new THREE.Bone(); lKnee.name = "L_Knee"; lKnee.position.set(0, -0.4, 0);
     hips.add(lHip); lHip.add(lKnee);
 
-    // Right Leg
     const rHip = new THREE.Bone(); rHip.name = "R_Thigh"; rHip.position.set(-0.15, -0.1, 0);
     const rKnee = new THREE.Bone(); rKnee.name = "R_Knee"; rKnee.position.set(0, -0.4, 0);
     hips.add(rHip); rHip.add(rKnee);
@@ -433,10 +454,6 @@
       showToast('Deleted');
     }
   }
-
-  function playAnim() { isPlaying = true; }
-  function pauseAnim() { isPlaying = false; }
-  function stopAnim() { isPlaying = false; currentTime = 0; drawTimeline(); }
 
   function addKeyframe() {
     if (!selectedObject) return showToast('Select an Object or Bone!');
@@ -491,7 +508,7 @@
       const item = document.createElement('div');
       item.className = 'tree-item' + (selectedObject === obj ? ' selected' : '');
       item.innerText = '📦 ' + obj.name;
-      item.onclick = () => selectObject(obj);
+      item.onclick = (e) => { e.stopPropagation(); selectObject(obj); };
       treeRoot.appendChild(item);
     });
 
@@ -499,7 +516,7 @@
       const item = document.createElement('div');
       item.className = 'tree-item' + (selectedObject === bone ? ' selected' : '');
       item.innerText = '🦴 ' + bone.name;
-      item.onclick = () => selectObject(bone);
+      item.onclick = (e) => { e.stopPropagation(); selectObject(bone); };
       treeRoot.appendChild(item);
     });
   }
@@ -537,26 +554,4 @@
             obj.rotation.x = THREE.MathUtils.lerp(k1.rot.x, k2.rot.x, factor);
             obj.rotation.y = THREE.MathUtils.lerp(k1.rot.y, k2.rot.y, factor);
             obj.rotation.z = THREE.MathUtils.lerp(k1.rot.z, k2.rot.z, factor);
-            if (k1.scl && k2.scl) obj.scale.lerpVectors(k1.scl, k2.scl, factor);
-            break;
-          }
-        }
-      }
-    });
-  }
-
-  function drawTimeline() {
-    const w = tlCanvas.width = document.getElementById('timeline-slider-wrap').clientWidth;
-    const h = tlCanvas.height = 80;
-    tlCtx.fillStyle = '#151515'; tlCtx.fillRect(0, 0, w, h);
-
-    tlCtx.strokeStyle = '#333'; tlCtx.fillStyle = '#888'; tlCtx.font = '10px sans-serif';
-    for (let s = 0; s <= duration; s += 1) {
-      let x = (s / duration) * (w - 20) + 10;
-      tlCtx.beginPath(); tlCtx.moveTo(x, 0); tlCtx.lineTo(x, 10); tlCtx.stroke();
-      tlCtx.fillText(s + 's', x - 5, 22);
-    }
-
-    if (selectedObject && keyframes[selectedObject.uuid]) {
-      keyframes[selectedObject.uuid].forEach(k => {
-        let kx = (k.time / duration) * (w - 20)
+            if (k1.scl && k2.scl) obj.scale.lerpVectors(k1.sc
