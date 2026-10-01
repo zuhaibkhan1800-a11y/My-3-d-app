@@ -111,7 +111,7 @@
     }
     .tree-item.selected { background: #007aff; }
     #timeline-container {
-      height: 150px;
+      height: 140px;
       background: #1e1e1e;
       border-top: 1px solid #333;
       display: flex;
@@ -132,16 +132,17 @@
     .playback-group { display: flex; gap: 4px; }
     #timeline-slider-wrap {
       flex: 1;
-      height: 110px;
+      height: 100px;
       position: relative;
-      overflow-x: auto;
+      overflow-x: hidden;
       background: #181818;
+      touch-action: none;
     }
-    #timeline-canvas { height: 100%; display: block; }
+    #timeline-canvas { height: 100%; display: block; width: 100%; }
     input[type="file"] { display: none; }
     #toast {
       position: absolute;
-      bottom: 170px;
+      bottom: 160px;
       left: 50%;
       transform: translateX(-50%);
       background: rgba(0,0,0,0.85);
@@ -195,9 +196,9 @@
   <div id="timeline-container">
     <div id="timeline-controls">
       <div class="playback-group">
-        <button class="btn" id="btn-play">▶</button>
-        <button class="btn" id="btn-pause">⏸</button>
-        <button class="btn" id="btn-stop">⏹</button>
+        <button class="btn" id="btn-play">▶ Play</button>
+        <button class="btn" id="btn-pause">⏸ Pause</button>
+        <button class="btn" id="btn-stop">⏹ Stop</button>
       </div>
       <span id="time-display" style="font-size: 11px; font-family: monospace;">0.00s / 5.00s</span>
       <div class="playback-group">
@@ -219,11 +220,14 @@
   let objectsList = [];
   let selectedObject = null;
   let currentTime = 0, duration = 5.0, isPlaying = false;
+  let keyframes = {};
 
   const canvas3D = document.getElementById('three-canvas');
   const treeRoot = document.getElementById('tree-root');
   const toastEl = document.getElementById('toast');
   const timeDisplay = document.getElementById('time-display');
+  const tlCanvas = document.getElementById('timeline-canvas');
+  const tlCtx = tlCanvas.getContext('2d');
 
   function init3D() {
     const container = document.getElementById('viewport-container');
@@ -259,6 +263,7 @@
     addCube();
 
     window.addEventListener('resize', onWindowResize);
+    setupTimelineEvents();
     animate();
   }
 
@@ -273,12 +278,14 @@
     if (obj) transformControls.attach(obj);
     else transformControls.detach();
     updateHierarchyUI();
+    drawTimeline();
   }
 
   function addObject(obj, name) {
     obj.name = name || 'Obj_' + (objectsList.length + 1);
     scene.add(obj);
     objectsList.push(obj);
+    keyframes[obj.uuid] = [];
     selectObject(obj);
     showToast(obj.name + ' Added');
   }
@@ -379,6 +386,7 @@
 
   document.getElementById('btn-delete').onclick = () => {
     if (selectedObject) {
+      delete keyframes[selectedObject.uuid];
       scene.remove(selectedObject);
       objectsList = objectsList.filter(o => o !== selectedObject);
       selectObject(null);
@@ -390,30 +398,134 @@
   document.getElementById('btn-cam-front').onclick = () => { camera.position.set(0, 1, 5); orbit.target.set(0,1,0); };
   document.getElementById('btn-cam-top').onclick = () => { camera.position.set(0, 7, 0); orbit.target.set(0,0,0); };
 
-  const tlCanvas = document.getElementById('timeline-canvas');
-  const tlCtx = tlCanvas.getContext('2d');
+  // ---------- WORKING KEYFRAME ENGINE ----------
+
+  document.getElementById('btn-add-key').onclick = () => {
+    if (!selectedObject) {
+      showToast('Select an Object first!');
+      return;
+    }
+    const list = keyframes[selectedObject.uuid] || [];
+    const t = parseFloat(currentTime.toFixed(2));
+    
+    const existingIndex = list.findIndex(k => Math.abs(k.time - t) < 0.05);
+    const keyData = {
+      time: t,
+      pos: selectedObject.position.clone(),
+      rot: selectedObject.rotation.clone(),
+      scl: selectedObject.scale.clone()
+    };
+
+    if (existingIndex >= 0) list[existingIndex] = keyData;
+    else list.push(keyData);
+
+    list.sort((a, b) => a.time - b.time);
+    keyframes[selectedObject.uuid] = list;
+    drawTimeline();
+    showToast('Keyframe Set at ' + t + 's');
+  };
+
+  document.getElementById('btn-del-key').onclick = () => {
+    if (!selectedObject) return;
+    let list = keyframes[selectedObject.uuid] || [];
+    const t = currentTime;
+    keyframes[selectedObject.uuid] = list.filter(k => Math.abs(k.time - t) >= 0.1);
+    drawTimeline();
+    showToast('Keyframe Removed');
+  };
+
+  function updateObjectsAnimation() {
+    objectsList.forEach(obj => {
+      const list = keyframes[obj.uuid];
+      if (!list || list.length === 0) return;
+
+      if (list.length === 1 || currentTime <= list[0].time) {
+        obj.position.copy(list[0].pos);
+        obj.rotation.copy(list[0].rot);
+        obj.scale.copy(list[0].scl);
+        return;
+      }
+
+      if (currentTime >= list[list.length - 1].time) {
+        const last = list[list.length - 1];
+        obj.position.copy(last.pos);
+        obj.rotation.copy(last.rot);
+        obj.scale.copy(last.scl);
+        return;
+      }
+
+      for (let i = 0; i < list.length - 1; i++) {
+        const k1 = list[i];
+        const k2 = list[i + 1];
+        if (currentTime >= k1.time && currentTime <= k2.time) {
+          const factor = (currentTime - k1.time) / (k2.time - k1.time);
+          obj.position.lerpVectors(k1.pos, k2.pos, factor);
+          obj.scale.lerpVectors(k1.scl, k2.scl, factor);
+          
+          obj.rotation.x = THREE.MathUtils.lerp(k1.rot.x, k2.rot.x, factor);
+          obj.rotation.y = THREE.MathUtils.lerp(k1.rot.y, k2.rot.y, factor);
+          obj.rotation.z = THREE.MathUtils.lerp(k1.rot.z, k2.rot.z, factor);
+          break;
+        }
+      }
+    });
+  }
 
   function drawTimeline() {
     const w = tlCanvas.width = document.getElementById('timeline-slider-wrap').clientWidth;
-    const h = tlCanvas.height = 110;
+    const h = tlCanvas.height = 100;
     tlCtx.fillStyle = '#181818'; tlCtx.fillRect(0, 0, w, h);
-    
-    tlCtx.strokeStyle = '#555'; tlCtx.fillStyle = '#aaa'; tlCtx.font = '10px sans-serif';
-    for (let s = 0; s <= duration; s++) {
+
+    tlCtx.strokeStyle = '#333'; tlCtx.fillStyle = '#aaa'; tlCtx.font = '10px sans-serif';
+    for (let s = 0; s <= duration; s += 0.5) {
       let x = (s / duration) * (w - 20) + 10;
-      tlCtx.beginPath(); tlCtx.moveTo(x, 0); tlCtx.lineTo(x, 15); tlCtx.stroke();
-      tlCtx.fillText(s + 's', x - 5, 28);
+      tlCtx.beginPath(); tlCtx.moveTo(x, 0); tlCtx.lineTo(x, s % 1 === 0 ? 15 : 8); tlCtx.stroke();
+      if (s % 1 === 0) tlCtx.fillText(s + 's', x - 5, 26);
+    }
+
+    if (selectedObject && keyframes[selectedObject.uuid]) {
+      keyframes[selectedObject.uuid].forEach(k => {
+        let kx = (k.time / duration) * (w - 20) + 10;
+        tlCtx.fillStyle = '#ffcc00';
+        tlCtx.beginPath();
+        tlCtx.arc(kx, 50, 6, 0, Math.PI * 2);
+        tlCtx.fill();
+      });
     }
 
     let px = (currentTime / duration) * (w - 20) + 10;
     tlCtx.strokeStyle = '#ff3b30'; tlCtx.lineWidth = 2;
     tlCtx.beginPath(); tlCtx.moveTo(px, 0); tlCtx.lineTo(px, h); tlCtx.stroke();
+    
     timeDisplay.innerText = currentTime.toFixed(2) + 's / ' + duration.toFixed(2) + 's';
+  }
+
+  function setupTimelineEvents() {
+    let isScrubbing = false;
+
+    function handleScrub(e) {
+      const rect = tlCanvas.getBoundingClientRect();
+      const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+      let x = clientX - rect.left - 10;
+      let w = rect.width - 20;
+      currentTime = Math.max(0, Math.min(duration, (x / w) * duration));
+      updateObjectsAnimation();
+      drawTimeline();
+    }
+
+    const wrap = document.getElementById('timeline-slider-wrap');
+    wrap.addEventListener('mousedown', (e) => { isScrubbing = true; handleScrub(e); });
+    window.addEventListener('mousemove', (e) => { if (isScrubbing) handleScrub(e); });
+    window.addEventListener('mouseup', () => isScrubbing = false);
+
+    wrap.addEventListener('touchstart', (e) => { isScrubbing = true; handleScrub(e); });
+    window.addEventListener('touchmove', (e) => { if (isScrubbing) handleScrub(e); });
+    window.addEventListener('touchend', () => isScrubbing = false);
   }
 
   document.getElementById('btn-play').onclick = () => isPlaying = true;
   document.getElementById('btn-pause').onclick = () => isPlaying = false;
-  document.getElementById('btn-stop').onclick = () => { isPlaying = false; currentTime = 0; drawTimeline(); };
+  document.getElementById('btn-stop').onclick = () => { isPlaying = false; currentTime = 0; updateObjectsAnimation(); drawTimeline(); };
 
   function onWindowResize() {
     const container = document.getElementById('viewport-container');
@@ -428,6 +540,7 @@
     if (isPlaying) {
       currentTime += 0.016;
       if (currentTime > duration) currentTime = 0;
+      updateObjectsAnimation();
       drawTimeline();
     }
     orbit.update();
