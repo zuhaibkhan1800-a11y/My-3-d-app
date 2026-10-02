@@ -1,112 +1,643 @@
-function applyBoneRig() {
-  if (!selectedObj) {
-    showMsg('Pehle model select karein!');
-    return;
-  }
-
-  // Purane Rig ya Helper ko remove karein
-  if (currentSkeletonGroup) {
-    scene.remove(currentSkeletonGroup);
-    currentSkeletonGroup = null;
-  }
-
-  // 1. Agar model ke andar pehle se Skinned Bones majood hain:
-  let hasSkeleton = false;
-  selectedObj.traverse((child) => {
-    if (child.isBone || child.isSkinnedMesh) hasSkeleton = true;
-  });
-
-  if (hasSkeleton) {
-    const helper = new THREE.SkeletonHelper(selectedObj);
-    helper.material.linewidth = 3;
-    helper.material.depthTest = false; // Always visible on top
-    scene.add(helper);
-    currentSkeletonGroup = helper;
-    showMsg('Real Skeleton Loaded!');
-    return;
-  }
-
-  // 2. Agar Custom Auto-Rig banana hai to Model ka Bounding Box (Size & Height) nikalein:
-  const box = new THREE.Box3().setFromObject(selectedObj);
-  const size = new THREE.Vector3();
-  const center = new THREE.Vector3();
-  box.getSize(size);
-  box.getCenter(center);
-
-  const modelHeight = size.y || 1.8;
-  const minY = box.min.y;
-
-  const rigGroup = new THREE.Group();
-  const mat = new THREE.MeshBasicMaterial({ color: 0x34c759, wireframe: true, depthTest: false, transparent: true, opacity: 0.8 });
-  const jointMat = new THREE.MeshBasicMaterial({ color: 0xff9500, depthTest: false });
-
-  const createBone = (startY, endY, radiusTop = 0.03, radiusBot = 0.03) => {
-    const h = endY - startY;
-    const geo = new THREE.CylinderGeometry(radiusTop, radiusBot, h, 8);
-    geo.translate(0, h / 2, 0);
-    const mesh = new THREE.Mesh(geo, mat);
-    mesh.position.y = startY;
-    return mesh;
-  };
-
-  const createJoint = (y, r = 0.04) => {
-    const j = new THREE.Mesh(new THREE.SphereGeometry(r, 8, 8), jointMat);
-    j.position.y = y;
-    return j;
-  };
-
-  // Humanoid proportions (Feet se Head tak automatically stretch hoga):
-  const spineStart = minY + modelHeight * 0.5;
-  const chestHeight = minY + modelHeight * 0.75;
-  const neckHeight = minY + modelHeight * 0.85;
-  const headHeight = minY + modelHeight * 0.95;
-
-  // Spine & Head
-  rigGroup.add(createBone(spineStart, chestHeight, 0.04, 0.05));
-  rigGroup.add(createBone(chestHeight, neckHeight, 0.03, 0.04));
-  rigGroup.add(createJoint(chestHeight));
-  
-  const headMesh = new THREE.Mesh(new THREE.SphereGeometry(modelHeight * 0.08, 12, 12), mat);
-  headMesh.position.y = headHeight;
-  rigGroup.add(headMesh);
-
-  // Legs (Left & Right)
-  const hipWidth = size.x * 0.15 || 0.15;
-  [-hipWidth, hipWidth].forEach(x => {
-    const hipY = spineStart;
-    const kneeY = minY + modelHeight * 0.25;
-    const footY = minY;
-
-    const thigh = createBone(kneeY, hipY, 0.03, 0.04);
-    thigh.position.x = x;
-    const shin = createBone(footY, kneeY, 0.02, 0.03);
-    shin.position.x = x;
-
-    rigGroup.add(thigh);
-    rigGroup.add(shin);
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>3D Editor</title>
+  <style>
+    * { 
+      box-sizing: border-box; 
+      margin: 0; 
+      padding: 0; 
+      user-select: none; 
+      -webkit-tap-highlight-color: transparent; 
+    }
     
-    const kneeJoint = createJoint(kneeY, 0.035);
-    kneeJoint.position.x = x;
-    rigGroup.add(kneeJoint);
-  });
+    html, body { 
+      width: 100%; 
+      height: 100dvh; 
+      overflow: hidden; 
+      background: #0d0d0d; 
+      color: #fff; 
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; 
+    }
+    
+    #app { 
+      display: flex; 
+      flex-direction: column; 
+      width: 100%; 
+      height: 100dvh; 
+      position: relative; 
+      overflow: hidden; 
+    }
+    
+    #top-bar { 
+      height: 44px; 
+      background: #181818; 
+      display: flex; 
+      align-items: center; 
+      justify-content: space-between; 
+      padding: 0 6px;
+      border-bottom: 1px solid #282828; 
+      flex-shrink: 0; 
+      z-index: 99999;
+      position: relative;
+      touch-action: manipulation;
+    }
+    .top-bar-left, .top-bar-right { display: flex; align-items: center; gap: 4px; }
+    
+    .icon-btn { 
+      background: #252525; 
+      border: 1px solid #3d3d3d; 
+      color: #fff; 
+      font-size: 11px; 
+      cursor: pointer; 
+      display: flex; 
+      align-items: center; 
+      gap: 3px; 
+      padding: 6px 8px; 
+      border-radius: 6px; 
+      pointer-events: auto !important;
+      touch-action: manipulation;
+    }
+    .icon-btn:active { background: #007aff !important; color: #fff !important; }
+    .icon-btn.delete-btn { background: rgba(255, 59, 48, 0.2); color: #ff3b30; border-color: rgba(255, 59, 48, 0.4); }
+    .icon-btn.keyframe-btn { background: rgba(255, 204, 0, 0.2); color: #ffcc00; border-color: rgba(255, 204, 0, 0.4); }
+    .icon-btn.rig-btn { background: rgba(52, 199, 89, 0.2); color: #34c759; border-color: rgba(52, 199, 89, 0.4); }
 
-  // Arms (Left & Right)
-  const shoulderWidth = size.x * 0.25 || 0.25;
-  [-shoulderWidth, shoulderWidth].forEach(x => {
-    const shoulderY = chestHeight;
-    const elbowY = minY + modelHeight * 0.62;
-    const handY = minY + modelHeight * 0.5;
+    #viewport { 
+      flex: 1; 
+      position: relative; 
+      width: 100%; 
+      background: #121212; 
+      min-height: 0; 
+      z-index: 1;
+    }
+    #three-canvas { width: 100%; height: 100%; display: block; touch-action: none; position: absolute; top:0; left:0; z-index: 1; }
+    
+    #hierarchy { 
+      position: absolute; top: 10px; left: 10px; width: 110px; max-height: 100px; 
+      background: rgba(18, 18, 18, 0.85); border: 1px solid #333; border-radius: 6px; padding: 6px; 
+      overflow-y: auto; z-index: 10000; font-size: 10px; backdrop-filter: blur(4px); pointer-events: auto;
+    }
+    .tree-item { padding: 4px 6px; border-radius: 4px; margin-bottom: 3px; background: rgba(255,255,255,0.05); cursor: pointer; display: flex; justify-content: space-between; align-items: center; }
+    .tree-item.selected { background: #007aff; color: #fff; }
 
-    const arm = createBone(elbowY, shoulderY, 0.025, 0.03);
-    arm.position.x = x;
-    const forearm = createBone(handY, elbowY, 0.02, 0.025);
-    forearm.position.x = x;
+    #timeline-panel { 
+      height: 90px; 
+      background: #141414; 
+      border-top: 1px solid #282828; 
+      display: flex; 
+      flex-direction: column; 
+      flex-shrink: 0; 
+      z-index: 99999;
+      position: relative;
+    }
+    #tl-header { 
+      height: 24px; background: #1c1c1c; display: flex; align-items: center; justify-content: space-between; padding: 0 10px; font-size: 10px; color: #aaa;
+    }
+    #tl-play-btn { background: transparent; border: none; color: #fff; font-size: 12px; cursor: pointer; padding: 2px 8px; }
+    #tl-tracks-container { flex: 1; position: relative; overflow: hidden; background: #111; touch-action: none; pointer-events: auto; }
+    #tl-canvas { width: 100%; height: 100%; display: block; }
 
-    rigGroup.add(arm);
-    rigGroup.add(forearm);
-  });
+    #bottom-toolbar { 
+      height: 50px; 
+      background: #181818; 
+      border-top: 1px solid #282828; 
+      display: flex; 
+      align-items: center; 
+      justify-content: space-around;
+      padding: 0 4px; 
+      flex-shrink: 0; 
+      z-index: 99999;
+      position: relative;
+      touch-action: manipulation;
+    }
+    .tool-item { 
+      display: flex; 
+      flex-direction: column; 
+      align-items: center; 
+      justify-content: center; 
+      gap: 2px; 
+      color: #aaa; 
+      font-size: 10px; 
+      cursor: pointer; 
+      flex: 1; 
+      height: 100%; 
+      pointer-events: auto !important;
+      touch-action: manipulation;
+    }
+    .tool-item span { font-size: 15px; }
+    .tool-item:active { color: #007aff; }
 
-  scene.add(rigGroup);
-  currentSkeletonGroup = rigGroup;
-  showMsg('Auto-Scaled Rig Applied!');
-}
+    #toast { 
+      position: absolute; top: 12px; left: 50%; transform: translateX(-50%); 
+      background: rgba(0,0,0,0.9); color: #fff; padding: 6px 14px; border-radius: 20px; font-size: 11px; 
+      display: none; z-index: 999999; pointer-events: none; border: 1px solid #555;
+    }
+    input[type="file"] { display: none !important; }
+  </style>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/TransformControls.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
+</head>
+<body>
+
+<div id="app">
+  <div id="top-bar">
+    <div class="top-bar-left">
+      <button class="icon-btn" id="btn-home">🏠 Home</button>
+      <button class="icon-btn" id="btn-mode-trans">✢ Move</button>
+      <button class="icon-btn" id="btn-mode-rot">🔄 Rot</button>
+      <button class="icon-btn" id="btn-mode-scale">📐 Scale</button>
+    </div>
+    <div class="top-bar-right">
+      <button class="icon-btn rig-btn" id="btn-bone-rig">🦴 Rig</button>
+      <button class="icon-btn keyframe-btn" id="btn-add-keyframe">🔑 Key</button>
+      <button class="icon-btn delete-btn" id="btn-delete">🗑 Del</button>
+    </div>
+  </div>
+
+  <div id="viewport">
+    <canvas id="three-canvas"></canvas>
+    <div id="hierarchy">
+      <div style="font-weight: bold; margin-bottom: 4px; border-bottom: 1px solid #444; padding-bottom:2px;">Objects</div>
+      <div id="tree-root"></div>
+    </div>
+    <div id="toast">Ready</div>
+  </div>
+
+  <div id="timeline-panel">
+    <div id="tl-header">
+      <button id="tl-play-btn">▶</button>
+      <span id="time-val" style="font-family: monospace;">00:00.00 of 05:00</span>
+      <span style="font-size: 10px; color: #666;">FPS: 30</span>
+    </div>
+    <div id="tl-tracks-container">
+      <canvas id="tl-canvas"></canvas>
+    </div>
+  </div>
+
+  <div id="bottom-toolbar">
+    <div class="tool-item" id="btn-add-model">
+      <span>📦</span>Models
+    </div>
+    <div class="tool-item" id="btn-sky">
+      <span>🌐</span>Sky
+    </div>
+    <div class="tool-item" id="btn-add-camera">
+      <span>🎥</span>Camera
+    </div>
+    <div class="tool-item" id="btn-light">
+      <span>💡</span>Light
+    </div>
+    <div class="tool-item" id="btn-upload-photo">
+      <span>🖼️</span>Media
+    </div>
+    <div class="tool-item" id="btn-add-cube">
+      <span>🧊</span>Cube
+    </div>
+  </div>
+</div>
+
+<input type="file" id="file-model" accept=".glb,.gltf">
+<input type="file" id="file-photo" accept="image/*">
+
+<script>
+  let scene, camera, renderer, orbit, transform;
+  let objects = [], selectedObj = null;
+  let keyframes = []; 
+  let currentSkeletonGroup = null;
+  let raycaster = new THREE.Raycaster();
+  let mouse = new THREE.Vector2();
+  let isPlaying = false, currentTime = 0, duration = 5.0;
+
+  const toast = document.getElementById('toast');
+  const treeRoot = document.getElementById('tree-root');
+  const tlWrap = document.getElementById('tl-tracks-container');
+  const tlCanvas = document.getElementById('tl-canvas');
+  const tlCtx = tlCanvas.getContext('2d');
+
+  function showMsg(m) {
+    toast.innerText = m;
+    toast.style.display = 'block';
+    setTimeout(() => { toast.style.display = 'none'; }, 2000);
+  }
+
+  function initApp() {
+    const viewport = document.getElementById('viewport');
+    scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x121212);
+
+    camera = new THREE.PerspectiveCamera(60, viewport.clientWidth / viewport.clientHeight, 0.1, 1000);
+    resetCamera();
+
+    renderer = new THREE.WebGLRenderer({ canvas: document.getElementById('three-canvas'), antialias: true });
+    renderer.setSize(viewport.clientWidth, viewport.clientHeight);
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+
+    orbit = new THREE.OrbitControls(camera, renderer.domElement);
+    orbit.enableDamping = true;
+    orbit.target.set(0, 0.5, 0);
+
+    transform = new THREE.TransformControls(camera, renderer.domElement);
+    transform.size = 0.8;
+    transform.addEventListener('dragging-changed', (e) => { orbit.enabled = !e.value; });
+    scene.add(transform);
+
+    const light1 = new THREE.DirectionalLight(0xffffff, 1.2);
+    light1.position.set(5, 10, 7);
+    scene.add(light1);
+    scene.add(new THREE.AmbientLight(0xffffff, 0.7));
+
+    const grid = new THREE.GridHelper(20, 20, 0x555555, 0x222222);
+    grid.position.y = 0;
+    scene.add(grid);
+
+    setupEvents();
+    drawTimeline();
+    animate();
+    showMsg('System Loaded');
+  }
+
+  function resetCamera() {
+    camera.position.set(0, 2, 4);
+    if (orbit) {
+      orbit.target.set(0, 0.5, 0);
+      orbit.update();
+    }
+  }
+
+  function applyBoneRig() {
+    if (!selectedObj) {
+      showMsg('Pehle model select karein!');
+      return;
+    }
+
+    if (currentSkeletonGroup) {
+      scene.remove(currentSkeletonGroup);
+      currentSkeletonGroup = null;
+    }
+
+    let hasSkeleton = false;
+    selectedObj.traverse((child) => {
+      if (child.isBone || child.isSkinnedMesh) hasSkeleton = true;
+    });
+
+    if (hasSkeleton) {
+      const helper = new THREE.SkeletonHelper(selectedObj);
+      helper.material.linewidth = 3;
+      helper.material.depthTest = false;
+      scene.add(helper);
+      currentSkeletonGroup = helper;
+      showMsg('Real Skeleton Loaded!');
+      return;
+    }
+
+    const box = new THREE.Box3().setFromObject(selectedObj);
+    const size = new THREE.Vector3();
+    box.getSize(size);
+
+    const modelHeight = size.y || 1.8;
+    const minY = box.min.y;
+
+    const rigGroup = new THREE.Group();
+    const mat = new THREE.MeshBasicMaterial({ color: 0x34c759, wireframe: true, depthTest: false, transparent: true, opacity: 0.8 });
+    const jointMat = new THREE.MeshBasicMaterial({ color: 0xff9500, depthTest: false });
+
+    const createBone = (startY, endY, radiusTop = 0.03, radiusBot = 0.03) => {
+      const h = endY - startY;
+      const geo = new THREE.CylinderGeometry(radiusTop, radiusBot, h, 8);
+      geo.translate(0, h / 2, 0);
+      const mesh = new THREE.Mesh(geo, mat);
+      mesh.position.y = startY;
+      return mesh;
+    };
+
+    const createJoint = (y, r = 0.04) => {
+      const j = new THREE.Mesh(new THREE.SphereGeometry(r, 8, 8), jointMat);
+      j.position.y = y;
+      return j;
+    };
+
+    const spineStart = minY + modelHeight * 0.5;
+    const chestHeight = minY + modelHeight * 0.75;
+    const neckHeight = minY + modelHeight * 0.85;
+    const headHeight = minY + modelHeight * 0.95;
+
+    rigGroup.add(createBone(spineStart, chestHeight, 0.04, 0.05));
+    rigGroup.add(createBone(chestHeight, neckHeight, 0.03, 0.04));
+    rigGroup.add(createJoint(chestHeight));
+    
+    const headMesh = new THREE.Mesh(new THREE.SphereGeometry(modelHeight * 0.08, 12, 12), mat);
+    headMesh.position.y = headHeight;
+    rigGroup.add(headMesh);
+
+    const hipWidth = size.x * 0.15 || 0.15;
+    [-hipWidth, hipWidth].forEach(x => {
+      const kneeY = minY + modelHeight * 0.25;
+      const thigh = createBone(kneeY, spineStart, 0.03, 0.04);
+      thigh.position.x = x;
+      const shin = createBone(minY, kneeY, 0.02, 0.03);
+      shin.position.x = x;
+      rigGroup.add(thigh);
+      rigGroup.add(shin);
+      
+      const kneeJoint = createJoint(kneeY, 0.035);
+      kneeJoint.position.x = x;
+      rigGroup.add(kneeJoint);
+    });
+
+    const shoulderWidth = size.x * 0.25 || 0.25;
+    [-shoulderWidth, shoulderWidth].forEach(x => {
+      const elbowY = minY + modelHeight * 0.62;
+      const handY = minY + modelHeight * 0.5;
+      const arm = createBone(elbowY, chestHeight, 0.025, 0.03);
+      arm.position.x = x;
+      const forearm = createBone(handY, elbowY, 0.02, 0.025);
+      forearm.position.x = x;
+      rigGroup.add(arm);
+      rigGroup.add(forearm);
+    });
+
+    scene.add(rigGroup);
+    currentSkeletonGroup = rigGroup;
+    showMsg('Auto-Scaled Rig Applied!');
+  }
+
+  function selectObject(obj) {
+    selectedObj = obj;
+    if (obj) {
+      transform.attach(obj);
+    } else {
+      transform.detach();
+    }
+    updateTree();
+  }
+
+  function addObject(obj, name) {
+    obj.name = name || 'Object_' + (objects.length + 1);
+    scene.add(obj);
+    objects.push(obj);
+    selectObject(obj);
+  }
+
+  function deleteSelectedObject() {
+    if (!selectedObj) {
+      showMsg('Pehle object select karein');
+      return;
+    }
+    
+    const objName = selectedObj.name;
+    transform.detach();
+    if (currentSkeletonGroup) {
+      scene.remove(currentSkeletonGroup);
+      currentSkeletonGroup = null;
+    }
+    scene.remove(selectedObj);
+
+    keyframes = keyframes.filter(kf => kf.obj !== selectedObj);
+    objects = objects.filter(o => o !== selectedObj);
+    selectedObj = null;
+    updateTree();
+    drawTimeline();
+    showMsg(objName + ' Deleted!');
+  }
+
+  function addKeyframe() {
+    if (!selectedObj) {
+      showMsg('Select object first!');
+      return;
+    }
+
+    const time = parseFloat(currentTime.toFixed(2));
+    let existingKF = keyframes.find(kf => kf.obj === selectedObj && Math.abs(kf.time - time) < 0.05);
+
+    const kfData = {
+      obj: selectedObj,
+      time: time,
+      position: selectedObj.position.clone(),
+      rotation: selectedObj.rotation.clone(),
+      scale: selectedObj.scale.clone()
+    };
+
+    if (existingKF) {
+      Object.assign(existingKF, kfData);
+      showMsg('Keyframe Updated');
+    } else {
+      keyframes.push(kfData);
+      showMsg('Keyframe Added');
+    }
+
+    drawTimeline();
+  }
+
+  function bindBtn(id, fn) {
+    const el = document.getElementById(id);
+    if (!el) return;
+    const handler = (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      fn();
+    };
+    el.addEventListener('touchstart', handler, { passive: false });
+    el.addEventListener('click', handler);
+  }
+
+  function setupEvents() {
+    const canvas = document.getElementById('three-canvas');
+
+    canvas.addEventListener('pointerdown', (e) => {
+      if (transform.dragging) return;
+      const rect = canvas.getBoundingClientRect();
+      mouse.x = ((e.clientX - rect.left) / canvas.clientWidth) * 2 - 1;
+      mouse.y = -((e.clientY - rect.top) / canvas.clientHeight) * 2 + 1;
+
+      raycaster.setFromCamera(mouse, camera);
+      const intersects = raycaster.intersectObjects(objects, true);
+
+      if (intersects.length > 0) {
+        let topObj = intersects[0].object;
+        while (topObj.parent && topObj.parent !== scene) topObj = topObj.parent;
+        selectObject(topObj);
+      }
+    });
+
+    bindBtn('btn-home', () => { resetCamera(); showMsg('Camera Reset'); });
+    bindBtn('btn-mode-trans', () => { transform.setMode('translate'); showMsg('Move Mode'); });
+    bindBtn('btn-mode-rot', () => { transform.setMode('rotate'); showMsg('Rotate Mode'); });
+    bindBtn('btn-mode-scale', () => { transform.setMode('scale'); showMsg('Scale Mode'); });
+    bindBtn('btn-bone-rig', () => { applyBoneRig(); });
+    bindBtn('btn-add-keyframe', () => { addKeyframe(); });
+    bindBtn('btn-delete', () => { deleteSelectedObject(); });
+
+    bindBtn('btn-add-model', () => { document.getElementById('file-model').click(); });
+    bindBtn('btn-upload-photo', () => { document.getElementById('file-photo').click(); });
+    
+    bindBtn('btn-add-cube', () => {
+      const cube = new THREE.Mesh(new THREE.BoxGeometry(0.8, 0.8, 0.8), new THREE.MeshStandardMaterial({ color: 0x007aff }));
+      cube.position.set(0, 0.4, 0);
+      addObject(cube, 'Cube');
+    });
+
+    bindBtn('tl-play-btn', () => {
+      isPlaying = !isPlaying;
+      document.getElementById('tl-play-btn').innerText = isPlaying ? '⏸' : '▶';
+    });
+
+    document.getElementById('file-model').onchange = (e) => {
+      const file = e.target.files[0];
+      if (!file) return;
+      showMsg('Loading Model...');
+      const loader = new THREE.GLTFLoader();
+      loader.load(URL.createObjectURL(file), (gltf) => {
+        addObject(gltf.scene, file.name);
+        showMsg('Model Loaded!');
+      });
+    };
+
+    document.getElementById('file-photo').onchange = (e) => {
+      const file = e.target.files[0];
+      if (!file) return;
+      new THREE.TextureLoader().load(URL.createObjectURL(file), (tex) => {
+        if (selectedObj) {
+          selectedObj.traverse(child => { if(child.isMesh) child.material.map = tex; });
+          showMsg('Texture Applied!');
+        } else {
+          const plane = new THREE.Mesh(new THREE.PlaneGeometry(1.5, 1.5), new THREE.MeshBasicMaterial({ map: tex, side: THREE.DoubleSide }));
+          plane.position.set(0, 1, 0);
+          addObject(plane, 'Media');
+        }
+      });
+    };
+
+    const scrubTimeline = (e) => {
+      const rect = tlWrap.getBoundingClientRect();
+      const x = (e.clientX || (e.touches && e.touches[0].clientX)) - rect.left;
+      let ratio = Math.max(0, Math.min(1, x / rect.width));
+      currentTime = ratio * duration;
+      applyKeyframesAtTime(currentTime);
+      drawTimeline();
+    };
+
+    tlWrap.addEventListener('pointerdown', scrubTimeline);
+    tlWrap.addEventListener('pointermove', (e) => { if(e.buttons > 0) scrubTimeline(e); });
+
+    window.addEventListener('resize', () => {
+      const vp = document.getElementById('viewport');
+      camera.aspect = vp.clientWidth / vp.clientHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(vp.clientWidth, vp.clientHeight);
+      drawTimeline();
+    });
+  }
+
+  function applyKeyframesAtTime(time) {
+    objects.forEach(obj => {
+      const objKFs = keyframes.filter(kf => kf.obj === obj).sort((a,b) => a.time - b.time);
+      if (objKFs.length === 0) return;
+
+      if (time <= objKFs[0].time) {
+        obj.position.copy(objKFs[0].position);
+        obj.rotation.copy(objKFs[0].rotation);
+        obj.scale.copy(objKFs[0].scale);
+      } else if (time >= objKFs[objKFs.length - 1].time) {
+        let last = objKFs[objKFs.length - 1];
+        obj.position.copy(last.position);
+        obj.rotation.copy(last.rotation);
+        obj.scale.copy(last.scale);
+      } else {
+        for (let i = 0; i < objKFs.length - 1; i++) {
+          let kf1 = objKFs[i];
+          let kf2 = objKFs[i+1];
+          if (time >= kf1.time && time <= kf2.time) {
+            let alpha = (time - kf1.time) / (kf2.time - kf1.time);
+            obj.position.lerpVectors(kf1.position, kf2.position, alpha);
+            obj.scale.lerpVectors(kf1.scale, kf2.scale, alpha);
+            obj.rotation.x = THREE.MathUtils.lerp(kf1.rotation.x, kf2.rotation.x, alpha);
+            obj.rotation.y = THREE.MathUtils.lerp(kf1.rotation.y, kf2.rotation.y, alpha);
+            obj.rotation.z = THREE.MathUtils.lerp(kf1.rotation.z, kf2.rotation.z, alpha);
+            break;
+          }
+        }
+      }
+    });
+  }
+
+  function updateTree() {
+    treeRoot.innerHTML = '';
+    if (objects.length === 0) {
+      treeRoot.innerHTML = '<div style="color:#666;">No Objects</div>';
+      return;
+    }
+    objects.forEach(obj => {
+      const item = document.createElement('div');
+      item.className = 'tree-item' + (selectedObj === obj ? ' selected' : '');
+      item.innerText = '📦 ' + (obj.name.length > 8 ? obj.name.substring(0,7)+'..' : obj.name);
+      item.onclick = (e) => { e.stopPropagation(); selectObject(obj); };
+      treeRoot.appendChild(item);
+    });
+  }
+
+  function drawTimeline() {
+    const w = tlCanvas.width = tlWrap.clientWidth;
+    const h = tlCanvas.height = tlWrap.clientHeight;
+    
+    tlCtx.fillStyle = '#111';
+    tlCtx.fillRect(0, 0, w, h);
+    
+    tlCtx.fillStyle = '#666';
+    tlCtx.font = '9px sans-serif';
+    tlCtx.strokeStyle = '#222';
+
+    for(let i = 0; i <= 5; i++) {
+      let x = (i / 5) * (w - 20) + 10;
+      tlCtx.fillText(i + 's', x - 4, 10);
+      tlCtx.beginPath(); tlCtx.moveTo(x, 14); tlCtx.lineTo(x, h); tlCtx.stroke();
+    }
+
+    keyframes.forEach(kf => {
+      let kfX = (kf.time / duration) * (w - 20) + 10;
+      tlCtx.fillStyle = '#ffcc00';
+      tlCtx.beginPath();
+      tlCtx.arc(kfX, 45, 4, 0, Math.PI * 2);
+      tlCtx.fill();
+    });
+
+    let playheadX = (currentTime / duration) * (w - 20) + 10;
+    tlCtx.strokeStyle = '#ffffff';
+    tlCtx.lineWidth = 2;
+    tlCtx.beginPath();
+    tlCtx.moveTo(playheadX, 0);
+    tlCtx.lineTo(playheadX, h);
+    tlCtx.stroke();
+
+    let sec = currentTime.toFixed(2);
+    document.getElementById('time-val').innerText = '00:' + (sec < 10 ? '0' : '') + sec + ' of 05:00';
+  }
+
+  function animate() {
+    requestAnimationFrame(animate);
+    if (isPlaying) {
+      currentTime += 0.016;
+      if (currentTime > duration) currentTime = 0;
+      applyKeyframesAtTime(currentTime);
+      drawTimeline();
+    }
+    
+    if (currentSkeletonGroup && selectedObj && currentSkeletonGroup.type === 'Group') {
+      currentSkeletonGroup.position.copy(selectedObj.position);
+      currentSkeletonGroup.rotation.copy(selectedObj.rotation);
+      currentSkeletonGroup.scale.copy(selectedObj.scale);
+    }
+
+    orbit.update();
+    renderer.render(scene, camera);
+  }
+
+  window.onload = initApp;
+</script>
+</body>
+</html>
