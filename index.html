@@ -60,6 +60,8 @@
     .icon-btn:active { background: #222; color: #007aff; }
     .icon-btn.delete-btn { background: rgba(255, 59, 48, 0.15); color: #ff3b30; border-color: rgba(255, 59, 48, 0.3); }
     .icon-btn.delete-btn:active { background: #ff3b30; color: #fff; }
+    .icon-btn.keyframe-btn { background: rgba(255, 204, 0, 0.15); color: #ffcc00; border-color: rgba(255, 204, 0, 0.3); }
+    .icon-btn.keyframe-btn:active { background: #ffcc00; color: #000; }
 
     /* 2. 3D Viewport Area */
     #viewport { 
@@ -143,13 +145,14 @@
   <!-- Top Navigation Bar -->
   <div id="top-bar">
     <div class="top-bar-left">
-      <button class="icon-btn">🏠</button>
+      <button class="icon-btn" id="btn-home">🏠</button>
     </div>
     <div class="top-bar-right">
       <button class="icon-btn" id="btn-mode-trans">✢ Move</button>
       <button class="icon-btn" id="btn-mode-rot">🔄 Rotate</button>
-      <!-- Scale / Resize Button -->
       <button class="icon-btn" id="btn-mode-scale">📐 Scale</button>
+      <!-- Keyframe Button -->
+      <button class="icon-btn keyframe-btn" id="btn-add-keyframe">🔑 Keyframe</button>
       <!-- Delete Button -->
       <button class="icon-btn delete-btn" id="btn-delete">🗑 Delete</button>
     </div>
@@ -205,8 +208,10 @@
 <input type="file" id="file-photo" accept="image/*">
 
 <script>
+  // Global Variables
   let scene, camera, renderer, orbit, transform;
   let objects = [], selectedObj = null;
+  let keyframes = []; // Stores keyframe data
   let raycaster = new THREE.Raycaster();
   let mouse = new THREE.Vector2();
   let isPlaying = false, currentTime = 0, duration = 5.0;
@@ -296,14 +301,51 @@
       }
     });
 
+    // Remove associated keyframes
+    keyframes = keyframes.filter(kf => kf.obj !== selectedObj);
+
     objects = objects.filter(o => o !== selectedObj);
     selectedObj = null;
     updateTree();
+    drawTimeline();
     showMsg(objName + ' Delete ho gaya!');
   }
 
+  // Keyframe Creation Logic
+  function addKeyframe() {
+    if (!selectedObj) {
+      showMsg('Select object first!');
+      return;
+    }
+
+    const time = parseFloat(currentTime.toFixed(2));
+    
+    // Check if keyframe exists at this time for object
+    let existingKF = keyframes.find(kf => kf.obj === selectedObj && Math.abs(kf.time - time) < 0.05);
+
+    const kfData = {
+      obj: selectedObj,
+      time: time,
+      position: selectedObj.position.clone(),
+      rotation: selectedObj.rotation.clone(),
+      scale: selectedObj.scale.clone()
+    };
+
+    if (existingKF) {
+      Object.assign(existingKF, kfData);
+      showMsg('Keyframe Updated at ' + time + 's');
+    } else {
+      keyframes.push(kfData);
+      showMsg('Keyframe Added at ' + time + 's');
+    }
+
+    drawTimeline();
+  }
+
+  // Centralized Safe Event Delegation System
   function setupEvents() {
     const canvas = document.getElementById('three-canvas');
+
     canvas.addEventListener('pointerdown', (e) => {
       if (transform.dragging) return;
       const rect = canvas.getBoundingClientRect();
@@ -320,24 +362,63 @@
       }
     });
 
-    // Delete Event
-    document.getElementById('btn-delete').onclick = deleteSelectedObject;
-    
+    // Delegated Global Click Listener (Ensures no old/new buttons break)
+    document.addEventListener('click', (e) => {
+      const target = e.target.closest('[id]');
+      if (!target) return;
+
+      switch (target.id) {
+        case 'btn-mode-trans':
+          transform.setMode('translate');
+          showMsg('Move Mode');
+          break;
+
+        case 'btn-mode-rot':
+          transform.setMode('rotate');
+          showMsg('Rotate Mode');
+          break;
+
+        case 'btn-mode-scale':
+          transform.setMode('scale');
+          showMsg('Scale Mode');
+          break;
+
+        case 'btn-add-keyframe':
+          addKeyframe();
+          break;
+
+        case 'btn-delete':
+          deleteSelectedObject();
+          break;
+
+        case 'btn-add-model':
+          document.getElementById('file-model').click();
+          break;
+
+        case 'btn-upload-photo':
+          document.getElementById('file-photo').click();
+          break;
+
+        case 'btn-add-cube':
+          const cube = new THREE.Mesh(new THREE.BoxGeometry(0.8, 0.8, 0.8), new THREE.MeshStandardMaterial({ color: 0x007aff }));
+          cube.position.set(0, 0.4, 0);
+          addObject(cube, 'Cube');
+          break;
+
+        case 'tl-play-btn':
+          isPlaying = !isPlaying;
+          document.getElementById('tl-play-btn').innerText = isPlaying ? '⏸' : '▶';
+          break;
+      }
+    });
+
     window.addEventListener('keydown', (e) => {
       if (e.key === 'Delete' || e.key === 'Backspace') {
         deleteSelectedObject();
       }
     });
 
-    // Transform Mode Buttons
-    document.getElementById('btn-mode-trans').onclick = () => { transform.setMode('translate'); showMsg('Move Mode'); };
-    document.getElementById('btn-mode-rot').onclick = () => { transform.setMode('rotate'); showMsg('Rotate Mode'); };
-    document.getElementById('btn-mode-scale').onclick = () => { transform.setMode('scale'); showMsg('Scale Mode (Size Change)'); };
-
-    // Import Models & Photo Files
-    document.getElementById('btn-add-model').onclick = () => { document.getElementById('file-model').click(); };
-    document.getElementById('btn-upload-photo').onclick = () => { document.getElementById('file-photo').click(); };
-
+    // File Handlers
     document.getElementById('file-model').onchange = (e) => {
       const file = e.target.files[0];
       if (!file) return;
@@ -347,7 +428,7 @@
         addObject(gltf.scene, file.name);
         showMsg('Model Added!');
       }, undefined, () => {
-        showMsg('Model load me error aaya!');
+        showMsg('Error loading model');
       });
     };
 
@@ -366,22 +447,13 @@
       });
     };
 
-    document.getElementById('btn-add-cube').onclick = () => {
-      const cube = new THREE.Mesh(new THREE.BoxGeometry(0.8, 0.8, 0.8), new THREE.MeshStandardMaterial({ color: 0x007aff }));
-      cube.position.set(0, 0.4, 0);
-      addObject(cube, 'Cube');
-    };
-
-    document.getElementById('tl-play-btn').onclick = () => {
-      isPlaying = !isPlaying;
-      document.getElementById('tl-play-btn').innerText = isPlaying ? '⏸' : '▶';
-    };
-
+    // Timeline Scrubbing
     const scrubTimeline = (e) => {
       const rect = tlWrap.getBoundingClientRect();
       const x = (e.clientX || (e.touches && e.touches[0].clientX)) - rect.left;
       let ratio = Math.max(0, Math.min(1, x / rect.width));
       currentTime = ratio * duration;
+      applyKeyframesAtTime(currentTime);
       drawTimeline();
     };
 
@@ -394,6 +466,40 @@
       camera.updateProjectionMatrix();
       renderer.setSize(vp.clientWidth, vp.clientHeight);
       drawTimeline();
+    });
+  }
+
+  // Animation Keyframe Playback / Interpolation
+  function applyKeyframesAtTime(time) {
+    objects.forEach(obj => {
+      const objKFs = keyframes.filter(kf => kf.obj === obj).sort((a,b) => a.time - b.time);
+      if (objKFs.length === 0) return;
+
+      if (time <= objKFs[0].time) {
+        obj.position.copy(objKFs[0].position);
+        obj.rotation.copy(objKFs[0].rotation);
+        obj.scale.copy(objKFs[0].scale);
+      } else if (time >= objKFs[objKFs.length - 1].time) {
+        let last = objKFs[objKFs.length - 1];
+        obj.position.copy(last.position);
+        obj.rotation.copy(last.rotation);
+        obj.scale.copy(last.scale);
+      } else {
+        for (let i = 0; i < objKFs.length - 1; i++) {
+          let kf1 = objKFs[i];
+          let kf2 = objKFs[i+1];
+          if (time >= kf1.time && time <= kf2.time) {
+            let alpha = (time - kf1.time) / (kf2.time - kf1.time);
+            obj.position.lerpVectors(kf1.position, kf2.position, alpha);
+            obj.scale.lerpVectors(kf1.scale, kf2.scale, alpha);
+            // Simple rotation interpolation
+            obj.rotation.x = THREE.MathUtils.lerp(kf1.rotation.x, kf2.rotation.x, alpha);
+            obj.rotation.y = THREE.MathUtils.lerp(kf1.rotation.y, kf2.rotation.y, alpha);
+            obj.rotation.z = THREE.MathUtils.lerp(kf1.rotation.z, kf2.rotation.z, alpha);
+            break;
+          }
+        }
+      }
     });
   }
 
@@ -433,7 +539,7 @@
     tlCtx.fillStyle = '#222';
     tlCtx.fillRect(10, 18, w - 20, 18);
     tlCtx.fillStyle = '#888';
-    tlCtx.fillText('✕ Camera', 16, 30);
+    tlCtx.fillText('✕ Track 1', 16, 30);
 
     let clipStart = 10 + (0 / duration) * (w - 20);
     let clipWidth = (2 / duration) * (w - 20);
@@ -442,6 +548,16 @@
     tlCtx.fillStyle = '#fff';
     tlCtx.fillText('Animation', clipStart + 6, 52);
 
+    // Draw Diamond Keyframe Markers on Timeline
+    keyframes.forEach(kf => {
+      let kfX = (kf.time / duration) * (w - 20) + 10;
+      tlCtx.fillStyle = '#ffcc00';
+      tlCtx.beginPath();
+      tlCtx.arc(kfX, 52, 4, 0, Math.PI * 2);
+      tlCtx.fill();
+    });
+
+    // Playhead Line
     let playheadX = (currentTime / duration) * (w - 20) + 10;
     tlCtx.strokeStyle = '#ffffff';
     tlCtx.lineWidth = 2;
@@ -459,6 +575,7 @@
     if (isPlaying) {
       currentTime += 0.016;
       if (currentTime > duration) currentTime = 0;
+      applyKeyframesAtTime(currentTime);
       drawTimeline();
     }
     orbit.update();
