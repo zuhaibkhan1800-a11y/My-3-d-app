@@ -13,7 +13,6 @@
       -webkit-tap-highlight-color: transparent; 
     }
     
-    /* Dynamic Viewport Height Fix for Mobile Browsers */
     html, body { 
       width: 100%; 
       height: 100dvh; 
@@ -32,21 +31,35 @@
       overflow: hidden; 
     }
     
-    /* 1. Top Bar */
+    /* 1. Top Navigation Bar */
     #top-bar { 
       height: 44px; 
       background: #181818; 
       display: flex; 
       align-items: center; 
       justify-content: space-between; 
-      padding: 0 12px;
+      padding: 0 8px;
       border-bottom: 1px solid #282828; 
       flex-shrink: 0; 
-      z-index: 10;
+      z-index: 1000;
     }
-    .top-bar-left, .top-bar-right { display: flex; align-items: center; gap: 10px; }
-    .icon-btn { background: transparent; border: none; color: #ccc; font-size: 13px; cursor: pointer; display: flex; align-items: center; gap: 4px; }
-    .icon-btn:active { color: #007aff; }
+    .top-bar-left, .top-bar-right { display: flex; align-items: center; gap: 4px; }
+    
+    .icon-btn { 
+      background: rgba(255,255,255,0.05); 
+      border: 1px solid #333; 
+      color: #ccc; 
+      font-size: 11px; 
+      cursor: pointer; 
+      display: flex; 
+      align-items: center; 
+      gap: 3px; 
+      padding: 5px 8px; 
+      border-radius: 6px; 
+    }
+    .icon-btn:active { background: #222; color: #007aff; }
+    .icon-btn.delete-btn { background: rgba(255, 59, 48, 0.15); color: #ff3b30; border-color: rgba(255, 59, 48, 0.3); }
+    .icon-btn.delete-btn:active { background: #ff3b30; color: #fff; }
 
     /* 2. 3D Viewport Area */
     #viewport { 
@@ -61,9 +74,9 @@
     #hierarchy { 
       position: absolute; top: 10px; left: 10px; width: 110px; max-height: 100px; 
       background: rgba(18, 18, 18, 0.85); border: 1px solid #333; border-radius: 6px; padding: 6px; 
-      overflow-y: auto; z-index: 100; font-size: 10px; 
+      overflow-y: auto; z-index: 100; font-size: 10px; backdrop-filter: blur(4px);
     }
-    .tree-item { padding: 3px 5px; border-radius: 3px; margin-bottom: 2px; background: #222; cursor: pointer; }
+    .tree-item { padding: 4px 6px; border-radius: 4px; margin-bottom: 3px; background: rgba(255,255,255,0.05); cursor: pointer; display: flex; justify-content: space-between; align-items: center; }
     .tree-item.selected { background: #007aff; color: #fff; }
 
     /* 3. Timeline Panel */
@@ -83,7 +96,7 @@
     #tl-tracks-container { flex: 1; position: relative; overflow: hidden; background: #111; touch-action: none; }
     #tl-canvas { width: 100%; height: 100%; display: block; }
 
-    /* 4. Bottom Toolbar (Fixed Layout for Mobile) */
+    /* 4. Bottom Toolbar */
     #bottom-toolbar { 
       height: 54px; 
       background: #181818; 
@@ -111,14 +124,14 @@
     .tool-item:active { color: #007aff; }
 
     #toast { 
-      position: absolute; top: 10px; left: 50%; transform: translateX(-50%); 
-      background: rgba(0,0,0,0.85); color: #fff; padding: 4px 12px; border-radius: 20px; font-size: 11px; 
+      position: absolute; top: 12px; left: 50%; transform: translateX(-50%); 
+      background: rgba(0,0,0,0.85); color: #fff; padding: 6px 14px; border-radius: 20px; font-size: 11px; 
       display: none; z-index: 2000; pointer-events: none; border: 1px solid #444;
     }
     input[type="file"] { display: none !important; }
   </style>
 
-  <!-- Three.js Bundle -->
+  <!-- Three.js Libraries -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/TransformControls.js"></script>
@@ -127,7 +140,7 @@
 <body>
 
 <div id="app">
-  <!-- Top Bar -->
+  <!-- Top Navigation Bar -->
   <div id="top-bar">
     <div class="top-bar-left">
       <button class="icon-btn">🏠</button>
@@ -135,21 +148,24 @@
     <div class="top-bar-right">
       <button class="icon-btn" id="btn-mode-trans">✢ Move</button>
       <button class="icon-btn" id="btn-mode-rot">🔄 Rotate</button>
-      <button class="icon-btn" id="btn-delete" style="color: #ff3b30;">🗑</button>
+      <!-- Scale / Resize Button -->
+      <button class="icon-btn" id="btn-mode-scale">📐 Scale</button>
+      <!-- Delete Button -->
+      <button class="icon-btn delete-btn" id="btn-delete">🗑 Delete</button>
     </div>
   </div>
 
-  <!-- 3D Canvas -->
+  <!-- 3D Canvas Viewport -->
   <div id="viewport">
     <canvas id="three-canvas"></canvas>
     <div id="hierarchy">
-      <div style="font-weight: bold; margin-bottom: 4px; border-bottom: 1px solid #444;">Objects</div>
+      <div style="font-weight: bold; margin-bottom: 4px; border-bottom: 1px solid #444; padding-bottom:2px;">Objects</div>
       <div id="tree-root"></div>
     </div>
     <div id="toast">Engine Ready</div>
   </div>
 
-  <!-- Timeline Panel -->
+  <!-- Video Timeline Panel -->
   <div id="timeline-panel">
     <div id="tl-header">
       <button id="tl-play-btn">▶</button>
@@ -184,6 +200,7 @@
   </div>
 </div>
 
+<!-- Hidden File Upload Handlers -->
 <input type="file" id="file-model" accept=".glb,.gltf">
 <input type="file" id="file-photo" accept="image/*">
 
@@ -243,16 +260,46 @@
 
   function selectObject(obj) {
     selectedObj = obj;
-    if (obj) transform.attach(obj);
-    else transform.detach();
+    if (obj) {
+      transform.attach(obj);
+    } else {
+      transform.detach();
+    }
     updateTree();
   }
 
   function addObject(obj, name) {
-    obj.name = name || 'Mesh_' + (objects.length + 1);
+    obj.name = name || 'Object_' + (objects.length + 1);
     scene.add(obj);
     objects.push(obj);
     selectObject(obj);
+  }
+
+  function deleteSelectedObject() {
+    if (!selectedObj) {
+      showMsg('Pehle koi object select karein');
+      return;
+    }
+    
+    const objName = selectedObj.name;
+    transform.detach();
+    scene.remove(selectedObj);
+    
+    selectedObj.traverse((child) => {
+      if (child.geometry) child.geometry.dispose();
+      if (child.material) {
+        if (Array.isArray(child.material)) {
+          child.material.forEach(m => m.dispose());
+        } else {
+          child.material.dispose();
+        }
+      }
+    });
+
+    objects = objects.filter(o => o !== selectedObj);
+    selectedObj = null;
+    updateTree();
+    showMsg(objName + ' Delete ho gaya!');
   }
 
   function setupEvents() {
@@ -273,27 +320,34 @@
       }
     });
 
-    document.getElementById('btn-add-model').onclick = () => {
-      document.getElementById('file-model').click();
-    };
+    // Delete Event
+    document.getElementById('btn-delete').onclick = deleteSelectedObject;
+    
+    window.addEventListener('keydown', (e) => {
+      if (e.key === 'Delete' || e.key === 'Backspace') {
+        deleteSelectedObject();
+      }
+    });
 
-    document.getElementById('btn-upload-photo').onclick = () => {
-      document.getElementById('file-photo').click();
-    };
+    // Transform Mode Buttons
+    document.getElementById('btn-mode-trans').onclick = () => { transform.setMode('translate'); showMsg('Move Mode'); };
+    document.getElementById('btn-mode-rot').onclick = () => { transform.setMode('rotate'); showMsg('Rotate Mode'); };
+    document.getElementById('btn-mode-scale').onclick = () => { transform.setMode('scale'); showMsg('Scale Mode (Size Change)'); };
 
-    document.getElementById('btn-mode-trans').onclick = () => { transform.setMode('translate'); showMsg('Move Tool'); };
-    document.getElementById('btn-mode-rot').onclick = () => { transform.setMode('rotate'); showMsg('Rotate Tool'); };
+    // Import Models & Photo Files
+    document.getElementById('btn-add-model').onclick = () => { document.getElementById('file-model').click(); };
+    document.getElementById('btn-upload-photo').onclick = () => { document.getElementById('file-photo').click(); };
 
     document.getElementById('file-model').onchange = (e) => {
       const file = e.target.files[0];
       if (!file) return;
-      showMsg('Loading Model...');
+      showMsg('Model Loading...');
       const loader = new THREE.GLTFLoader();
       loader.load(URL.createObjectURL(file), (gltf) => {
         addObject(gltf.scene, file.name);
         showMsg('Model Added!');
       }, undefined, () => {
-        showMsg('Error loading model');
+        showMsg('Model load me error aaya!');
       });
     };
 
@@ -316,16 +370,6 @@
       const cube = new THREE.Mesh(new THREE.BoxGeometry(0.8, 0.8, 0.8), new THREE.MeshStandardMaterial({ color: 0x007aff }));
       cube.position.set(0, 0.4, 0);
       addObject(cube, 'Cube');
-    };
-
-    document.getElementById('btn-delete').onclick = () => {
-      if (selectedObj) {
-        transform.detach();
-        scene.remove(selectedObj);
-        objects = objects.filter(o => o !== selectedObj);
-        selectObject(null);
-        showMsg('Deleted');
-      }
     };
 
     document.getElementById('tl-play-btn').onclick = () => {
@@ -355,10 +399,14 @@
 
   function updateTree() {
     treeRoot.innerHTML = '';
+    if (objects.length === 0) {
+      treeRoot.innerHTML = '<div style="color:#666;">No Objects</div>';
+      return;
+    }
     objects.forEach(obj => {
       const item = document.createElement('div');
       item.className = 'tree-item' + (selectedObj === obj ? ' selected' : '');
-      item.innerText = '📦 ' + obj.name;
+      item.innerText = '📦 ' + (obj.name.length > 8 ? obj.name.substring(0,7)+'..' : obj.name);
       item.onclick = (e) => { e.stopPropagation(); selectObject(obj); };
       treeRoot.appendChild(item);
     });
