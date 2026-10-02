@@ -3,53 +3,51 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>3D Pro Timeline Studio</title>
+  <title>3D Studio</title>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; -webkit-tap-highlight-color: transparent; }
-    body, html { width: 100%; height: 100%; overflow: hidden; background: #0d0d0d; color: #fff; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+    body, html { width: 100%; height: 100%; overflow: hidden; background: #000; color: #fff; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
     #app { display: flex; flex-direction: column; width: 100vw; height: 100vh; position: relative; }
     
     /* Top Bar Header */
     #top-bar { 
-      height: 48px; background: #181818; display: flex; align-items: center; justify-content: space-between; padding: 0 12px;
-      border-bottom: 1px solid #282828; z-index: 999; flex-shrink: 0;
+      height: 44px; background: #121212; display: flex; align-items: center; justify-content: space-between; padding: 0 12px;
+      border-bottom: 1px solid #222; z-index: 999; flex-shrink: 0;
     }
-    .top-bar-left, .top-bar-right { display: flex; align-items: center; gap: 10px; }
-    .icon-btn { background: transparent; border: none; color: #ccc; font-size: 16px; cursor: pointer; padding: 6px; }
+    .top-bar-left, .top-bar-right { display: flex; align-items: center; gap: 12px; }
+    .icon-btn { background: transparent; border: none; color: #ccc; font-size: 14px; cursor: pointer; display: flex; align-items: center; gap: 4px; }
     .icon-btn:active { color: #007aff; }
 
     /* 3D Viewport */
-    #viewport { flex: 1; position: relative; width: 100%; background: #121212; overflow: hidden; }
+    #viewport { flex: 1; position: relative; width: 100%; background: #0a0a0a; overflow: hidden; }
     #three-canvas { width: 100%; height: 100%; display: block; touch-action: none; }
     
     #hierarchy { 
-      position: absolute; top: 10px; left: 10px; width: 120px; max-height: 120px; 
-      background: rgba(18, 18, 18, 0.85); border: 1px solid #333; border-radius: 6px; padding: 6px; 
-      overflow-y: auto; z-index: 100; font-size: 10px; 
+      position: absolute; top: 12px; left: 12px; width: 120px; max-height: 120px; 
+      background: rgba(18, 18, 18, 0.7); border: 1px solid #333; border-radius: 6px; padding: 6px; 
+      overflow-y: auto; z-index: 100; font-size: 11px; backdrop-filter: blur(4px);
     }
-    .tree-item { padding: 3px 5px; border-radius: 3px; margin-bottom: 2px; background: #222; cursor: pointer; }
+    .tree-item { padding: 3px 5px; border-radius: 3px; margin-bottom: 2px; background: rgba(255,255,255,0.05); cursor: pointer; }
     .tree-item.selected { background: #007aff; color: #fff; }
 
-    /* Exact Video Timeline Block (Reference Style) */
+    /* Video Timeline Block */
     #timeline-panel { 
-      height: 180px; background: #141414; border-top: 1px solid #282828; display: flex; flex-direction: column; z-index: 999; flex-shrink: 0; 
+      height: 140px; background: #111; border-top: 1px solid #222; display: flex; flex-direction: column; z-index: 999; flex-shrink: 0; 
     }
     
-    /* Time Sub-header & Controls */
     #tl-header { 
-      height: 32px; background: #1c1c1c; display: flex; align-items: center; justify-content: space-between; padding: 0 12px; font-size: 11px; color: #aaa;
+      height: 30px; background: #181818; display: flex; align-items: center; justify-content: space-between; padding: 0 12px; font-size: 11px; color: #888;
     }
-    #tl-play-btn { background: transparent; border: none; color: #fff; font-size: 14px; cursor: pointer; }
+    #tl-play-btn { background: transparent; border: none; color: #fff; font-size: 12px; cursor: pointer; }
 
-    /* Multi-track Timeline Area */
     #tl-tracks-container { 
-      flex: 1; position: relative; overflow-x: auto; overflow-y: hidden; background: #111; touch-action: none;
+      flex: 1; position: relative; overflow-x: auto; overflow-y: hidden; background: #0e0e0e; touch-action: none;
     }
     #tl-canvas { width: 100%; height: 100%; display: block; }
 
-    /* Bottom Toolbar Grid (Reference Style Icons) */
+    /* Bottom Toolbar Grid (Import Buttons) */
     #bottom-toolbar { 
-      height: 58px; background: #181818; border-top: 1px solid #282828; display: flex; align-items: center; justify-content: space-around;
+      height: 56px; background: #121212; border-top: 1px solid #222; display: flex; align-items: center; justify-content: space-around;
       padding: 0 4px; flex-shrink: 0; z-index: 1000;
     }
     .tool-item { display: flex; flex-direction: column; align-items: center; gap: 3px; color: #aaa; font-size: 10px; cursor: pointer; flex: 1; }
@@ -64,7 +62,7 @@
     input[type="file"] { display: none !important; }
   </style>
 
-  <!-- Stable Three.js Bundle -->
+  <!-- Three.js Libraries -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/TransformControls.js"></script>
@@ -79,13 +77,13 @@
       <button class="icon-btn" title="Home">🏠</button>
     </div>
     <div class="top-bar-right">
-      <button class="icon-btn" id="btn-mode-trans" title="Move">✢ Move</button>
-      <button class="icon-btn" id="btn-mode-rot" title="Rotate">🔄 Rotate</button>
-      <button class="icon-btn" id="btn-delete" style="color: #ff3b30;" title="Delete">🗑</button>
+      <button class="icon-btn" id="btn-mode-trans">✢ Move</button>
+      <button class="icon-btn" id="btn-mode-rot">🔄 Rotate</button>
+      <button class="icon-btn" id="btn-delete" style="color: #ff3b30;">🗑</button>
     </div>
   </div>
 
-  <!-- 3D Canvas Container -->
+  <!-- 3D Canvas Viewport -->
   <div id="viewport">
     <canvas id="three-canvas"></canvas>
     <div id="hierarchy">
@@ -95,11 +93,11 @@
     <div id="toast">Engine Ready</div>
   </div>
 
-  <!-- Video Style Timeline (Exact Reference UI) -->
+  <!-- Timeline Panel -->
   <div id="timeline-panel">
     <div id="tl-header">
       <button id="tl-play-btn">▶</button>
-      <span id="time-val" style="font-family: monospace;">00:00 of 05:00</span>
+      <span id="time-val" style="font-family: monospace;">00:00.00 of 05:00</span>
       <span style="font-size: 10px; color: #666;">FPS: 30</span>
     </div>
     <div id="tl-tracks-container">
@@ -107,7 +105,7 @@
     </div>
   </div>
 
-  <!-- Bottom Navigation Tools (Reference Bar) -->
+  <!-- Bottom Import Toolbar Bar -->
   <div id="bottom-toolbar">
     <div class="tool-item" id="btn-add-model">
       <span>📦</span>Models
@@ -155,21 +153,19 @@
   function initApp() {
     const viewport = document.getElementById('viewport');
     scene = new THREE.Scene();
-    scene.background = new THREE.Color(0x121212);
+    scene.background = new THREE.Color(0x0a0a0a);
 
     camera = new THREE.PerspectiveCamera(60, viewport.clientWidth / viewport.clientHeight, 0.1, 1000);
-    camera.position.set(0, 2, 4);
+    camera.position.set(0, 2, 5);
 
     renderer = new THREE.WebGLRenderer({ canvas: document.getElementById('three-canvas'), antialias: true });
     renderer.setSize(viewport.clientWidth, viewport.clientHeight);
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
 
-    // Orbit Controls
     orbit = new THREE.OrbitControls(camera, renderer.domElement);
     orbit.enableDamping = true;
-    orbit.target.set(0, 0.8, 0);
+    orbit.target.set(0, 0, 0);
 
-    // Transform Gizmo Controls
     transform = new THREE.TransformControls(camera, renderer.domElement);
     transform.size = 0.8;
     transform.addEventListener('dragging-changed', (e) => {
@@ -177,21 +173,20 @@
     });
     scene.add(transform);
 
-    // Lights
+    // Ambient & Directional Lights
     const light1 = new THREE.DirectionalLight(0xffffff, 1.2);
     light1.position.set(5, 10, 7);
     scene.add(light1);
-    scene.add(new THREE.AmbientLight(0xffffff, 0.7));
+    scene.add(new THREE.AmbientLight(0xffffff, 0.6));
 
-    // PERMANENT GRID
-    const grid = new THREE.GridHelper(20, 20, 0x555555, 0x222222);
+    // Permanent Grid
+    const grid = new THREE.GridHelper(20, 20, 0x444444, 0x222222);
     grid.position.y = 0;
     scene.add(grid);
 
     setupEvents();
     drawTimeline();
     animate();
-    showMsg('3D Engine Online!');
   }
 
   function selectObject(obj) {
@@ -212,7 +207,6 @@
   }
 
   function setupEvents() {
-    // Touch Select
     const canvas = document.getElementById('three-canvas');
     canvas.addEventListener('pointerdown', (e) => {
       if (transform.dragging) return;
@@ -232,19 +226,12 @@
       }
     });
 
-    // Bottom Toolbar & Actions
+    // Import Button Handlers
     document.getElementById('btn-add-model').onclick = () => document.getElementById('file-model').click();
     document.getElementById('btn-upload-photo').onclick = () => document.getElementById('file-photo').click();
 
-    document.getElementById('btn-mode-trans').onclick = function() {
-      transform.setMode('translate');
-      showMsg('Move Tool');
-    };
-    
-    document.getElementById('btn-mode-rot').onclick = function() {
-      transform.setMode('rotate');
-      showMsg('Rotate Tool');
-    };
+    document.getElementById('btn-mode-trans').onclick = () => { transform.setMode('translate'); showMsg('Move Tool'); };
+    document.getElementById('btn-mode-rot').onclick = () => { transform.setMode('rotate'); showMsg('Rotate Tool'); };
 
     document.getElementById('file-model').onchange = (e) => {
       const file = e.target.files[0];
@@ -252,7 +239,7 @@
       showMsg('Loading Model...');
       new THREE.GLTFLoader().load(URL.createObjectURL(file), (gltf) => {
         addObject(gltf.scene, file.name);
-        showMsg('Model Loaded!');
+        showMsg('Loaded!');
       });
     };
 
@@ -292,7 +279,6 @@
       document.getElementById('tl-play-btn').innerText = isPlaying ? '⏸' : '▶';
     };
 
-    // Timeline Drag / Scrub
     const scrubTimeline = (e) => {
       const rect = tlWrap.getBoundingClientRect();
       const x = (e.clientX || (e.touches && e.touches[0].clientX)) - rect.left;
@@ -324,44 +310,38 @@
     });
   }
 
-  /* Render Video Editor Multi-Track Timeline (Reference Match) */
   function drawTimeline() {
     const w = tlCanvas.width = tlWrap.clientWidth;
     const h = tlCanvas.height = tlWrap.clientHeight;
     
-    // Canvas background
-    tlCtx.fillStyle = '#141414';
+    tlCtx.fillStyle = '#0e0e0e';
     tlCtx.fillRect(0, 0, w, h);
     
-    // Time Ruler Marks (0s, 1s, 2s...)
-    tlCtx.fillStyle = '#666';
+    tlCtx.fillStyle = '#555';
     tlCtx.font = '9px sans-serif';
-    tlCtx.strokeStyle = '#222';
+    tlCtx.strokeStyle = '#1d1d1d';
     tlCtx.lineWidth = 1;
 
     for(let i = 0; i <= 5; i++) {
       let x = (i / 5) * (w - 20) + 10;
-      tlCtx.fillText(i + 's', x - 4, 12);
-      tlCtx.beginPath(); tlCtx.moveTo(x, 16); tlCtx.lineTo(x, h); tlCtx.stroke();
+      tlCtx.fillText(i + 's', x - 4, 10);
+      tlCtx.beginPath(); tlCtx.moveTo(x, 14); tlCtx.lineTo(x, h); tlCtx.stroke();
     }
 
-    // Camera Track Bar
-    tlCtx.fillStyle = '#222';
-    tlCtx.fillRect(10, 24, w - 20, 22);
-    tlCtx.fillStyle = '#888';
-    tlCtx.fillText('✕ Camera', 20, 38);
+    tlCtx.fillStyle = '#1a1a1a';
+    tlCtx.fillRect(10, 20, w - 20, 18);
+    tlCtx.fillStyle = '#777';
+    tlCtx.fillText('✕ Camera', 16, 32);
 
-    // Animation Clip Track Bar (Blue Block)
     let clipStart = 10 + (0 / duration) * (w - 20);
     let clipWidth = (2 / duration) * (w - 20);
-    tlCtx.fillStyle = '#1d4ed8';
-    tlCtx.fillRect(clipStart, 52, clipWidth, 30);
+    tlCtx.fillStyle = '#2563eb';
+    tlCtx.fillRect(clipStart, 42, clipWidth, 26);
     tlCtx.fillStyle = '#fff';
-    tlCtx.fillText('Animation', clipStart + 8, 66);
+    tlCtx.fillText('Animation', clipStart + 6, 54);
     tlCtx.fillStyle = '#93c5fd';
-    tlCtx.fillText('2s', clipStart + 8, 77);
+    tlCtx.fillText('2s', clipStart + 6, 64);
 
-    // White Vertical Needle Playhead (Reference Match)
     let playheadX = (currentTime / duration) * (w - 20) + 10;
     tlCtx.strokeStyle = '#ffffff';
     tlCtx.lineWidth = 2;
@@ -370,7 +350,6 @@
     tlCtx.lineTo(playheadX, h);
     tlCtx.stroke();
 
-    // Time counter string update
     let sec = currentTime.toFixed(2);
     document.getElementById('time-val').innerText = '00:' + (sec < 10 ? '0' : '') + sec + ' of 05:00';
   }
