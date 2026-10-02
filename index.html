@@ -270,6 +270,54 @@
     }
   }
 
+  // Model ke andar existing bones search karne ka function
+  function findBones(object) {
+    const bones = [];
+    object.traverse((child) => {
+      if (child.isBone) bones.push(child);
+    });
+    return bones;
+  }
+
+  // Agar model me bones nahi hain toh Custom Skeleton create karne ka system
+  function buildProceduralHumanRig(parentObj) {
+    const rootBone = new THREE.Bone();
+    rootBone.position.set(0, 0, 0);
+
+    const spine = new THREE.Bone();
+    spine.position.set(0, 0.5, 0);
+    rootBone.add(spine);
+
+    const neck = new THREE.Bone();
+    neck.position.set(0, 0.4, 0);
+    spine.add(neck);
+
+    const head = new THREE.Bone();
+    head.position.set(0, 0.3, 0);
+    neck.add(head);
+
+    // Shoulders & Arms
+    const leftArm = new THREE.Bone();
+    leftArm.position.set(-0.3, 0.3, 0);
+    spine.add(leftArm);
+
+    const rightArm = new THREE.Bone();
+    rightArm.position.set(0.3, 0.3, 0);
+    spine.add(rightArm);
+
+    // Legs
+    const leftLeg = new THREE.Bone();
+    leftLeg.position.set(-0.2, -0.1, 0);
+    rootBone.add(leftLeg);
+
+    const rightLeg = new THREE.Bone();
+    rightLeg.position.set(0.2, -0.1, 0);
+    rootBone.add(rightLeg);
+
+    parentObj.add(rootBone);
+    return rootBone;
+  }
+
   function applyBoneRig() {
     if (!selectedObj) {
       showMsg('Pehle model select karein!');
@@ -281,10 +329,19 @@
       currentSkeletonHelper = null;
     }
 
-    // Skeleton helper attach karne ki koshish
+    let existingBones = findBones(selectedObj);
+
+    // Agar existing bones na milein toh procedural skeleton banao
+    if (existingBones.length === 0) {
+      buildProceduralHumanRig(selectedObj);
+      showMsg('Generated Custom Bone Rig!');
+    } else {
+      showMsg('Detected & Rendered Model Skeleton!');
+    }
+
     currentSkeletonHelper = new THREE.SkeletonHelper(selectedObj);
+    currentSkeletonHelper.material.linewidth = 3;
     scene.add(currentSkeletonHelper);
-    showMsg('Bone Rig Added to Model!');
   }
 
   function selectObject(obj) {
@@ -576,40 +633,4 @@
 
     keyframes.forEach(kf => {
       let kfX = (kf.time / duration) * (w - 20) + 10;
-      tlCtx.fillStyle = '#ffcc00';
-      tlCtx.beginPath();
-      tlCtx.arc(kfX, 52, 4, 0, Math.PI * 2);
-      tlCtx.fill();
-    });
-
-    let playheadX = (currentTime / duration) * (w - 20) + 10;
-    tlCtx.strokeStyle = '#ffffff';
-    tlCtx.lineWidth = 2;
-    tlCtx.beginPath();
-    tlCtx.moveTo(playheadX, 0);
-    tlCtx.lineTo(playheadX, h);
-    tlCtx.stroke();
-
-    let sec = currentTime.toFixed(2);
-    document.getElementById('time-val').innerText = '00:' + (sec < 10 ? '0' : '') + sec + ' of 05:00';
-  }
-
-  function animate() {
-    requestAnimationFrame(animate);
-    if (isPlaying) {
-      currentTime += 0.016;
-      if (currentTime > duration) currentTime = 0;
-      applyKeyframesAtTime(currentTime);
-      drawTimeline();
-    }
-    if (currentSkeletonHelper) {
-      currentSkeletonHelper.update();
-    }
-    orbit.update();
-    renderer.render(scene, camera);
-  }
-
-  window.onload = initApp;
-</script>
-</body>
-</html>
+      tlCtx.fillStyle = 
