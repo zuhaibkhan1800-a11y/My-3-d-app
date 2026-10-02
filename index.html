@@ -59,6 +59,7 @@
     }
     .icon-btn:active { background: #222; color: #007aff; }
     .icon-btn.delete-btn { background: rgba(255, 59, 48, 0.15); color: #ff3b30; border-color: rgba(255, 59, 48, 0.3); }
+    .icon-btn.delete-btn:active { background: #ff3b30; color: #fff; }
     .icon-btn.keyframe-btn { background: rgba(255, 204, 0, 0.15); color: #ffcc00; border-color: rgba(255, 204, 0, 0.3); }
     .icon-btn.rig-btn { background: rgba(52, 199, 89, 0.15); color: #34c759; border-color: rgba(52, 199, 89, 0.3); }
 
@@ -79,52 +80,6 @@
     }
     .tree-item { padding: 4px 6px; border-radius: 4px; margin-bottom: 3px; background: rgba(255,255,255,0.05); cursor: pointer; display: flex; justify-content: space-between; align-items: center; }
     .tree-item.selected { background: #007aff; color: #fff; }
-
-    /* Rigging Joint Overlay Layer */
-    #rig-overlay {
-      position: absolute;
-      top: 0; left: 0; width: 100%; height: 100%;
-      pointer-events: none;
-      display: none;
-      z-index: 500;
-    }
-    .joint-node {
-      position: absolute;
-      width: 18px;
-      height: 18px;
-      border-radius: 50%;
-      background: rgba(255, 149, 0, 0.4);
-      border: 2px solid #ff9500;
-      transform: translate(-50%, -50%);
-      pointer-events: auto;
-      cursor: pointer;
-    }
-    .joint-node.center-node {
-      background: rgba(0, 199, 190, 0.4);
-      border-color: #00c7be;
-    }
-    #rig-bar-bottom {
-      position: absolute;
-      bottom: 12px;
-      left: 50%;
-      transform: translateX(-50%);
-      display: flex;
-      gap: 10px;
-      z-index: 600;
-    }
-    .apply-btn {
-      background: #2c2c2e;
-      color: #fff;
-      border: 1px solid #444;
-      padding: 6px 16px;
-      border-radius: 20px;
-      font-size: 12px;
-      cursor: pointer;
-      display: flex;
-      align-items: center;
-      gap: 5px;
-      box-shadow: 0 4px 10px rgba(0,0,0,0.5);
-    }
 
     /* Timeline Panel */
     #timeline-panel { 
@@ -190,14 +145,12 @@
   <!-- Top Navigation Bar -->
   <div id="top-bar">
     <div class="top-bar-left">
-      <!-- Home Button Restored -->
       <button class="icon-btn" id="btn-home">🏠 Home</button>
       <button class="icon-btn" id="btn-mode-trans">✢ Move</button>
       <button class="icon-btn" id="btn-mode-rot">🔄 Rotate</button>
       <button class="icon-btn" id="btn-mode-scale">📐 Scale</button>
     </div>
     <div class="top-bar-right">
-      <!-- Bone Rig Button Added -->
       <button class="icon-btn rig-btn" id="btn-bone-rig">🦴 Bone Rig</button>
       <button class="icon-btn keyframe-btn" id="btn-add-keyframe">🔑 Keyframe</button>
       <button class="icon-btn delete-btn" id="btn-delete">🗑 Delete</button>
@@ -211,23 +164,6 @@
       <div style="font-weight: bold; margin-bottom: 4px; border-bottom: 1px solid #444; padding-bottom:2px;">Objects</div>
       <div id="tree-root"></div>
     </div>
-
-    <!-- Prisma 3D Style Rigging Joint Overlay -->
-    <div id="rig-overlay">
-      <div class="joint-node center-node" style="top: 25%; left: 50%;"></div> <!-- Neck/Head -->
-      <div class="joint-node" style="top: 35%; left: 42%;"></div> <!-- L-Shoulder -->
-      <div class="joint-node" style="top: 35%; left: 58%;"></div> <!-- R-Shoulder -->
-      <div class="joint-node" style="top: 48%; left: 38%;"></div> <!-- L-Elbow -->
-      <div class="joint-node" style="top: 48%; left: 62%;"></div> <!-- R-Elbow -->
-      <div class="joint-node" style="top: 52%; left: 50%;"></div> <!-- Hip -->
-      <div class="joint-node" style="top: 68%; left: 45%;"></div> <!-- L-Knee -->
-      <div class="joint-node" style="top: 68%; left: 55%;"></div> <!-- R-Knee -->
-      
-      <div id="rig-bar-bottom">
-        <button class="apply-btn" id="btn-apply-rig">✓ Apply Rig</button>
-      </div>
-    </div>
-
     <div id="toast">Engine Ready</div>
   </div>
 
@@ -271,21 +207,19 @@
 <input type="file" id="file-photo" accept="image/*">
 
 <script>
-  // Global Variables
   let scene, camera, renderer, orbit, transform;
   let objects = [], selectedObj = null;
   let keyframes = []; 
+  let currentSkeletonHelper = null;
   let raycaster = new THREE.Raycaster();
   let mouse = new THREE.Vector2();
   let isPlaying = false, currentTime = 0, duration = 5.0;
-  let isRigMode = false;
 
   const toast = document.getElementById('toast');
   const treeRoot = document.getElementById('tree-root');
   const tlWrap = document.getElementById('tl-tracks-container');
   const tlCanvas = document.getElementById('tl-canvas');
   const tlCtx = tlCanvas.getContext('2d');
-  const rigOverlay = document.getElementById('rig-overlay');
 
   function showMsg(m) {
     toast.innerText = m;
@@ -336,14 +270,21 @@
     }
   }
 
-  function toggleRigMode() {
+  function applyBoneRig() {
     if (!selectedObj) {
-      showMsg('Select a model first to Rig');
+      showMsg('Pehle model select karein!');
       return;
     }
-    isRigMode = !isRigMode;
-    rigOverlay.style.display = isRigMode ? 'block' : 'none';
-    showMsg(isRigMode ? 'IK Rigging Mode Active' : 'Rig Mode Closed');
+
+    if (currentSkeletonHelper) {
+      scene.remove(currentSkeletonHelper);
+      currentSkeletonHelper = null;
+    }
+
+    // Skeleton helper attach karne ki koshish
+    currentSkeletonHelper = new THREE.SkeletonHelper(selectedObj);
+    scene.add(currentSkeletonHelper);
+    showMsg('Bone Rig Added to Model!');
   }
 
   function selectObject(obj) {
@@ -371,6 +312,10 @@
     
     const objName = selectedObj.name;
     transform.detach();
+    if (currentSkeletonHelper) {
+      scene.remove(currentSkeletonHelper);
+      currentSkeletonHelper = null;
+    }
     scene.remove(selectedObj);
     
     selectedObj.traverse((child) => {
@@ -424,7 +369,7 @@
     const canvas = document.getElementById('three-canvas');
 
     canvas.addEventListener('pointerdown', (e) => {
-      if (transform.dragging || isRigMode) return;
+      if (transform.dragging) return;
       const rect = canvas.getBoundingClientRect();
       mouse.x = ((e.clientX - rect.left) / canvas.clientWidth) * 2 - 1;
       mouse.y = -((e.clientY - rect.top) / canvas.clientHeight) * 2 + 1;
@@ -439,7 +384,6 @@
       }
     });
 
-    // Centralized Event Delegation System
     document.addEventListener('click', (e) => {
       const target = e.target.closest('[id]');
       if (!target) return;
@@ -466,19 +410,7 @@
           break;
 
         case 'btn-bone-rig':
-          toggleRigMode();
-          break;
-
-        case 'btn-apply-rig':
-          isRigMode = false;
-          rigOverlay.style.display = 'none';
-          
-          // Generate Skeleton Helper on selected model
-          if (selectedObj) {
-            const helper = new THREE.SkeletonHelper(selectedObj);
-            scene.add(helper);
-          }
-          showMsg('IK Rig Applied Successfully!');
+          applyBoneRig();
           break;
 
         case 'btn-add-keyframe':
@@ -622,4 +554,62 @@
     tlCtx.fillStyle = '#666';
     tlCtx.font = '9px sans-serif';
     tlCtx.strokeStyle = '#222';
-    tlCtx.lineW
+    tlCtx.lineWidth = 1;
+
+    for(let i = 0; i <= 5; i++) {
+      let x = (i / 5) * (w - 20) + 10;
+      tlCtx.fillText(i + 's', x - 4, 10);
+      tlCtx.beginPath(); tlCtx.moveTo(x, 14); tlCtx.lineTo(x, h); tlCtx.stroke();
+    }
+
+    tlCtx.fillStyle = '#222';
+    tlCtx.fillRect(10, 18, w - 20, 18);
+    tlCtx.fillStyle = '#888';
+    tlCtx.fillText('✕ Track 1', 16, 30);
+
+    let clipStart = 10 + (0 / duration) * (w - 20);
+    let clipWidth = (2 / duration) * (w - 20);
+    tlCtx.fillStyle = '#1d4ed8';
+    tlCtx.fillRect(clipStart, 40, clipWidth, 24);
+    tlCtx.fillStyle = '#fff';
+    tlCtx.fillText('Animation', clipStart + 6, 52);
+
+    keyframes.forEach(kf => {
+      let kfX = (kf.time / duration) * (w - 20) + 10;
+      tlCtx.fillStyle = '#ffcc00';
+      tlCtx.beginPath();
+      tlCtx.arc(kfX, 52, 4, 0, Math.PI * 2);
+      tlCtx.fill();
+    });
+
+    let playheadX = (currentTime / duration) * (w - 20) + 10;
+    tlCtx.strokeStyle = '#ffffff';
+    tlCtx.lineWidth = 2;
+    tlCtx.beginPath();
+    tlCtx.moveTo(playheadX, 0);
+    tlCtx.lineTo(playheadX, h);
+    tlCtx.stroke();
+
+    let sec = currentTime.toFixed(2);
+    document.getElementById('time-val').innerText = '00:' + (sec < 10 ? '0' : '') + sec + ' of 05:00';
+  }
+
+  function animate() {
+    requestAnimationFrame(animate);
+    if (isPlaying) {
+      currentTime += 0.016;
+      if (currentTime > duration) currentTime = 0;
+      applyKeyframesAtTime(currentTime);
+      drawTimeline();
+    }
+    if (currentSkeletonHelper) {
+      currentSkeletonHelper.update();
+    }
+    orbit.update();
+    renderer.render(scene, camera);
+  }
+
+  window.onload = initApp;
+</script>
+</body>
+</html>
