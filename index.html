@@ -3,14 +3,15 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>3D Mobile Studio - Move Engine</title>
+  <title>3D Mobile Studio - Permanent Grid & Active Timeline</title>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; -webkit-tap-highlight-color: transparent; }
     body, html { width: 100%; height: 100%; overflow: hidden; background: #111; color: #fff; font-family: sans-serif; }
     #app { display: flex; flex-direction: column; width: 100vw; height: 100vh; position: relative; }
     
+    /* Top Bar - No Overlap & Fully Scrollable */
     #top-bar { 
-      height: 50px; background: #1a1a1a; display: flex; align-items: center; padding: 0 8px; gap: 6px; 
+      height: 52px; background: #1a1a1a; display: flex; align-items: center; padding: 0 8px; gap: 6px; 
       overflow-x: auto; white-space: nowrap; border-bottom: 1px solid #333; z-index: 999; flex-shrink: 0;
     }
     #top-bar::-webkit-scrollbar { display: none; }
@@ -24,31 +25,33 @@
     .btn-photo { background: #059669; border-color: #10b981; }
     .btn-danger { background: #dc2626; border-color: #ef4444; }
     
+    /* 3D Viewport */
     #viewport { flex: 1; position: relative; width: 100%; background: #181818; overflow: hidden; }
     #three-canvas { width: 100%; height: 100%; display: block; touch-action: none; }
     
     #hierarchy { 
-      position: absolute; top: 10px; left: 10px; width: 130px; max-height: 150px; 
+      position: absolute; top: 10px; left: 10px; width: 130px; max-height: 140px; 
       background: rgba(20, 20, 20, 0.85); border: 1px solid #444; border-radius: 6px; padding: 6px; 
       overflow-y: auto; z-index: 100; font-size: 11px; 
     }
     .tree-item { padding: 4px 6px; border-radius: 4px; margin-bottom: 2px; background: #2b2b2b; cursor: pointer; }
     .tree-item.selected { background: #007aff; }
     
-    #timeline { height: 85px; background: #161616; border-top: 1px solid #333; display: flex; flex-direction: column; z-index: 999; flex-shrink: 0; }
-    #tl-controls { height: 35px; background: #222; display: flex; align-items: center; justify-content: space-between; padding: 0 8px; }
-    #tl-slider-wrap { flex: 1; position: relative; background: #111; touch-action: none; }
+    /* Dedicated Visible Video Timeline */
+    #timeline { height: 95px; background: #161616; border-top: 1px solid #333; display: flex; flex-direction: column; z-index: 999; flex-shrink: 0; }
+    #tl-controls { height: 38px; background: #222; display: flex; align-items: center; justify-content: space-between; padding: 0 10px; }
+    #tl-slider-wrap { flex: 1; position: relative; background: #0a0a0a; touch-action: none; cursor: pointer; }
     #tl-canvas { width: 100%; height: 100%; display: block; }
     
     #toast { 
-      position: absolute; bottom: 95px; left: 50%; transform: translateX(-50%); 
+      position: absolute; bottom: 105px; left: 50%; transform: translateX(-50%); 
       background: rgba(0,0,0,0.85); color: #fff; padding: 6px 14px; border-radius: 20px; font-size: 12px; 
       display: none; z-index: 2000; pointer-events: none; border: 1px solid #555;
     }
     input[type="file"] { display: none !important; }
   </style>
 
-  <!-- Stable Single Scripts -->
+  <!-- External Safe Libraries -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/TransformControls.js"></script>
@@ -57,6 +60,7 @@
 <body>
 
 <div id="app">
+  <!-- Scrollable Top Bar with All Permanent Buttons -->
   <div id="top-bar">
     <button class="btn btn-highlight" id="btn-upload-model">📦 Model Upload</button>
     <button class="btn btn-photo" id="btn-upload-photo">🖼 Image Upload</button>
@@ -76,10 +80,11 @@
     <div id="toast">Engine Ready</div>
   </div>
 
+  <!-- Interactive Timeline Strip -->
   <div id="timeline">
     <div id="tl-controls">
       <button class="btn" id="btn-play">▶ Play</button>
-      <span id="time-val" style="font-size:11px; font-family:monospace;">0.00s / 5.00s</span>
+      <span id="time-val" style="font-size:12px; font-family:monospace; color:#007aff; font-weight:bold;">0.00s / 5.00s</span>
       <button class="btn btn-highlight" id="btn-addkey">+ Keyframe</button>
     </div>
     <div id="tl-slider-wrap">
@@ -100,6 +105,7 @@
 
   const toast = document.getElementById('toast');
   const treeRoot = document.getElementById('tree-root');
+  const tlWrap = document.getElementById('tl-slider-wrap');
   const tlCanvas = document.getElementById('tl-canvas');
   const tlCtx = tlCanvas.getContext('2d');
 
@@ -121,26 +127,27 @@
     renderer.setSize(viewport.clientWidth, viewport.clientHeight);
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
 
-    // Controls
+    // Orbit Controls
     orbit = new THREE.OrbitControls(camera, renderer.domElement);
     orbit.enableDamping = true;
     orbit.target.set(0, 0.8, 0);
 
+    // Transform Gizmo Controls
     transform = new THREE.TransformControls(camera, renderer.domElement);
     transform.size = 0.8;
     transform.addEventListener('dragging-changed', (e) => {
-      orbit.enabled = !e.value; // Prevent orbit camera conflict while dragging
+      orbit.enabled = !e.value;
     });
     scene.add(transform);
 
-    // Lights
+    // Permanent Lights
     const light1 = new THREE.DirectionalLight(0xffffff, 1.2);
     light1.position.set(5, 10, 7);
     scene.add(light1);
     scene.add(new THREE.AmbientLight(0xffffff, 0.7));
 
-    // Permanent Grid (Fix for grid vanishing issue)
-    const grid = new THREE.GridHelper(20, 20, 0x555555, 0x222222);
+    // PERMANENT GRID (Guaranteed to stay)
+    const grid = new THREE.GridHelper(20, 20, 0x666666, 0x333333);
     grid.position.y = 0;
     scene.add(grid);
 
@@ -168,7 +175,7 @@
   }
 
   function setupEvents() {
-    // Touch Select in Viewport
+    // Touch Select
     const canvas = document.getElementById('three-canvas');
     canvas.addEventListener('pointerdown', (e) => {
       if (transform.dragging) return;
@@ -188,7 +195,7 @@
       }
     });
 
-    // Top Bar Actions
+    // Button Bindings
     document.getElementById('btn-upload-model').onclick = () => document.getElementById('file-model').click();
     document.getElementById('btn-upload-photo').onclick = () => document.getElementById('file-photo').click();
 
@@ -259,6 +266,18 @@
       document.getElementById('btn-play').innerText = isPlaying ? '⏸ Pause' : '▶ Play';
     };
 
+    // Timeline Scrub Control
+    const scrubTimeline = (e) => {
+      const rect = tlWrap.getBoundingClientRect();
+      const x = (e.clientX || (e.touches && e.touches[0].clientX)) - rect.left;
+      let ratio = Math.max(0, Math.min(1, x / rect.width));
+      currentTime = ratio * duration;
+      drawTimeline();
+    };
+
+    tlWrap.addEventListener('pointerdown', (e) => { scrubTimeline(e); });
+    tlWrap.addEventListener('pointermove', (e) => { if(e.buttons > 0) scrubTimeline(e); });
+
     window.addEventListener('resize', () => {
       const vp = document.getElementById('viewport');
       camera.aspect = vp.clientWidth / vp.clientHeight;
@@ -279,15 +298,35 @@
     });
   }
 
+  // Draw Clean Visible Video Timeline
   function drawTimeline() {
-    const wrap = document.getElementById('tl-slider-wrap');
-    const w = tlCanvas.width = wrap.clientWidth;
-    const h = tlCanvas.height = 50;
-    tlCtx.fillStyle = '#111'; tlCtx.fillRect(0, 0, w, h);
+    const w = tlCanvas.width = tlWrap.clientWidth;
+    const h = tlCanvas.height = 55;
     
-    let px = (currentTime / duration) * (w - 20) + 10;
-    tlCtx.strokeStyle = '#ff3b30'; tlCtx.lineWidth = 2;
+    // Background Track
+    tlCtx.fillStyle = '#111';
+    tlCtx.fillRect(0, 0, w, h);
+    
+    // Time ticks
+    tlCtx.strokeStyle = '#333';
+    tlCtx.lineWidth = 1;
+    for(let i = 0; i <= 10; i++) {
+      let tx = (i / 10) * w;
+      tlCtx.beginPath(); tlCtx.moveTo(tx, 0); tlCtx.lineTo(tx, h); tlCtx.stroke();
+    }
+    
+    // Playhead / Scrubber Line
+    let px = (currentTime / duration) * w;
+    tlCtx.strokeStyle = '#ff3b30'; 
+    tlCtx.lineWidth = 3;
     tlCtx.beginPath(); tlCtx.moveTo(px, 0); tlCtx.lineTo(px, h); tlCtx.stroke();
+    
+    // Scrubber Knob
+    tlCtx.fillStyle = '#ff3b30';
+    tlCtx.beginPath();
+    tlCtx.arc(px, 8, 6, 0, Math.PI * 2);
+    tlCtx.fill();
+
     document.getElementById('time-val').innerText = currentTime.toFixed(2) + 's / ' + duration.toFixed(2) + 's';
   }
 
