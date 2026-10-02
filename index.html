@@ -3,55 +3,68 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>3D Mobile Studio - Permanent Grid & Active Timeline</title>
+  <title>3D Pro Timeline Studio</title>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; -webkit-tap-highlight-color: transparent; }
-    body, html { width: 100%; height: 100%; overflow: hidden; background: #111; color: #fff; font-family: sans-serif; }
+    body, html { width: 100%; height: 100%; overflow: hidden; background: #0d0d0d; color: #fff; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
     #app { display: flex; flex-direction: column; width: 100vw; height: 100vh; position: relative; }
     
-    /* Top Bar - No Overlap & Fully Scrollable */
+    /* Top Bar Header */
     #top-bar { 
-      height: 52px; background: #1a1a1a; display: flex; align-items: center; padding: 0 8px; gap: 6px; 
-      overflow-x: auto; white-space: nowrap; border-bottom: 1px solid #333; z-index: 999; flex-shrink: 0;
+      height: 48px; background: #181818; display: flex; align-items: center; justify-content: space-between; padding: 0 12px;
+      border-bottom: 1px solid #282828; z-index: 999; flex-shrink: 0;
     }
-    #top-bar::-webkit-scrollbar { display: none; }
-    
-    .btn { 
-      background: #2a2a2c; color: #fff; border: 1px solid #444; padding: 8px 12px; border-radius: 6px; 
-      font-size: 12px; font-weight: 600; cursor: pointer; flex-shrink: 0; touch-action: manipulation;
-    }
-    .btn:active, .btn.active { background: #007aff !important; border-color: #007aff !important; }
-    .btn-highlight { background: #4f46e5; border-color: #6366f1; }
-    .btn-photo { background: #059669; border-color: #10b981; }
-    .btn-danger { background: #dc2626; border-color: #ef4444; }
-    
+    .top-bar-left, .top-bar-right { display: flex; align-items: center; gap: 10px; }
+    .icon-btn { background: transparent; border: none; color: #ccc; font-size: 16px; cursor: pointer; padding: 6px; }
+    .icon-btn:active { color: #007aff; }
+
     /* 3D Viewport */
-    #viewport { flex: 1; position: relative; width: 100%; background: #181818; overflow: hidden; }
+    #viewport { flex: 1; position: relative; width: 100%; background: #121212; overflow: hidden; }
     #three-canvas { width: 100%; height: 100%; display: block; touch-action: none; }
     
     #hierarchy { 
-      position: absolute; top: 10px; left: 10px; width: 130px; max-height: 140px; 
-      background: rgba(20, 20, 20, 0.85); border: 1px solid #444; border-radius: 6px; padding: 6px; 
-      overflow-y: auto; z-index: 100; font-size: 11px; 
+      position: absolute; top: 10px; left: 10px; width: 120px; max-height: 120px; 
+      background: rgba(18, 18, 18, 0.85); border: 1px solid #333; border-radius: 6px; padding: 6px; 
+      overflow-y: auto; z-index: 100; font-size: 10px; 
     }
-    .tree-item { padding: 4px 6px; border-radius: 4px; margin-bottom: 2px; background: #2b2b2b; cursor: pointer; }
-    .tree-item.selected { background: #007aff; }
+    .tree-item { padding: 3px 5px; border-radius: 3px; margin-bottom: 2px; background: #222; cursor: pointer; }
+    .tree-item.selected { background: #007aff; color: #fff; }
+
+    /* Exact Video Timeline Block (Reference Style) */
+    #timeline-panel { 
+      height: 180px; background: #141414; border-top: 1px solid #282828; display: flex; flex-direction: column; z-index: 999; flex-shrink: 0; 
+    }
     
-    /* Dedicated Visible Video Timeline */
-    #timeline { height: 95px; background: #161616; border-top: 1px solid #333; display: flex; flex-direction: column; z-index: 999; flex-shrink: 0; }
-    #tl-controls { height: 38px; background: #222; display: flex; align-items: center; justify-content: space-between; padding: 0 10px; }
-    #tl-slider-wrap { flex: 1; position: relative; background: #0a0a0a; touch-action: none; cursor: pointer; }
+    /* Time Sub-header & Controls */
+    #tl-header { 
+      height: 32px; background: #1c1c1c; display: flex; align-items: center; justify-content: space-between; padding: 0 12px; font-size: 11px; color: #aaa;
+    }
+    #tl-play-btn { background: transparent; border: none; color: #fff; font-size: 14px; cursor: pointer; }
+
+    /* Multi-track Timeline Area */
+    #tl-tracks-container { 
+      flex: 1; position: relative; overflow-x: auto; overflow-y: hidden; background: #111; touch-action: none;
+    }
     #tl-canvas { width: 100%; height: 100%; display: block; }
-    
+
+    /* Bottom Toolbar Grid (Reference Style Icons) */
+    #bottom-toolbar { 
+      height: 58px; background: #181818; border-top: 1px solid #282828; display: flex; align-items: center; justify-content: space-around;
+      padding: 0 4px; flex-shrink: 0; z-index: 1000;
+    }
+    .tool-item { display: flex; flex-direction: column; align-items: center; gap: 3px; color: #aaa; font-size: 10px; cursor: pointer; flex: 1; }
+    .tool-item span { font-size: 16px; }
+    .tool-item:active, .tool-item.active { color: #fff; }
+
     #toast { 
-      position: absolute; bottom: 105px; left: 50%; transform: translateX(-50%); 
-      background: rgba(0,0,0,0.85); color: #fff; padding: 6px 14px; border-radius: 20px; font-size: 12px; 
-      display: none; z-index: 2000; pointer-events: none; border: 1px solid #555;
+      position: absolute; top: 15px; left: 50%; transform: translateX(-50%); 
+      background: rgba(0,0,0,0.85); color: #fff; padding: 6px 14px; border-radius: 20px; font-size: 11px; 
+      display: none; z-index: 2000; pointer-events: none; border: 1px solid #444;
     }
     input[type="file"] { display: none !important; }
   </style>
 
-  <!-- External Safe Libraries -->
+  <!-- Stable Three.js Bundle -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/TransformControls.js"></script>
@@ -60,35 +73,59 @@
 <body>
 
 <div id="app">
-  <!-- Scrollable Top Bar with All Permanent Buttons -->
+  <!-- Top Navigation Bar -->
   <div id="top-bar">
-    <button class="btn btn-highlight" id="btn-upload-model">📦 Model Upload</button>
-    <button class="btn btn-photo" id="btn-upload-photo">🖼 Image Upload</button>
-    <button class="btn active" id="btn-mode-trans">✢ Move</button>
-    <button class="btn" id="btn-mode-rot">🔄 Rotate</button>
-    <button class="btn" id="btn-add-cube">🧊 Cube</button>
-    <button class="btn" id="btn-add-char">🧍 Rig</button>
-    <button class="btn btn-danger" id="btn-delete">🗑 Delete</button>
+    <div class="top-bar-left">
+      <button class="icon-btn" title="Home">🏠</button>
+    </div>
+    <div class="top-bar-right">
+      <button class="icon-btn" id="btn-mode-trans" title="Move">✢ Move</button>
+      <button class="icon-btn" id="btn-mode-rot" title="Rotate">🔄 Rotate</button>
+      <button class="icon-btn" id="btn-delete" style="color: #ff3b30;" title="Delete">🗑</button>
+    </div>
   </div>
 
+  <!-- 3D Canvas Container -->
   <div id="viewport">
     <canvas id="three-canvas"></canvas>
     <div id="hierarchy">
-      <div style="font-weight: bold; margin-bottom: 4px; border-bottom: 1px solid #555;">Objects</div>
+      <div style="font-weight: bold; margin-bottom: 4px; border-bottom: 1px solid #444;">Objects</div>
       <div id="tree-root"></div>
     </div>
     <div id="toast">Engine Ready</div>
   </div>
 
-  <!-- Interactive Timeline Strip -->
-  <div id="timeline">
-    <div id="tl-controls">
-      <button class="btn" id="btn-play">▶ Play</button>
-      <span id="time-val" style="font-size:12px; font-family:monospace; color:#007aff; font-weight:bold;">0.00s / 5.00s</span>
-      <button class="btn btn-highlight" id="btn-addkey">+ Keyframe</button>
+  <!-- Video Style Timeline (Exact Reference UI) -->
+  <div id="timeline-panel">
+    <div id="tl-header">
+      <button id="tl-play-btn">▶</button>
+      <span id="time-val" style="font-family: monospace;">00:00 of 05:00</span>
+      <span style="font-size: 10px; color: #666;">FPS: 30</span>
     </div>
-    <div id="tl-slider-wrap">
+    <div id="tl-tracks-container">
       <canvas id="tl-canvas"></canvas>
+    </div>
+  </div>
+
+  <!-- Bottom Navigation Tools (Reference Bar) -->
+  <div id="bottom-toolbar">
+    <div class="tool-item" id="btn-add-model">
+      <span>📦</span>Models
+    </div>
+    <div class="tool-item" id="btn-sky">
+      <span>🌐</span>Sky
+    </div>
+    <div class="tool-item" id="btn-add-camera">
+      <span>🎥</span>Camera
+    </div>
+    <div class="tool-item" id="btn-light">
+      <span>💡</span>Light
+    </div>
+    <div class="tool-item" id="btn-upload-photo">
+      <span>🖼️</span>Media
+    </div>
+    <div class="tool-item" id="btn-add-cube">
+      <span>🧊</span>Cube
     </div>
   </div>
 </div>
@@ -105,7 +142,7 @@
 
   const toast = document.getElementById('toast');
   const treeRoot = document.getElementById('tree-root');
-  const tlWrap = document.getElementById('tl-slider-wrap');
+  const tlWrap = document.getElementById('tl-tracks-container');
   const tlCanvas = document.getElementById('tl-canvas');
   const tlCtx = tlCanvas.getContext('2d');
 
@@ -118,7 +155,7 @@
   function initApp() {
     const viewport = document.getElementById('viewport');
     scene = new THREE.Scene();
-    scene.background = new THREE.Color(0x181818);
+    scene.background = new THREE.Color(0x121212);
 
     camera = new THREE.PerspectiveCamera(60, viewport.clientWidth / viewport.clientHeight, 0.1, 1000);
     camera.position.set(0, 2, 4);
@@ -140,14 +177,14 @@
     });
     scene.add(transform);
 
-    // Permanent Lights
+    // Lights
     const light1 = new THREE.DirectionalLight(0xffffff, 1.2);
     light1.position.set(5, 10, 7);
     scene.add(light1);
     scene.add(new THREE.AmbientLight(0xffffff, 0.7));
 
-    // PERMANENT GRID (Guaranteed to stay)
-    const grid = new THREE.GridHelper(20, 20, 0x666666, 0x333333);
+    // PERMANENT GRID
+    const grid = new THREE.GridHelper(20, 20, 0x555555, 0x222222);
     grid.position.y = 0;
     scene.add(grid);
 
@@ -195,20 +232,18 @@
       }
     });
 
-    // Button Bindings
-    document.getElementById('btn-upload-model').onclick = () => document.getElementById('file-model').click();
+    // Bottom Toolbar & Actions
+    document.getElementById('btn-add-model').onclick = () => document.getElementById('file-model').click();
     document.getElementById('btn-upload-photo').onclick = () => document.getElementById('file-photo').click();
 
     document.getElementById('btn-mode-trans').onclick = function() {
       transform.setMode('translate');
-      document.querySelectorAll('#top-bar .btn').forEach(b => b.classList.remove('active'));
-      this.classList.add('active');
+      showMsg('Move Tool');
     };
     
     document.getElementById('btn-mode-rot').onclick = function() {
       transform.setMode('rotate');
-      document.querySelectorAll('#top-bar .btn').forEach(b => b.classList.remove('active'));
-      this.classList.add('active');
+      showMsg('Rotate Tool');
     };
 
     document.getElementById('file-model').onchange = (e) => {
@@ -217,7 +252,7 @@
       showMsg('Loading Model...');
       new THREE.GLTFLoader().load(URL.createObjectURL(file), (gltf) => {
         addObject(gltf.scene, file.name);
-        showMsg('Model Added!');
+        showMsg('Model Loaded!');
       });
     };
 
@@ -231,7 +266,7 @@
         } else {
           const plane = new THREE.Mesh(new THREE.PlaneGeometry(1.5, 1.5), new THREE.MeshBasicMaterial({ map: tex, side: THREE.DoubleSide }));
           plane.position.set(0, 1, 0);
-          addObject(plane, 'Photo Plane');
+          addObject(plane, 'Media Plane');
         }
       });
     };
@@ -240,15 +275,6 @@
       const cube = new THREE.Mesh(new THREE.BoxGeometry(0.8, 0.8, 0.8), new THREE.MeshStandardMaterial({ color: 0x007aff }));
       cube.position.set(0, 0.4, 0);
       addObject(cube, 'Cube');
-    };
-
-    document.getElementById('btn-add-char').onclick = () => {
-      const hips = new THREE.Bone(); hips.position.set(0,0.8,0);
-      const spine = new THREE.Bone(); spine.position.set(0,0.4,0);
-      hips.add(spine);
-      const helper = new THREE.SkeletonHelper(hips);
-      scene.add(hips); scene.add(helper);
-      addObject(hips, 'Skeleton Rig');
     };
 
     document.getElementById('btn-delete').onclick = () => {
@@ -261,12 +287,12 @@
       }
     };
 
-    document.getElementById('btn-play').onclick = () => {
+    document.getElementById('tl-play-btn').onclick = () => {
       isPlaying = !isPlaying;
-      document.getElementById('btn-play').innerText = isPlaying ? '⏸ Pause' : '▶ Play';
+      document.getElementById('tl-play-btn').innerText = isPlaying ? '⏸' : '▶';
     };
 
-    // Timeline Scrub Control
+    // Timeline Drag / Scrub
     const scrubTimeline = (e) => {
       const rect = tlWrap.getBoundingClientRect();
       const x = (e.clientX || (e.touches && e.touches[0].clientX)) - rect.left;
@@ -275,7 +301,7 @@
       drawTimeline();
     };
 
-    tlWrap.addEventListener('pointerdown', (e) => { scrubTimeline(e); });
+    tlWrap.addEventListener('pointerdown', scrubTimeline);
     tlWrap.addEventListener('pointermove', (e) => { if(e.buttons > 0) scrubTimeline(e); });
 
     window.addEventListener('resize', () => {
@@ -298,36 +324,55 @@
     });
   }
 
-  // Draw Clean Visible Video Timeline
+  /* Render Video Editor Multi-Track Timeline (Reference Match) */
   function drawTimeline() {
     const w = tlCanvas.width = tlWrap.clientWidth;
-    const h = tlCanvas.height = 55;
+    const h = tlCanvas.height = tlWrap.clientHeight;
     
-    // Background Track
-    tlCtx.fillStyle = '#111';
+    // Canvas background
+    tlCtx.fillStyle = '#141414';
     tlCtx.fillRect(0, 0, w, h);
     
-    // Time ticks
-    tlCtx.strokeStyle = '#333';
+    // Time Ruler Marks (0s, 1s, 2s...)
+    tlCtx.fillStyle = '#666';
+    tlCtx.font = '9px sans-serif';
+    tlCtx.strokeStyle = '#222';
     tlCtx.lineWidth = 1;
-    for(let i = 0; i <= 10; i++) {
-      let tx = (i / 10) * w;
-      tlCtx.beginPath(); tlCtx.moveTo(tx, 0); tlCtx.lineTo(tx, h); tlCtx.stroke();
-    }
-    
-    // Playhead / Scrubber Line
-    let px = (currentTime / duration) * w;
-    tlCtx.strokeStyle = '#ff3b30'; 
-    tlCtx.lineWidth = 3;
-    tlCtx.beginPath(); tlCtx.moveTo(px, 0); tlCtx.lineTo(px, h); tlCtx.stroke();
-    
-    // Scrubber Knob
-    tlCtx.fillStyle = '#ff3b30';
-    tlCtx.beginPath();
-    tlCtx.arc(px, 8, 6, 0, Math.PI * 2);
-    tlCtx.fill();
 
-    document.getElementById('time-val').innerText = currentTime.toFixed(2) + 's / ' + duration.toFixed(2) + 's';
+    for(let i = 0; i <= 5; i++) {
+      let x = (i / 5) * (w - 20) + 10;
+      tlCtx.fillText(i + 's', x - 4, 12);
+      tlCtx.beginPath(); tlCtx.moveTo(x, 16); tlCtx.lineTo(x, h); tlCtx.stroke();
+    }
+
+    // Camera Track Bar
+    tlCtx.fillStyle = '#222';
+    tlCtx.fillRect(10, 24, w - 20, 22);
+    tlCtx.fillStyle = '#888';
+    tlCtx.fillText('✕ Camera', 20, 38);
+
+    // Animation Clip Track Bar (Blue Block)
+    let clipStart = 10 + (0 / duration) * (w - 20);
+    let clipWidth = (2 / duration) * (w - 20);
+    tlCtx.fillStyle = '#1d4ed8';
+    tlCtx.fillRect(clipStart, 52, clipWidth, 30);
+    tlCtx.fillStyle = '#fff';
+    tlCtx.fillText('Animation', clipStart + 8, 66);
+    tlCtx.fillStyle = '#93c5fd';
+    tlCtx.fillText('2s', clipStart + 8, 77);
+
+    // White Vertical Needle Playhead (Reference Match)
+    let playheadX = (currentTime / duration) * (w - 20) + 10;
+    tlCtx.strokeStyle = '#ffffff';
+    tlCtx.lineWidth = 2;
+    tlCtx.beginPath();
+    tlCtx.moveTo(playheadX, 0);
+    tlCtx.lineTo(playheadX, h);
+    tlCtx.stroke();
+
+    // Time counter string update
+    let sec = currentTime.toFixed(2);
+    document.getElementById('time-val').innerText = '00:' + (sec < 10 ? '0' : '') + sec + ' of 05:00';
   }
 
   function animate() {
