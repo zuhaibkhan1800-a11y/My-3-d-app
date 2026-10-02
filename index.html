@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>3D Mobile Studio - Ultra Stable Engine</title>
+  <title>3D Mobile Studio - Move Engine</title>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; -webkit-tap-highlight-color: transparent; }
     body, html { width: 100%; height: 100%; overflow: hidden; background: #111; color: #fff; font-family: sans-serif; }
@@ -24,7 +24,7 @@
     .btn-photo { background: #059669; border-color: #10b981; }
     .btn-danger { background: #dc2626; border-color: #ef4444; }
     
-    #viewport { flex: 1; position: relative; width: 100%; background: #181818; }
+    #viewport { flex: 1; position: relative; width: 100%; background: #181818; overflow: hidden; }
     #three-canvas { width: 100%; height: 100%; display: block; touch-action: none; }
     
     #hierarchy { 
@@ -35,33 +35,35 @@
     .tree-item { padding: 4px 6px; border-radius: 4px; margin-bottom: 2px; background: #2b2b2b; cursor: pointer; }
     .tree-item.selected { background: #007aff; }
     
-    #timeline { height: 90px; background: #161616; border-top: 1px solid #333; display: flex; flex-direction: column; z-index: 999; flex-shrink: 0; }
+    #timeline { height: 85px; background: #161616; border-top: 1px solid #333; display: flex; flex-direction: column; z-index: 999; flex-shrink: 0; }
     #tl-controls { height: 35px; background: #222; display: flex; align-items: center; justify-content: space-between; padding: 0 8px; }
     #tl-slider-wrap { flex: 1; position: relative; background: #111; touch-action: none; }
     #tl-canvas { width: 100%; height: 100%; display: block; }
     
     #toast { 
-      position: absolute; bottom: 105px; left: 50%; transform: translateX(-50%); 
+      position: absolute; bottom: 95px; left: 50%; transform: translateX(-50%); 
       background: rgba(0,0,0,0.85); color: #fff; padding: 6px 14px; border-radius: 20px; font-size: 12px; 
       display: none; z-index: 2000; pointer-events: none; border: 1px solid #555;
     }
     input[type="file"] { display: none !important; }
   </style>
 
-  <!-- Single Bundle Safe Loading -->
+  <!-- Stable Single Scripts -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/TransformControls.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
 </head>
 <body>
 
 <div id="app">
   <div id="top-bar">
-    <button class="btn btn-highlight" id="btn-upload-model">📦 Upload Model</button>
-    <button class="btn btn-photo" id="btn-upload-photo">🖼 Upload Image</button>
-    <button class="btn active" id="btn-mode-move">✢ Move Mode</button>
-    <button class="btn" id="btn-add-cube">🧊 Add Cube</button>
-    <button class="btn" id="btn-add-char">🧍 Add Skeleton</button>
+    <button class="btn btn-highlight" id="btn-upload-model">📦 Model Upload</button>
+    <button class="btn btn-photo" id="btn-upload-photo">🖼 Image Upload</button>
+    <button class="btn active" id="btn-mode-trans">✢ Move</button>
+    <button class="btn" id="btn-mode-rot">🔄 Rotate</button>
+    <button class="btn" id="btn-add-cube">🧊 Cube</button>
+    <button class="btn" id="btn-add-char">🧍 Rig</button>
     <button class="btn btn-danger" id="btn-delete">🗑 Delete</button>
   </div>
 
@@ -71,7 +73,7 @@
       <div style="font-weight: bold; margin-bottom: 4px; border-bottom: 1px solid #555;">Objects</div>
       <div id="tree-root"></div>
     </div>
-    <div id="toast">Initializing Engine...</div>
+    <div id="toast">Engine Ready</div>
   </div>
 
   <div id="timeline">
@@ -90,10 +92,11 @@
 <input type="file" id="file-photo" accept="image/*">
 
 <script>
-  let scene, camera, renderer, controls;
+  let scene, camera, renderer, orbit, transform;
   let objects = [], selectedObj = null;
+  let raycaster = new THREE.Raycaster();
+  let mouse = new THREE.Vector2();
   let isPlaying = false, currentTime = 0, duration = 5.0;
-  let keyframes = {};
 
   const toast = document.getElementById('toast');
   const treeRoot = document.getElementById('tree-root');
@@ -107,11 +110,6 @@
   }
 
   function initApp() {
-    if (typeof THREE === 'undefined') {
-      showMsg('Script loading error! Please reload.');
-      return;
-    }
-
     const viewport = document.getElementById('viewport');
     scene = new THREE.Scene();
     scene.background = new THREE.Color(0x181818);
@@ -123,18 +121,27 @@
     renderer.setSize(viewport.clientWidth, viewport.clientHeight);
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
 
-    if (typeof THREE.OrbitControls !== 'undefined') {
-      controls = new THREE.OrbitControls(camera, renderer.domElement);
-      controls.enableDamping = true;
-      controls.target.set(0, 1, 0);
-    }
+    // Controls
+    orbit = new THREE.OrbitControls(camera, renderer.domElement);
+    orbit.enableDamping = true;
+    orbit.target.set(0, 0.8, 0);
 
+    transform = new THREE.TransformControls(camera, renderer.domElement);
+    transform.size = 0.8;
+    transform.addEventListener('dragging-changed', (e) => {
+      orbit.enabled = !e.value; // Prevent orbit camera conflict while dragging
+    });
+    scene.add(transform);
+
+    // Lights
     const light1 = new THREE.DirectionalLight(0xffffff, 1.2);
     light1.position.set(5, 10, 7);
     scene.add(light1);
     scene.add(new THREE.AmbientLight(0xffffff, 0.7));
 
-    const grid = new THREE.GridHelper(10, 10, 0x444444, 0x222222);
+    // Permanent Grid (Fix for grid vanishing issue)
+    const grid = new THREE.GridHelper(20, 20, 0x555555, 0x222222);
+    grid.position.y = 0;
     scene.add(grid);
 
     setupEvents();
@@ -145,30 +152,66 @@
 
   function selectObject(obj) {
     selectedObj = obj;
+    if (obj) {
+      transform.attach(obj);
+    } else {
+      transform.detach();
+    }
     updateTree();
-    if(obj) showMsg('Selected: ' + obj.name);
   }
 
   function addObject(obj, name) {
     obj.name = name || 'Mesh_' + (objects.length + 1);
     scene.add(obj);
     objects.push(obj);
-    keyframes[obj.uuid] = [];
     selectObject(obj);
   }
 
   function setupEvents() {
+    // Touch Select in Viewport
+    const canvas = document.getElementById('three-canvas');
+    canvas.addEventListener('pointerdown', (e) => {
+      if (transform.dragging) return;
+      const rect = canvas.getBoundingClientRect();
+      mouse.x = ((e.clientX - rect.left) / canvas.clientWidth) * 2 - 1;
+      mouse.y = -((e.clientY - rect.top) / canvas.clientHeight) * 2 + 1;
+
+      raycaster.setFromCamera(mouse, camera);
+      const intersects = raycaster.intersectObjects(objects, true);
+
+      if (intersects.length > 0) {
+        let topObj = intersects[0].object;
+        while (topObj.parent && topObj.parent !== scene) {
+          topObj = topObj.parent;
+        }
+        selectObject(topObj);
+      }
+    });
+
+    // Top Bar Actions
     document.getElementById('btn-upload-model').onclick = () => document.getElementById('file-model').click();
     document.getElementById('btn-upload-photo').onclick = () => document.getElementById('file-photo').click();
 
+    document.getElementById('btn-mode-trans').onclick = function() {
+      transform.setMode('translate');
+      document.querySelectorAll('#top-bar .btn').forEach(b => b.classList.remove('active'));
+      this.classList.add('active');
+    };
+    
+    document.getElementById('btn-mode-rot').onclick = function() {
+      transform.setMode('rotate');
+      document.querySelectorAll('#top-bar .btn').forEach(b => b.classList.remove('active'));
+      this.classList.add('active');
+    };
+
     document.getElementById('file-model').onchange = (e) => {
       const file = e.target.files[0];
-      if (!file || typeof THREE.GLTFLoader === 'undefined') return;
+      if (!file) return;
       showMsg('Loading Model...');
       new THREE.GLTFLoader().load(URL.createObjectURL(file), (gltf) => {
         addObject(gltf.scene, file.name);
-        showMsg('Model Uploaded!');
-      }, undefined, () => showMsg('Failed to load file!'));
+        showMsg('Model Added!');
+      });
     };
 
     document.getElementById('file-photo').onchange = (e) => {
@@ -193,8 +236,8 @@
     };
 
     document.getElementById('btn-add-char').onclick = () => {
-      const hips = new THREE.Bone(); hips.name = "Hips"; hips.position.set(0,0.8,0);
-      const spine = new THREE.Bone(); spine.name = "Spine"; spine.position.set(0,0.4,0);
+      const hips = new THREE.Bone(); hips.position.set(0,0.8,0);
+      const spine = new THREE.Bone(); spine.position.set(0,0.4,0);
       hips.add(spine);
       const helper = new THREE.SkeletonHelper(hips);
       scene.add(hips); scene.add(helper);
@@ -203,6 +246,7 @@
 
     document.getElementById('btn-delete').onclick = () => {
       if (selectedObj) {
+        transform.detach();
         scene.remove(selectedObj);
         objects = objects.filter(o => o !== selectedObj);
         selectObject(null);
@@ -230,7 +274,7 @@
       const item = document.createElement('div');
       item.className = 'tree-item' + (selectedObj === obj ? ' selected' : '');
       item.innerText = '📦 ' + obj.name;
-      item.onclick = () => selectObject(obj);
+      item.onclick = (e) => { e.stopPropagation(); selectObject(obj); };
       treeRoot.appendChild(item);
     });
   }
@@ -238,7 +282,7 @@
   function drawTimeline() {
     const wrap = document.getElementById('tl-slider-wrap');
     const w = tlCanvas.width = wrap.clientWidth;
-    const h = tlCanvas.height = 55;
+    const h = tlCanvas.height = 50;
     tlCtx.fillStyle = '#111'; tlCtx.fillRect(0, 0, w, h);
     
     let px = (currentTime / duration) * (w - 20) + 10;
@@ -254,7 +298,7 @@
       if (currentTime > duration) currentTime = 0;
       drawTimeline();
     }
-    if (controls) controls.update();
+    orbit.update();
     renderer.render(scene, camera);
   }
 
