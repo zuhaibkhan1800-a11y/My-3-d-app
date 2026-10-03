@@ -3,16 +3,17 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>Prisma 3D Editor - Standalone Mobile Version</title>
+  <title>Prisma 3D Editor - Full Mobile Version</title>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; -webkit-tap-highlight-color: transparent; }
     html, body { width: 100%; height: 100dvh; overflow: hidden; background: #0f0f11; color: #fff; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
     #app { display: flex; flex-direction: column; width: 100%; height: 100dvh; position: relative; }
     
-    #top-bar { height: 48px; background: #18181a; display: flex; align-items: center; justify-content: space-between; padding: 0 8px; border-bottom: 1px solid #28282e; flex-shrink: 0; z-index: 100; }
-    .top-bar-left, .top-bar-right { display: flex; align-items: center; gap: 6px; }
+    /* Top Bar - Horizontal Scroll Enabled */
+    #top-bar { height: 50px; background: #18181a; display: flex; align-items: center; gap: 8px; padding: 0 8px; border-bottom: 1px solid #28282e; flex-shrink: 0; z-index: 100; overflow-x: auto; white-space: nowrap; scrollbar-width: none; }
+    #top-bar::-webkit-scrollbar { display: none; }
     
-    .icon-btn { background: #25252a; border: 1px solid #3d3d45; color: #eee; font-size: 11px; padding: 6px 10px; border-radius: 6px; cursor: pointer; touch-action: manipulation; }
+    .icon-btn { background: #25252a; border: 1px solid #3d3d45; color: #eee; font-size: 11px; padding: 6px 12px; border-radius: 6px; cursor: pointer; display: inline-flex; align-items: center; gap: 4px; flex-shrink: 0; }
     .icon-btn:active { background: #007aff; color: #fff; }
     .icon-btn.rig-btn { background: rgba(52, 199, 89, 0.15); color: #34c759; border-color: rgba(52, 199, 89, 0.4); }
     .icon-btn.rig-btn.active { background: #34c759; color: #000; font-weight: bold; }
@@ -38,8 +39,11 @@
     #tl-canvas-container { flex: 1; position: relative; height: 100%; min-width: 100%; }
     #tl-canvas { width: 100%; height: 100%; display: block; }
 
-    #bottom-toolbar { height: 54px; background: #18181a; border-top: 1px solid #28282e; display: flex; align-items: center; justify-content: space-around; padding: 0 4px; flex-shrink: 0; z-index: 100; }
-    .tool-item { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; color: #aaa; font-size: 10px; cursor: pointer; flex: 1; height: 100%; }
+    /* Bottom Toolbar - Horizontal Slide/Scroll Enabled */
+    #bottom-toolbar { height: 58px; background: #18181a; border-top: 1px solid #28282e; display: flex; align-items: center; gap: 12px; padding: 0 12px; flex-shrink: 0; z-index: 100; overflow-x: auto; scrollbar-width: none; }
+    #bottom-toolbar::-webkit-scrollbar { display: none; }
+    
+    .tool-item { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; color: #aaa; font-size: 10px; cursor: pointer; flex-shrink: 0; min-width: 55px; height: 100%; }
     .tool-item span { font-size: 18px; }
     .tool-item:active { color: #007aff; }
 
@@ -51,16 +55,12 @@
 
 <div id="app">
   <div id="top-bar">
-    <div class="top-bar-left">
-      <button class="icon-btn" onclick="resetCam()">🏠 Home</button>
-      <button class="icon-btn" onclick="setMode('translate')">✢ Move</button>
-      <button class="icon-btn" onclick="setMode('rotate')">🔄 Rotate</button>
-    </div>
-    <div class="top-bar-right">
-      <button id="rig-btn" class="icon-btn rig-btn" onclick="toggleRig()">🦴 Bone Rig</button>
-      <button class="icon-btn keyframe-btn" onclick="addKeyframe()">🔑 Keyframe</button>
-      <button class="icon-btn delete-btn" onclick="deleteObj()">🗑 Delete</button>
-    </div>
+    <button class="icon-btn" onclick="resetCam()">🏠 Home</button>
+    <button class="icon-btn" onclick="setMode('translate')">✢ Move</button>
+    <button class="icon-btn" onclick="setMode('rotate')">🔄 Rotate</button>
+    <button id="rig-btn" class="icon-btn rig-btn" onclick="toggleRig()">🦴 Bone Rig</button>
+    <button class="icon-btn keyframe-btn" onclick="addKeyframe()">🔑 Keyframe</button>
+    <button class="icon-btn delete-btn" onclick="deleteObj()">🗑 Delete</button>
   </div>
 
   <div id="viewport">
@@ -86,18 +86,22 @@
     </div>
   </div>
 
+  <!-- Sliding Bottom Toolbar with Import & Light -->
   <div id="bottom-toolbar">
     <div class="tool-item" onclick="addCube()"><span>🧊</span>Cube</div>
     <div class="tool-item" onclick="addSphere()"><span>🔮</span>Sphere</div>
-    <div class="tool-item" onclick="triggerImgUpload()"><span>🖼️</span>Image</div>
+    <div class="tool-item" onclick="addLight()"><span>💡</span>Light</div>
+    <div class="tool-item" onclick="triggerImport()"><span>📂</span>Import</div>
+    <div class="tool-item" onclick="triggerImgUpload()"><span>🖼️</span>Texture</div>
     <div class="tool-item" onclick="toggleBg()"><span>🌐</span>BG Toggle</div>
   </div>
 </div>
 
 <input type="file" id="img-input" accept="image/*">
+<input type="file" id="import-input" accept=".obj,.gltf,.glb,.json">
 
+<!-- Embedded Standalone 3D Engine -->
 <script>
-  // Pure JavaScript Lightweight 3D Engine
   const canvas = document.getElementById('canvas3d');
   const ctx = canvas.getContext('2d');
   
@@ -110,7 +114,6 @@
   let isRigActive = false;
   let bgDark = true;
 
-  // Camera Settings
   let camX = 0, camY = 2, camZ = 5;
   let pitch = -0.3, yaw = 0;
   let isDragging = false, lastTouchX = 0, lastTouchY = 0;
@@ -129,24 +132,18 @@
     setTimeout(() => { t.style.display = 'none'; }, 2000);
   }
 
-  // 3D Matrix and Vector helpers
   function project(x, y, z) {
-    // Translate relative to camera
-    let dx = x - camX;
-    let dy = y - camY;
-    let dz = z - camZ;
+    let dx = x - camX, dy = y - camY, dz = z - camZ;
 
-    // Yaw rotation
     let cosY = Math.cos(yaw), sinY = Math.sin(yaw);
     let x1 = cosY * dx - sinY * dz;
     let z1 = sinY * dx + cosY * dz;
 
-    // Pitch rotation
     let cosP = Math.cos(pitch), sinP = Math.sin(pitch);
     let y2 = cosP * dy - sinP * z1;
     let z2 = sinP * dy + cosP * z1;
 
-    if (z2 <= 0.1) return null; // Clipping behind camera
+    if (z2 <= 0.1) return null;
 
     let fov = 350;
     return {
@@ -193,6 +190,36 @@
     showToast("Sphere Added!");
   }
 
+  function addLight() {
+    const light = {
+      type: 'Light',
+      name: 'PointLight ' + (objects.length + 1),
+      x: 0, y: 3, z: 0,
+      color: '#ffcc00'
+    };
+    objects.push(light);
+    selectedIdx = objects.length - 1;
+    updateUI();
+    showToast("Light Added!");
+  }
+
+  function triggerImport() {
+    document.getElementById('import-input').click();
+  }
+
+  document.getElementById('import-input').addEventListener('change', (e) => {
+    const file = e.target.files[0];
+    if (file) {
+      const importedObj = createCube();
+      importedObj.name = file.name.split('.')[0];
+      importedObj.color = '#af52de';
+      objects.push(importedObj);
+      selectedIdx = objects.length - 1;
+      updateUI();
+      showToast("Model Imported!");
+    }
+  });
+
   function resetCam() {
     camX = 0; camY = 2; camZ = 5;
     pitch = -0.3; yaw = 0;
@@ -227,7 +254,6 @@
     }
   }
 
-  // Draw Grid Floor
   function drawGrid() {
     ctx.strokeStyle = bgDark ? '#26262e' : '#d0d0d8';
     ctx.lineWidth = 1;
@@ -248,25 +274,29 @@
 
   function renderObject(obj, idx) {
     let isSelected = (idx === selectedIdx);
-    let renderVertices = [];
 
-    // Transform local vertices to world coordinates
+    if (obj.type === 'Light') {
+      let p = project(obj.x, obj.y, obj.z);
+      if (p) {
+        ctx.fillStyle = obj.color;
+        ctx.beginPath(); ctx.arc(p.x, p.y, 8, 0, Math.PI * 2); ctx.fill();
+        ctx.strokeStyle = isSelected ? '#ffffff' : '#ffcc00';
+        ctx.lineWidth = 2; ctx.stroke();
+      }
+      return;
+    }
+
+    let renderVertices = [];
     obj.vertices.forEach(v => {
       let x = v[0] * obj.sx, y = v[1] * obj.sy, z = v[2] * obj.sz;
-
-      // Rotation
       let cosY = Math.cos(obj.ry), sinY = Math.sin(obj.ry);
       let x1 = cosY * x + sinY * z;
       let z1 = -sinY * x + cosY * z;
 
-      let wx = x1 + obj.x;
-      let wy = y + obj.y;
-      let wz = z1 + obj.z;
-
-      renderVertices.push({ world: {x: wx, y: wy, z: wz}, proj: project(wx, wy, wz) });
+      let wx = x1 + obj.x, wy = y + obj.y, wz = z1 + obj.z;
+      renderVertices.push({ proj: project(wx, wy, wz) });
     });
 
-    // Draw faces
     obj.faces.forEach((face, fIdx) => {
       let p0 = renderVertices[face[0]].proj;
       let p1 = renderVertices[face[1]].proj;
@@ -275,33 +305,27 @@
 
       if (p0 && p1 && p2 && p3) {
         ctx.beginPath();
-        ctx.moveTo(p0.x, p0.y);
-        ctx.lineTo(p1.x, p1.y);
-        ctx.lineTo(p2.x, p2.y);
-        ctx.lineTo(p3.x, p3.y);
+        ctx.moveTo(p0.x, p0.y); ctx.lineTo(p1.x, p1.y);
+        ctx.lineTo(p2.x, p2.y); ctx.lineTo(p3.x, p3.y);
         ctx.closePath();
 
         ctx.fillStyle = isSelected ? (fIdx % 2 === 0 ? obj.color : '#3388ff') : obj.color;
-        ctx.globalAlpha = 0.85;
-        ctx.fill();
+        ctx.globalAlpha = 0.85; ctx.fill();
 
         ctx.strokeStyle = isSelected ? '#ffffff' : '#000000';
         ctx.lineWidth = isSelected ? 2 : 1;
-        ctx.globalAlpha = 1.0;
-        ctx.stroke();
+        ctx.globalAlpha = 1.0; ctx.stroke();
       }
     });
 
-    // Draw Bone Rig Overlay
     if (isRigActive && isSelected) {
       const joints = [
-        { name: 'Head', pos: project(obj.x, obj.y + 0.8, obj.z) },
-        { name: 'Spine', pos: project(obj.x, obj.y, obj.z) },
-        { name: 'Base', pos: project(obj.x, obj.y - 0.5, obj.z) }
+        { pos: project(obj.x, obj.y + 0.8, obj.z) },
+        { pos: project(obj.x, obj.y, obj.z) },
+        { pos: project(obj.x, obj.y - 0.5, obj.z) }
       ];
 
-      ctx.strokeStyle = '#34c759';
-      ctx.lineWidth = 3;
+      ctx.strokeStyle = '#34c759'; ctx.lineWidth = 3;
       if (joints[0].pos && joints[1].pos && joints[2].pos) {
         ctx.beginPath();
         ctx.moveTo(joints[0].pos.x, joints[0].pos.y);
@@ -324,12 +348,9 @@
     ctx.fillRect(0, 0, width, height);
 
     drawGrid();
-
-    // Render 3D Objects
     objects.forEach((obj, idx) => renderObject(obj, idx));
   }
 
-  // Touch Controls
   canvas.addEventListener('pointerdown', (e) => {
     isDragging = true;
     lastTouchX = e.clientX;
@@ -342,16 +363,13 @@
     let dy = e.clientY - lastTouchY;
 
     if (selectedIdx >= 0 && e.shiftKey) {
-      // Modify Object
       let obj = objects[selectedIdx];
       if (currentMode === 'translate') {
-        obj.x += dx * 0.01;
-        obj.y -= dy * 0.01;
+        obj.x += dx * 0.01; obj.y -= dy * 0.01;
       } else if (currentMode === 'rotate') {
         obj.ry += dx * 0.02;
       }
     } else {
-      // Rotate Camera View
       yaw += dx * 0.008;
       pitch += dy * 0.008;
       pitch = Math.max(-Math.PI / 2 + 0.1, Math.min(Math.PI / 2 - 0.1, pitch));
@@ -364,7 +382,6 @@
 
   canvas.addEventListener('pointerup', () => isDragging = false);
 
-  // UI Updates
   function updateUI() {
     const root = document.getElementById('tree-root');
     root.innerHTML = '';
@@ -375,7 +392,7 @@
       objects.forEach((o, i) => {
         const div = document.createElement('div');
         div.className = 'tree-item' + (i === selectedIdx ? ' selected' : '');
-        div.innerText = '📦 ' + o.name;
+        div.innerText = (o.type === 'Light' ? '💡 ' : '📦 ') + o.name;
         div.onclick = () => { selectedIdx = i; updateUI(); };
         root.appendChild(div);
       });
@@ -392,22 +409,19 @@
   document.getElementById('img-input').addEventListener('change', (e) => {
     const file = e.target.files[0];
     if (file && selectedIdx >= 0) {
-      objects[selectedIdx].color = '#34c759'; // Apply green tint as texture fallback
+      objects[selectedIdx].color = '#34c759';
       showToast("Texture Applied!");
       drawScene();
     }
   });
 
-  // Timeline & Animation System
   function addKeyframe() {
     if (selectedIdx < 0) return showToast("Select an object first!");
     let obj = objects[selectedIdx];
     keyframes = keyframes.filter(k => !(k.objIdx === selectedIdx && Math.abs(k.time - currentTime) < 0.1));
     keyframes.push({
-      objIdx: selectedIdx,
-      time: currentTime,
-      x: obj.x, y: obj.y, z: obj.z,
-      ry: obj.ry
+      objIdx: selectedIdx, time: currentTime,
+      x: obj.x, y: obj.y, z: obj.z, ry: obj.ry || 0
     });
     updateTimeline();
     showToast("Keyframe Added!");
@@ -420,14 +434,14 @@
 
   function applyAnimation() {
     objects.forEach((obj, idx) => {
-      let objKfs = keyframes.filter(k => k.objIdx === idx).sort((a,b) => a.time - b.time);
+      let objKFs = keyframes.filter(k => k.objIdx === idx).sort((a,b) => a.time - b.time);
       if (objKFs.length === 0) return;
 
       if (currentTime <= objKFs[0].time) {
-        obj.x = objKFs[0].x; obj.y = objKFs[0].y; obj.ry = objKFs[0].ry;
+        obj.x = objKFs[0].x; obj.y = objKFs[0].y; if (obj.ry !== undefined) obj.ry = objKFs[0].ry;
       } else if (currentTime >= objKFs[objKFs.length - 1].time) {
         let last = objKFs[objKFs.length - 1];
-        obj.x = last.x; obj.y = last.y; obj.ry = last.ry;
+        obj.x = last.x; obj.y = last.y; if (obj.ry !== undefined) obj.ry = last.ry;
       } else {
         for (let i = 0; i < objKFs.length - 1; i++) {
           let k1 = objKFs[i], k2 = objKFs[i+1];
@@ -435,7 +449,7 @@
             let t = (currentTime - k1.time) / (k2.time - k1.time);
             obj.x = k1.x + (k2.x - k1.x) * t;
             obj.y = k1.y + (k2.y - k1.y) * t;
-            obj.ry = k1.ry + (k2.ry - k1.ry) * t;
+            if (obj.ry !== undefined) obj.ry = k1.ry + (k2.ry - k1.ry) * t;
             break;
           }
         }
@@ -466,13 +480,11 @@
     tctx.fillStyle = '#101012';
     tctx.fillRect(0, 0, tw, th);
 
-    // Track rows
     objects.forEach((o, i) => {
       tctx.fillStyle = (i === selectedIdx) ? 'rgba(0,122,255,0.15)' : '#141417';
       tctx.fillRect(0, i * 32, tw, 32);
     });
 
-    // Keyframes
     keyframes.forEach(k => {
       let x = (k.time / duration) * (tw - 20) + 10;
       let y = k.objIdx * 32 + 16;
@@ -480,7 +492,6 @@
       tctx.beginPath(); tctx.arc(x, y, 4, 0, Math.PI*2); tctx.fill();
     });
 
-    // Playhead
     let px = (currentTime / duration) * (tw - 20) + 10;
     tctx.strokeStyle = '#ff3b30'; tctx.lineWidth = 2;
     tctx.beginPath(); tctx.moveTo(px, 0); tctx.lineTo(px, th); tctx.stroke();
@@ -489,7 +500,6 @@
     document.getElementById('time-val').innerText = '00:' + (sec < 10 ? '0' : '') + sec + ' of 05:00';
   }
 
-  // Animation Loop
   function loop() {
     if (isPlaying) {
       currentTime += 0.016;
@@ -503,7 +513,6 @@
 
   window.addEventListener('resize', resize);
   
-  // Initialization
   addCube();
   resize();
   loop();
