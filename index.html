@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>3D Mobile Editor - Fully Working Uploads</title>
+  <title>3D Editor - Prisma 3D Multi-Track Timeline</title>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; -webkit-tap-highlight-color: transparent; }
     html, body { width: 100%; height: 100dvh; overflow: hidden; background: #0d0d0d; color: #fff; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
@@ -21,14 +21,21 @@
     #viewport { flex: 1; position: relative; background: #121212; width: 100%; min-height: 0; }
     #three-canvas { width: 100%; height: 100%; display: block; position: absolute; top:0; left:0; touch-action: none; }
     
-    #hierarchy { position: absolute; top: 10px; left: 10px; width: 110px; max-height: 120px; background: rgba(18, 18, 18, 0.85); border: 1px solid #333; border-radius: 6px; padding: 6px; z-index: 10; font-size: 10px; overflow-y: auto; backdrop-filter: blur(4px); }
-    .tree-item { padding: 4px 6px; border-radius: 4px; margin-top: 3px; background: rgba(255,255,255,0.05); cursor: pointer; text-overflow: ellipsis; overflow: hidden; white-space: nowrap; }
-    .tree-item.selected { background: #007aff; color: #fff; }
+    #hierarchy { position: absolute; top: 10px; left: 10px; width: 120px; max-height: 140px; background: rgba(18, 18, 18, 0.85); border: 1px solid #333; border-radius: 6px; padding: 6px; z-index: 10; font-size: 10px; overflow-y: auto; backdrop-filter: blur(4px); }
+    .tree-item { padding: 5px 6px; border-radius: 4px; margin-top: 3px; background: rgba(255,255,255,0.05); cursor: pointer; text-overflow: ellipsis; overflow: hidden; white-space: nowrap; }
+    .tree-item.selected { background: #007aff; color: #fff; font-weight: bold; }
 
-    #timeline-panel { height: 80px; background: #141414; border-top: 1px solid #282828; display: flex; flex-direction: column; flex-shrink: 0; z-index: 100; }
-    #tl-header { height: 24px; background: #1c1c1c; display: flex; align-items: center; justify-content: space-between; padding: 0 10px; font-size: 10px; color: #aaa; }
+    /* Prisma 3D Style Multi-Track Timeline */
+    #timeline-panel { height: 110px; background: #141414; border-top: 1px solid #282828; display: flex; flex-direction: column; flex-shrink: 0; z-index: 100; }
+    #tl-header { height: 26px; background: #1c1c1c; display: flex; align-items: center; justify-content: space-between; padding: 0 10px; font-size: 10px; color: #aaa; border-bottom: 1px solid #2a2a2a; }
     #tl-play-btn { background: #333; border: 1px solid #555; color: #fff; font-size: 11px; padding: 2px 8px; border-radius: 4px; cursor: pointer; }
-    #tl-tracks { flex: 1; position: relative; background: #111; touch-action: none; }
+    
+    #tl-body { flex: 1; display: flex; overflow-x: auto; position: relative; background: #111; }
+    #tl-track-labels { width: 90px; background: #181818; border-right: 1px solid #282828; flex-shrink: 0; z-index: 5; }
+    .track-label { height: 32px; display: flex; align-items: center; padding: 0 6px; font-size: 10px; color: #888; border-bottom: 1px solid #222; text-overflow: ellipsis; overflow: hidden; white-space: nowrap; }
+    .track-label.active { color: #fff; background: rgba(0, 122, 255, 0.2); font-weight: bold; }
+    
+    #tl-canvas-container { flex: 1; position: relative; height: 100%; min-width: 100%; }
     #tl-canvas { width: 100%; height: 100%; display: block; }
 
     #bottom-toolbar { height: 52px; background: #181818; border-top: 1px solid #282828; display: flex; align-items: center; justify-content: space-around; padding: 0 4px; flex-shrink: 0; z-index: 100; }
@@ -37,12 +44,9 @@
     .tool-item:active { color: #007aff; }
 
     #toast { position: absolute; top: 12px; left: 50%; transform: translateX(-50%); background: rgba(0,0,0,0.9); color: #fff; padding: 6px 14px; border-radius: 20px; font-size: 11px; display: none; z-index: 1000; border: 1px solid #555; pointer-events: none; }
-    
-    /* Hidden file inputs for upload */
     input[type="file"] { display: none !important; }
   </style>
 
-  <!-- CDNs for Three.js, Controls & GLTF Loader -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/TransformControls.js"></script>
@@ -74,14 +78,18 @@
     <div id="toast">Ready</div>
   </div>
 
+  <!-- Prisma 3D Style Multi-Track Timeline -->
   <div id="timeline-panel">
     <div id="tl-header">
       <button id="tl-play-btn" onclick="togglePlay()">▶ Play</button>
       <span id="time-val" style="font-family: monospace;">00:00.00 of 05:00</span>
       <span style="font-size: 10px; color: #666;">FPS: 30</span>
     </div>
-    <div id="tl-tracks">
-      <canvas id="tl-canvas"></canvas>
+    <div id="tl-body">
+      <div id="tl-track-labels"></div>
+      <div id="tl-canvas-container">
+        <canvas id="tl-canvas"></canvas>
+      </div>
     </div>
   </div>
 
@@ -107,14 +115,13 @@
   </div>
 </div>
 
-<!-- Upload inputs -->
 <input type="file" id="file-model-input" accept=".glb,.gltf">
 <input type="file" id="file-image-input" accept="image/*">
 
 <script>
   let scene, camera, renderer, orbit, transform;
   let objects = [], selectedObj = null;
-  let keyframes = [];
+  let keyframes = []; // Stores { obj, time, pos, rot, scale }
   let isPlaying = false, currentTime = 0, duration = 5.0;
   let raycaster = new THREE.Raycaster();
   let mouse = new THREE.Vector2();
@@ -163,7 +170,6 @@
     // Default cube
     addCube();
 
-    // Tap object to select
     renderer.domElement.addEventListener('pointerdown', (e) => {
       if (transform.dragging) return;
       const rect = renderer.domElement.getBoundingClientRect();
@@ -205,7 +211,6 @@
     scene.add(obj);
     objects.push(obj);
     selectObject(obj);
-    updateHierarchy();
   }
 
   function selectObject(obj) {
@@ -216,6 +221,8 @@
       transform.detach();
     }
     updateHierarchy();
+    updateTimelineTracks();
+    drawTimeline();
   }
 
   function deleteObject() {
@@ -229,6 +236,7 @@
     keyframes = keyframes.filter(kf => kf.obj !== selectedObj);
     selectedObj = null;
     updateHierarchy();
+    updateTimelineTracks();
     drawTimeline();
     showToast('Deleted!');
   }
@@ -240,17 +248,11 @@
     }
   }
 
-  /* File Upload Handlers */
-  function triggerModelUpload() {
-    document.getElementById('file-model-input').click();
-  }
-
-  function triggerImageUpload() {
-    document.getElementById('file-image-input').click();
-  }
+  /* Upload Handlers */
+  function triggerModelUpload() { document.getElementById('file-model-input').click(); }
+  function triggerImageUpload() { document.getElementById('file-image-input').click(); }
 
   function setupFileInputs() {
-    // 3D Model Upload (.glb / .gltf)
     document.getElementById('file-model-input').addEventListener('change', (e) => {
       const file = e.target.files[0];
       if (!file) return;
@@ -267,15 +269,12 @@
           showToast('Model Uploaded Successfully!');
         }, undefined, (err) => {
           console.error(err);
-          showToast('Error loading 3D model file!');
+          showToast('Error loading model!');
         });
-      } else {
-        showToast('GLTF Loader module error!');
       }
       e.target.value = '';
     });
 
-    // Media/Image Upload (PNG, JPG)
     document.getElementById('file-image-input').addEventListener('change', (e) => {
       const file = e.target.files[0];
       if (!file) return;
@@ -291,9 +290,8 @@
               child.material.needsUpdate = true;
             }
           });
-          showToast('Texture applied to selected model!');
+          showToast('Texture applied!');
         } else {
-          // If no object is selected, create a 2D image plane in 3D scene
           const aspect = texture.image.width / texture.image.height || 1;
           const planeGeo = new THREE.PlaneGeometry(1.5 * aspect, 1.5);
           const planeMat = new THREE.MeshBasicMaterial({ map: texture, side: THREE.DoubleSide });
@@ -308,20 +306,16 @@
   }
 
   function applyBoneRig() {
-    if (!selectedObj) {
-      showToast('Select a model first!');
-      return;
-    }
+    if (!selectedObj) { showToast('Select a model first!'); return; }
     const helper = new THREE.BoxHelper(selectedObj, 0x34c759);
     scene.add(helper);
-    showToast('Bone Rig Boundary Attached!');
+    showToast('Bone Rig Attached!');
   }
 
   function addCamera() {
     const camHelper = new THREE.CameraHelper(new THREE.PerspectiveCamera(50, 1, 0.1, 10));
     camHelper.position.set(0, 1.5, 2);
-    addObjectToScene(camHelper, 'Camera_Ref');
-    showToast('Camera Object Added!');
+    addObjectToScene(camHelper, 'Camera');
   }
 
   function addLight() {
@@ -330,17 +324,11 @@
     const helper = new THREE.PointLightHelper(pLight, 0.2);
     pLight.add(helper);
     addObjectToScene(pLight, 'Light');
-    showToast('Light Source Added!');
   }
 
   function toggleSky() {
-    if (scene.background.isColor) {
-      scene.background = new THREE.Color(0x1a2b4c);
-      showToast('Sky Theme On');
-    } else {
-      scene.background = new THREE.Color(0x121212);
-      showToast('Dark Environment');
-    }
+    scene.background = scene.background.isColor && scene.background.getHex() === 0x121212 
+      ? new THREE.Color(0x1a2b4c) : new THREE.Color(0x121212);
   }
 
   function updateHierarchy() {
@@ -353,19 +341,18 @@
     objects.forEach(obj => {
       const item = document.createElement('div');
       item.className = 'tree-item' + (selectedObj === obj ? ' selected' : '');
-      item.innerText = '📦 ' + (obj.name.length > 10 ? obj.name.substring(0, 9) + '..' : obj.name);
+      item.innerText = '📦 ' + (obj.name.length > 9 ? obj.name.substring(0, 8) + '..' : obj.name);
       item.onclick = (e) => { e.stopPropagation(); selectObject(obj); };
       tree.appendChild(item);
     });
   }
 
-  /* Timeline & Animation Functions */
+  /* Prisma 3D Multi-Track Timeline System */
   function setupTimeline() {
-    const tlWrap = document.getElementById('tl-tracks');
-    const tlCanvas = document.getElementById('tl-canvas');
+    const container = document.getElementById('tl-canvas-container');
 
     const scrub = (e) => {
-      const rect = tlWrap.getBoundingClientRect();
+      const rect = container.getBoundingClientRect();
       const clientX = e.clientX || (e.touches && e.touches[0].clientX);
       let ratio = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
       currentTime = ratio * duration;
@@ -373,14 +360,32 @@
       drawTimeline();
     };
 
-    tlWrap.addEventListener('pointerdown', scrub);
-    tlWrap.addEventListener('pointermove', (e) => { if (e.buttons > 0) scrub(e); });
-    drawTimeline();
+    container.addEventListener('pointerdown', scrub);
+    container.addEventListener('pointermove', (e) => { if (e.buttons > 0) scrub(e); });
+    updateTimelineTracks();
+  }
+
+  function updateTimelineTracks() {
+    const labels = document.getElementById('tl-track-labels');
+    labels.innerHTML = '';
+
+    if (objects.length === 0) {
+      labels.innerHTML = '<div class="track-label">No Object</div>';
+      return;
+    }
+
+    objects.forEach(obj => {
+      const lbl = document.createElement('div');
+      lbl.className = 'track-label' + (selectedObj === obj ? ' active' : '');
+      lbl.innerText = (selectedObj === obj ? '▶ ' : '   ') + (obj.name.length > 8 ? obj.name.substring(0, 7) + '..' : obj.name);
+      lbl.onclick = () => selectObject(obj);
+      labels.appendChild(lbl);
+    });
   }
 
   function addKeyframe() {
     if (!selectedObj) {
-      showToast('Select model to keyframe');
+      showToast('Select a model first!');
       return;
     }
     const time = parseFloat(currentTime.toFixed(2));
@@ -393,7 +398,7 @@
       scale: selectedObj.scale.clone()
     });
     drawTimeline();
-    showToast('Keyframe Added at ' + time + 's');
+    showToast('Keyframe set for ' + selectedObj.name);
   }
 
   function togglePlay() {
@@ -433,35 +438,50 @@
   }
 
   function drawTimeline() {
+    const container = document.getElementById('tl-canvas-container');
     const tlCanvas = document.getElementById('tl-canvas');
-    const tlWrap = document.getElementById('tl-tracks');
-    const w = tlCanvas.width = tlWrap.clientWidth;
-    const h = tlCanvas.height = tlWrap.clientHeight;
+    const w = tlCanvas.width = container.clientWidth;
+    const h = tlCanvas.height = container.clientHeight;
     const ctx = tlCanvas.getContext('2d');
 
     ctx.fillStyle = '#111';
     ctx.fillRect(0, 0, w, h);
 
-    ctx.fillStyle = '#666';
-    ctx.font = '9px sans-serif';
-    ctx.strokeStyle = '#222';
-
-    for (let i = 0; i <= 5; i++) {
-      let x = (i / 5) * (w - 20) + 10;
-      ctx.fillText(i + 's', x - 4, 10);
-      ctx.beginPath(); ctx.moveTo(x, 14); ctx.lineTo(x, h); ctx.stroke();
-    }
-
-    keyframes.forEach(kf => {
-      let kfX = (kf.time / duration) * (w - 20) + 10;
-      ctx.fillStyle = '#ffcc00';
-      ctx.beginPath();
-      ctx.arc(kfX, 32, 4, 0, Math.PI * 2);
-      ctx.fill();
+    // Track Background rows
+    const trackHeight = 32;
+    objects.forEach((obj, idx) => {
+      let y = idx * trackHeight;
+      ctx.fillStyle = (selectedObj === obj) ? 'rgba(0, 122, 255, 0.12)' : (idx % 2 === 0 ? '#141414' : '#111');
+      ctx.fillRect(0, y, w, trackHeight);
+      ctx.strokeStyle = '#222';
+      ctx.beginPath(); ctx.moveTo(0, y + trackHeight); ctx.lineTo(w, y + trackHeight); ctx.stroke();
     });
 
+    // Time grids
+    ctx.strokeStyle = '#282828';
+    ctx.lineWidth = 1;
+    for (let i = 0; i <= 5; i++) {
+      let x = (i / 5) * (w - 20) + 10;
+      ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, h); ctx.stroke();
+    }
+
+    // Keyframe diamonds for each object track
+    keyframes.forEach(kf => {
+      let objIndex = objects.indexOf(kf.obj);
+      if (objIndex !== -1) {
+        let kfX = (kf.time / duration) * (w - 20) + 10;
+        let kfY = objIndex * trackHeight + (trackHeight / 2);
+        
+        ctx.fillStyle = (selectedObj === kf.obj) ? '#ffcc00' : '#888';
+        ctx.beginPath();
+        ctx.arc(kfX, kfY, 4, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    });
+
+    // Red Playhead bar
     let playheadX = (currentTime / duration) * (w - 20) + 10;
-    ctx.strokeStyle = '#007aff';
+    ctx.strokeStyle = '#ff3b30';
     ctx.lineWidth = 2;
     ctx.beginPath();
     ctx.moveTo(playheadX, 0);
