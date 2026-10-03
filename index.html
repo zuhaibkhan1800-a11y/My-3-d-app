@@ -37,7 +37,7 @@
       display: flex; 
       align-items: center; 
       justify-content: space-between; 
-      padding: 0 8px;
+      padding: 0 6px;
       border-bottom: 1px solid #282828; 
       flex-shrink: 0; 
       z-index: 999999;
@@ -54,7 +54,7 @@
       display: flex; 
       align-items: center; 
       gap: 3px; 
-      padding: 8px 10px; 
+      padding: 6px 8px; 
       border-radius: 6px; 
       touch-action: manipulation;
     }
@@ -134,10 +134,10 @@
     input[type="file"] { display: none !important; }
   </style>
 
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/TransformControls.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
+  <script src="https://unpkg.com/three@0.128.0/build/three.min.js"></script>
+  <script src="https://unpkg.com/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+  <script src="https://unpkg.com/three@0.128.0/examples/js/controls/TransformControls.js"></script>
+  <script src="https://unpkg.com/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
 </head>
 <body>
 
@@ -146,13 +146,13 @@
     <div class="top-bar-left">
       <button class="icon-btn" id="btn-home">🏠 Home</button>
       <button class="icon-btn" id="btn-mode-trans">✢ Move</button>
-      <button class="icon-btn" id="btn-mode-rot">🔄 Rot</button>
+      <button class="icon-btn" id="btn-mode-rot">🔄 Rotate</button>
       <button class="icon-btn" id="btn-mode-scale">📐 Scale</button>
     </div>
     <div class="top-bar-right">
-      <button class="icon-btn rig-btn" id="btn-bone-rig">🦴 Rig</button>
-      <button class="icon-btn keyframe-btn" id="btn-add-keyframe">🔑 Key</button>
-      <button class="icon-btn delete-btn" id="btn-delete">🗑 Del</button>
+      <button class="icon-btn rig-btn" id="btn-bone-rig">🦴 Bone Rig</button>
+      <button class="icon-btn keyframe-btn" id="btn-add-keyframe">🔑 Keyframe</button>
+      <button class="icon-btn delete-btn" id="btn-delete">🗑 Delete</button>
     </div>
   </div>
 
@@ -224,39 +224,49 @@
   }
 
   function initApp() {
-    const viewport = document.getElementById('viewport');
-    scene = new THREE.Scene();
-    scene.background = new THREE.Color(0x121212);
+    try {
+      const viewport = document.getElementById('viewport');
+      scene = new THREE.Scene();
+      scene.background = new THREE.Color(0x121212);
 
-    camera = new THREE.PerspectiveCamera(60, viewport.clientWidth / viewport.clientHeight, 0.1, 1000);
-    resetCamera();
+      camera = new THREE.PerspectiveCamera(60, viewport.clientWidth / viewport.clientHeight, 0.1, 1000);
 
-    renderer = new THREE.WebGLRenderer({ canvas: document.getElementById('three-canvas'), antialias: true });
-    renderer.setSize(viewport.clientWidth, viewport.clientHeight);
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+      renderer = new THREE.WebGLRenderer({ canvas: document.getElementById('three-canvas'), antialias: true });
+      renderer.setSize(viewport.clientWidth, viewport.clientHeight);
+      renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
 
-    orbit = new THREE.OrbitControls(camera, renderer.domElement);
-    orbit.enableDamping = true;
-    orbit.target.set(0, 0.5, 0);
+      if (THREE.OrbitControls) {
+        orbit = new THREE.OrbitControls(camera, renderer.domElement);
+        orbit.enableDamping = true;
+        orbit.target.set(0, 0.5, 0);
+      }
 
-    transform = new THREE.TransformControls(camera, renderer.domElement);
-    transform.size = 0.8;
-    transform.addEventListener('dragging-changed', (e) => { orbit.enabled = !e.value; });
-    scene.add(transform);
+      if (THREE.TransformControls) {
+        transform = new THREE.TransformControls(camera, renderer.domElement);
+        transform.size = 0.8;
+        transform.addEventListener('dragging-changed', (e) => { if (orbit) orbit.enabled = !e.value; });
+        scene.add(transform);
+      }
 
-    const light1 = new THREE.DirectionalLight(0xffffff, 1.2);
-    light1.position.set(5, 10, 7);
-    scene.add(light1);
-    scene.add(new THREE.AmbientLight(0xffffff, 0.7));
+      resetCamera();
 
-    const grid = new THREE.GridHelper(20, 20, 0x555555, 0x222222);
-    grid.position.y = 0;
-    scene.add(grid);
+      const light1 = new THREE.DirectionalLight(0xffffff, 1.2);
+      light1.position.set(5, 10, 7);
+      scene.add(light1);
+      scene.add(new THREE.AmbientLight(0xffffff, 0.7));
 
-    setupEvents();
-    drawTimeline();
-    animate();
-    showMsg('System Ready');
+      const grid = new THREE.GridHelper(20, 20, 0x555555, 0x222222);
+      grid.position.y = 0;
+      scene.add(grid);
+
+      setupEvents();
+      drawTimeline();
+      animate();
+      showMsg('System Ready');
+    } catch (e) {
+      console.error(e);
+      showMsg('Error Initializing 3D Editor');
+    }
   }
 
   function resetCamera() {
@@ -284,7 +294,7 @@
       if (child.isBone || child.isSkinnedMesh) hasSkeleton = true;
     });
 
-    if (hasSkeleton) {
+    if (hasSkeleton && THREE.SkeletonHelper) {
       const helper = new THREE.SkeletonHelper(selectedObj);
       helper.material.linewidth = 3;
       helper.material.depthTest = false;
@@ -367,15 +377,17 @@
 
     scene.add(rigGroup);
     currentSkeletonGroup = rigGroup;
-    showMsg('Rig Applied! Tap bones/joints to move.');
+    showMsg('Rig Applied! Tap bones to move.');
   }
 
   function selectObject(obj) {
     selectedObj = obj;
-    if (obj) {
-      transform.attach(obj);
-    } else {
-      transform.detach();
+    if (transform) {
+      if (obj) {
+        transform.attach(obj);
+      } else {
+        transform.detach();
+      }
     }
     updateTree();
   }
@@ -394,7 +406,7 @@
     }
     
     const objName = selectedObj.name;
-    transform.detach();
+    if (transform) transform.detach();
     if (currentSkeletonGroup) {
       scene.remove(currentSkeletonGroup);
       currentSkeletonGroup = null;
@@ -442,7 +454,7 @@
     const canvas = document.getElementById('three-canvas');
 
     canvas.addEventListener('pointerdown', (e) => {
-      if (transform.dragging) return;
+      if (transform && transform.dragging) return;
       const rect = canvas.getBoundingClientRect();
       mouse.x = ((e.clientX - rect.left) / canvas.clientWidth) * 2 - 1;
       mouse.y = -((e.clientY - rect.top) / canvas.clientHeight) * 2 + 1;
@@ -463,9 +475,9 @@
     });
 
     document.getElementById('btn-home').onclick = () => { resetCamera(); showMsg('Camera Reset'); };
-    document.getElementById('btn-mode-trans').onclick = () => { transform.setMode('translate'); showMsg('Move Mode'); };
-    document.getElementById('btn-mode-rot').onclick = () => { transform.setMode('rotate'); showMsg('Rotate Mode'); };
-    document.getElementById('btn-mode-scale').onclick = () => { transform.setMode('scale'); showMsg('Scale Mode'); };
+    document.getElementById('btn-mode-trans').onclick = () => { if (transform) transform.setMode('translate'); showMsg('Move Mode'); };
+    document.getElementById('btn-mode-rot').onclick = () => { if (transform) transform.setMode('rotate'); showMsg('Rotate Mode'); };
+    document.getElementById('btn-mode-scale').onclick = () => { if (transform) transform.setMode('scale'); showMsg('Scale Mode'); };
     document.getElementById('btn-bone-rig').onclick = () => { applyBoneRig(); };
     document.getElementById('btn-add-keyframe').onclick = () => { addKeyframe(); };
     document.getElementById('btn-delete').onclick = () => { deleteSelectedObject(); };
@@ -488,11 +500,15 @@
       const file = e.target.files[0];
       if (!file) return;
       showMsg('Loading Model...');
-      const loader = new THREE.GLTFLoader();
-      loader.load(URL.createObjectURL(file), (gltf) => {
-        addObject(gltf.scene, file.name);
-        showMsg('Model Loaded!');
-      });
+      if (THREE.GLTFLoader) {
+        const loader = new THREE.GLTFLoader();
+        loader.load(URL.createObjectURL(file), (gltf) => {
+          addObject(gltf.scene, file.name);
+          showMsg('Model Loaded!');
+        });
+      } else {
+        showMsg('GLTF Loader Ready Nahi Hai');
+      }
     };
 
     document.getElementById('file-photo').onchange = (e) => {
@@ -566,17 +582,4 @@
   function updateTree() {
     treeRoot.innerHTML = '';
     if (objects.length === 0) {
-      treeRoot.innerHTML = '<div style="color:#666;">No Objects</div>';
-      return;
-    }
-    objects.forEach(obj => {
-      const item = document.createElement('div');
-      item.className = 'tree-item' + (selectedObj === obj ? ' selected' : '');
-      item.innerText = '📦 ' + (obj.name.length > 8 ? obj.name.substring(0,7)+'..' : obj.name);
-      item.onclick = (e) => { e.stopPropagation(); selectObject(obj); };
-      treeRoot.appendChild(item);
-    });
-  }
-
-  function drawTimeline() {
-    const w = tlCanvas.width = tlWra
+      treeRoot.innerHTML = '<div style="color:#666;">No O
