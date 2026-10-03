@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>3D Editor - Prisma 3D Multi-Track Timeline</title>
+  <title>3D Editor - Prisma 3D Skeleton Rigging & Multi-Track</title>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; -webkit-tap-highlight-color: transparent; }
     html, body { width: 100%; height: 100dvh; overflow: hidden; background: #0d0d0d; color: #fff; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
@@ -15,6 +15,7 @@
     .icon-btn { background: #252525; border: 1px solid #3d3d3d; color: #fff; font-size: 11px; padding: 6px 8px; border-radius: 6px; cursor: pointer; touch-action: manipulation; }
     .icon-btn:active { background: #007aff; }
     .icon-btn.rig-btn { background: rgba(52, 199, 89, 0.2); color: #34c759; border-color: rgba(52, 199, 89, 0.4); }
+    .icon-btn.rig-btn.active { background: #34c759; color: #000; font-weight: bold; }
     .icon-btn.keyframe-btn { background: rgba(255, 204, 0, 0.2); color: #ffcc00; border-color: rgba(255, 204, 0, 0.4); }
     .icon-btn.delete-btn { background: rgba(255, 59, 48, 0.2); color: #ff3b30; border-color: rgba(255, 59, 48, 0.4); }
 
@@ -63,7 +64,7 @@
       <button class="icon-btn" onclick="setTransformMode('scale')">📐 Scale</button>
     </div>
     <div class="top-bar-right">
-      <button class="icon-btn rig-btn" onclick="applyBoneRig()">🦴 Bone Rig</button>
+      <button id="rig-toggle-btn" class="icon-btn rig-btn" onclick="toggleBoneRig()">🦴 Bone Rig</button>
       <button class="icon-btn keyframe-btn" onclick="addKeyframe()">🔑 Keyframe</button>
       <button class="icon-btn delete-btn" onclick="deleteObject()">🗑 Delete</button>
     </div>
@@ -120,11 +121,16 @@
 
 <script>
   let scene, camera, renderer, orbit, transform;
-  let objects = [], selectedObj = null;
-  let keyframes = []; // Stores { obj, time, pos, rot, scale }
+  let objects = [], selectedObj = null, selectedBone = null;
+  let keyframes = []; 
   let isPlaying = false, currentTime = 0, duration = 5.0;
   let raycaster = new THREE.Raycaster();
   let mouse = new THREE.Vector2();
+
+  // Rigging Helpers
+  let skeletonHelper = null;
+  let jointSpheresGroup = new THREE.Group();
+  let isRigVisible = false;
 
   function showToast(msg) {
     const t = document.getElementById('toast');
@@ -157,6 +163,8 @@
     transform.addEventListener('dragging-changed', e => orbit.enabled = !e.value);
     scene.add(transform);
 
+    scene.add(jointSpheresGroup);
+
     const light = new THREE.DirectionalLight(0xffffff, 1.2);
     light.position.set(5, 10, 7);
     scene.add(light);
@@ -166,8 +174,6 @@
     scene.add(grid);
 
     resetCamera();
-
-    // Default cube
     addCube();
 
     renderer.domElement.addEventListener('pointerdown', (e) => {
@@ -177,6 +183,22 @@
       mouse.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
 
       raycaster.setFromCamera(mouse, camera);
+
+      // Check Joint selection first if Rig is active
+      if (isRigVisible && jointSpheresGroup.children.length > 0) {
+        const jointIntersects = raycaster.intersectObjects(jointSpheresGroup.children, true);
+        if (jointIntersects.length > 0) {
+          const selectedJoint = jointIntersects[0].object;
+          if (selectedJoint.userData && selectedJoint.userData.bone) {
+            selectedBone = selectedJoint.userData.bone;
+            transform.attach(selectedBone);
+            showToast('Bone Selected: ' + (selectedBone.name || 'Joint'));
+            return;
+          }
+        }
+      }
+
+      // Check object selection
       const intersects = raycaster.intersectObjects(objects, true);
       if (intersects.length > 0) {
         let root = intersects[0].object;
@@ -215,11 +237,13 @@
 
   function selectObject(obj) {
     selectedObj = obj;
+    selectedBone = null;
     if (obj) {
       transform.attach(obj);
     } else {
       transform.detach();
     }
+    updateRigHelper();
     updateHierarchy();
     updateTimelineTracks();
     drawTimeline();
@@ -230,6 +254,7 @@
       showToast('Select an object to delete');
       return;
     }
+    clearRigHelpers();
     transform.detach();
     scene.remove(selectedObj);
     objects = objects.filter(o => o !== selectedObj);
@@ -266,7 +291,7 @@
           const model = gltf.scene;
           model.position.set(0, 0, 0);
           addObjectToScene(model, file.name.split('.')[0]);
-          showToast('Model Uploaded Successfully!');
+          showToast('Model Loaded!');
         }, undefined, (err) => {
           console.error(err);
           showToast('Error loading model!');
@@ -305,11 +330,106 @@
     });
   }
 
-  function applyBoneRig() {
-    if (!selectedObj) { showToast('Select a model first!'); return; }
-    const helper = new THREE.BoxHelper(selectedObj, 0x34c759);
-    scene.add(helper);
-    showToast('Bone Rig Attached!');
+  /* Prisma 3D Skeleton Rigging System */
+  function clearRigHelpers() {
+    if (skeletonHelper) {
+      scene.remove(skeletonHelper);
+      skeletonHelper = null;
+    }
+    while (jointSpheresGroup.children.length > 0) {
+      const child = jointSpheresGroup.children[0];
+      jointSpheresGroup.remove(child);
+      if (child.geometry) child.geometry.dispose();
+      if (child.material) child.material.dispose();
+    }
+  }
+
+  function toggleBoneRig() {
+    isRigVisible = !isRigVisible;
+    const btn = document.getElementById('rig-toggle-btn');
+    if (isRigVisible) {
+      btn.classList.add('active');
+      updateRigHelper();
+      showToast('Rig View ON (Prisma 3D Style)');
+    } else {
+      btn.classList.remove('active');
+      clearRigHelpers();
+      if (selectedObj) transform.attach(selectedObj);
+      showToast('Rig View OFF');
+    }
+  }
+
+  function updateRigHelper() {
+    clearRigHelpers();
+    if (!isRigVisible || !selectedObj) return;
+
+    // Search for bones inside selected model
+    let bones = [];
+    selectedObj.traverse((child) => {
+      if (child.isBone) bones.push(child);
+    });
+
+    // If GLTF/FBX has actual SkinnedMesh Bones
+    if (bones.length > 0) {
+      skeletonHelper = new THREE.SkeletonHelper(selectedObj);
+      skeletonHelper.material.linewidth = 2;
+      scene.add(skeletonHelper);
+
+      // Create Prisma 3D style white joint spheres for each bone
+      const sphereGeo = new THREE.SphereGeometry(0.04, 16, 16);
+      const sphereMat = new THREE.MeshBasicMaterial({ color: 0xffffff, depthTest: false });
+
+      bones.forEach(bone => {
+        const sphere = new THREE.Mesh(sphereGeo, sphereMat);
+        sphere.renderOrder = 999;
+        sphere.userData = { bone: bone };
+        jointSpheresGroup.add(sphere);
+      });
+    } else {
+      // Fallback procedural joints for simple models
+      generateProceduralJoints(selectedObj);
+    }
+  }
+
+  function generateProceduralJoints(obj) {
+    const box = new THREE.Box3().setFromObject(obj);
+    const center = new THREE.Vector3();
+    const size = new THREE.Vector3();
+    box.getCenter(center);
+    box.getSize(size);
+
+    // Standard joint positions relative to model bounding box
+    const jointOffsets = [
+      { name: 'Head', pos: new THREE.Vector3(center.x, center.y + size.y * 0.4, center.z) },
+      { name: 'Neck', pos: new THREE.Vector3(center.x, center.y + size.y * 0.3, center.z) },
+      { name: 'Shoulder_L', pos: new THREE.Vector3(center.x - size.x * 0.3, center.y + size.y * 0.25, center.z) },
+      { name: 'Shoulder_R', pos: new THREE.Vector3(center.x + size.x * 0.3, center.y + size.y * 0.25, center.z) },
+      { name: 'Elbow_L', pos: new THREE.Vector3(center.x - size.x * 0.35, center.y, center.z) },
+      { name: 'Elbow_R', pos: new THREE.Vector3(center.x + size.x * 0.35, center.y, center.z) },
+      { name: 'Hips', pos: new THREE.Vector3(center.x, center.y - size.y * 0.1, center.z) },
+      { name: 'Knee_L', pos: new THREE.Vector3(center.x - size.x * 0.15, center.y - size.y * 0.3, center.z) },
+      { name: 'Knee_R', pos: new THREE.Vector3(center.x + size.x * 0.15, center.y - size.y * 0.3, center.z) }
+    ];
+
+    const sphereGeo = new THREE.SphereGeometry(0.04, 16, 16);
+    const sphereMat = new THREE.MeshBasicMaterial({ color: 0xffffff, depthTest: false });
+
+    jointOffsets.forEach(j => {
+      const sphere = new THREE.Mesh(sphereGeo, sphereMat);
+      sphere.position.copy(j.pos);
+      sphere.renderOrder = 999;
+      sphere.userData = { bone: obj, name: j.name };
+      jointSpheresGroup.add(sphere);
+    });
+  }
+
+  function syncJointPositions() {
+    if (!isRigVisible || jointSpheresGroup.children.length === 0) return;
+    jointSpheresGroup.children.forEach(sphere => {
+      if (sphere.userData && sphere.userData.bone && sphere.userData.bone !== selectedObj) {
+        sphere.position.setFromMatrixPosition(sphere.userData.bone.matrixWorld);
+      }
+    });
   }
 
   function addCamera() {
@@ -384,21 +504,22 @@
   }
 
   function addKeyframe() {
-    if (!selectedObj) {
-      showToast('Select a model first!');
+    const targetObj = selectedBone || selectedObj;
+    if (!targetObj) {
+      showToast('Select a model or bone first!');
       return;
     }
     const time = parseFloat(currentTime.toFixed(2));
-    keyframes = keyframes.filter(kf => !(kf.obj === selectedObj && Math.abs(kf.time - time) < 0.05));
+    keyframes = keyframes.filter(kf => !(kf.obj === targetObj && Math.abs(kf.time - time) < 0.05));
     keyframes.push({
-      obj: selectedObj,
+      obj: targetObj,
       time: time,
-      pos: selectedObj.position.clone(),
-      rot: selectedObj.rotation.clone(),
-      scale: selectedObj.scale.clone()
+      pos: targetObj.position.clone(),
+      rot: targetObj.rotation.clone(),
+      scale: targetObj.scale.clone()
     });
     drawTimeline();
-    showToast('Keyframe set for ' + selectedObj.name);
+    showToast('Keyframe set!');
   }
 
   function togglePlay() {
@@ -408,32 +529,37 @@
 
   function applyAnimation(time) {
     objects.forEach(obj => {
-      const objKFs = keyframes.filter(kf => kf.obj === obj).sort((a,b) => a.time - b.time);
-      if (objKFs.length === 0) return;
+      const animateTarget = (target) => {
+        const objKFs = keyframes.filter(kf => kf.obj === target).sort((a,b) => a.time - b.time);
+        if (objKFs.length === 0) return;
 
-      if (time <= objKFs[0].time) {
-        obj.position.copy(objKFs[0].pos);
-        obj.rotation.copy(objKFs[0].rot);
-        obj.scale.copy(objKFs[0].scale);
-      } else if (time >= objKFs[objKFs.length - 1].time) {
-        const last = objKFs[objKFs.length - 1];
-        obj.position.copy(last.pos);
-        obj.rotation.copy(last.rot);
-        obj.scale.copy(last.scale);
-      } else {
-        for (let i = 0; i < objKFs.length - 1; i++) {
-          let k1 = objKFs[i], k2 = objKFs[i+1];
-          if (time >= k1.time && time <= k2.time) {
-            let alpha = (time - k1.time) / (k2.time - k1.time);
-            obj.position.lerpVectors(k1.pos, k2.pos, alpha);
-            obj.scale.lerpVectors(k1.scale, k2.scale, alpha);
-            obj.rotation.x = THREE.MathUtils.lerp(k1.rot.x, k2.rot.x, alpha);
-            obj.rotation.y = THREE.MathUtils.lerp(k1.rot.y, k2.rot.y, alpha);
-            obj.rotation.z = THREE.MathUtils.lerp(k1.rot.z, k2.rot.z, alpha);
-            break;
+        if (time <= objKFs[0].time) {
+          target.position.copy(objKFs[0].pos);
+          target.rotation.copy(objKFs[0].rot);
+          target.scale.copy(objKFs[0].scale);
+        } else if (time >= objKFs[objKFs.length - 1].time) {
+          const last = objKFs[objKFs.length - 1];
+          target.position.copy(last.pos);
+          target.rotation.copy(last.rot);
+          target.scale.copy(last.scale);
+        } else {
+          for (let i = 0; i < objKFs.length - 1; i++) {
+            let k1 = objKFs[i], k2 = objKFs[i+1];
+            if (time >= k1.time && time <= k2.time) {
+              let alpha = (time - k1.time) / (k2.time - k1.time);
+              target.position.lerpVectors(k1.pos, k2.pos, alpha);
+              target.scale.lerpVectors(k1.scale, k2.scale, alpha);
+              target.rotation.x = THREE.MathUtils.lerp(k1.rot.x, k2.rot.x, alpha);
+              target.rotation.y = THREE.MathUtils.lerp(k1.rot.y, k2.rot.y, alpha);
+              target.rotation.z = THREE.MathUtils.lerp(k1.rot.z, k2.rot.z, alpha);
+              break;
+            }
           }
         }
-      }
+      };
+
+      animateTarget(obj);
+      obj.traverse(child => { if (child.isBone) animateTarget(child); });
     });
   }
 
@@ -467,12 +593,16 @@
 
     // Keyframe diamonds for each object track
     keyframes.forEach(kf => {
-      let objIndex = objects.indexOf(kf.obj);
+      let parentObj = kf.obj;
+      while (parentObj.parent && parentObj.parent !== scene && !objects.includes(parentObj)) {
+        parentObj = parentObj.parent;
+      }
+      let objIndex = objects.indexOf(parentObj);
       if (objIndex !== -1) {
         let kfX = (kf.time / duration) * (w - 20) + 10;
         let kfY = objIndex * trackHeight + (trackHeight / 2);
         
-        ctx.fillStyle = (selectedObj === kf.obj) ? '#ffcc00' : '#888';
+        ctx.fillStyle = (selectedObj === parentObj) ? '#ffcc00' : '#888';
         ctx.beginPath();
         ctx.arc(kfX, kfY, 4, 0, Math.PI * 2);
         ctx.fill();
@@ -500,6 +630,7 @@
       applyAnimation(currentTime);
       drawTimeline();
     }
+    syncJointPositions();
     if (orbit) orbit.update();
     if (renderer && scene && camera) renderer.render(scene, camera);
   }
