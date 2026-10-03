@@ -32,17 +32,16 @@
     }
     
     #top-bar { 
-      height: 44px; 
+      height: 48px; 
       background: #181818; 
       display: flex; 
       align-items: center; 
       justify-content: space-between; 
-      padding: 0 6px;
+      padding: 0 8px;
       border-bottom: 1px solid #282828; 
       flex-shrink: 0; 
-      z-index: 99999;
+      z-index: 999999;
       position: relative;
-      touch-action: manipulation;
     }
     .top-bar-left, .top-bar-right { display: flex; align-items: center; gap: 4px; }
     
@@ -55,9 +54,8 @@
       display: flex; 
       align-items: center; 
       gap: 3px; 
-      padding: 6px 8px; 
+      padding: 8px 10px; 
       border-radius: 6px; 
-      pointer-events: auto !important;
       touch-action: manipulation;
     }
     .icon-btn:active { background: #007aff !important; color: #fff !important; }
@@ -78,30 +76,30 @@
     #hierarchy { 
       position: absolute; top: 10px; left: 10px; width: 110px; max-height: 100px; 
       background: rgba(18, 18, 18, 0.85); border: 1px solid #333; border-radius: 6px; padding: 6px; 
-      overflow-y: auto; z-index: 10000; font-size: 10px; backdrop-filter: blur(4px); pointer-events: auto;
+      overflow-y: auto; z-index: 99999; font-size: 10px; backdrop-filter: blur(4px);
     }
     .tree-item { padding: 4px 6px; border-radius: 4px; margin-bottom: 3px; background: rgba(255,255,255,0.05); cursor: pointer; display: flex; justify-content: space-between; align-items: center; }
     .tree-item.selected { background: #007aff; color: #fff; }
 
     #timeline-panel { 
-      height: 90px; 
+      height: 85px; 
       background: #141414; 
       border-top: 1px solid #282828; 
       display: flex; 
       flex-direction: column; 
       flex-shrink: 0; 
-      z-index: 99999;
+      z-index: 999999;
       position: relative;
     }
     #tl-header { 
       height: 24px; background: #1c1c1c; display: flex; align-items: center; justify-content: space-between; padding: 0 10px; font-size: 10px; color: #aaa;
     }
-    #tl-play-btn { background: transparent; border: none; color: #fff; font-size: 12px; cursor: pointer; padding: 2px 8px; }
-    #tl-tracks-container { flex: 1; position: relative; overflow: hidden; background: #111; touch-action: none; pointer-events: auto; }
+    #tl-play-btn { background: #333; border: 1px solid #555; color: #fff; font-size: 12px; cursor: pointer; padding: 2px 10px; border-radius: 4px; }
+    #tl-tracks-container { flex: 1; position: relative; overflow: hidden; background: #111; touch-action: none; }
     #tl-canvas { width: 100%; height: 100%; display: block; }
 
     #bottom-toolbar { 
-      height: 50px; 
+      height: 52px; 
       background: #181818; 
       border-top: 1px solid #282828; 
       display: flex; 
@@ -109,9 +107,8 @@
       justify-content: space-around;
       padding: 0 4px; 
       flex-shrink: 0; 
-      z-index: 99999;
+      z-index: 999999;
       position: relative;
-      touch-action: manipulation;
     }
     .tool-item { 
       display: flex; 
@@ -124,7 +121,6 @@
       cursor: pointer; 
       flex: 1; 
       height: 100%; 
-      pointer-events: auto !important;
       touch-action: manipulation;
     }
     .tool-item span { font-size: 15px; }
@@ -133,7 +129,7 @@
     #toast { 
       position: absolute; top: 12px; left: 50%; transform: translateX(-50%); 
       background: rgba(0,0,0,0.9); color: #fff; padding: 6px 14px; border-radius: 20px; font-size: 11px; 
-      display: none; z-index: 999999; pointer-events: none; border: 1px solid #555;
+      display: none; z-index: 9999999; pointer-events: none; border: 1px solid #555;
     }
     input[type="file"] { display: none !important; }
   </style>
@@ -171,7 +167,7 @@
 
   <div id="timeline-panel">
     <div id="tl-header">
-      <button id="tl-play-btn">▶</button>
+      <button id="tl-play-btn">▶ Play</button>
       <span id="time-val" style="font-family: monospace;">00:00.00 of 05:00</span>
       <span style="font-size: 10px; color: #666;">FPS: 30</span>
     </div>
@@ -260,7 +256,7 @@
     setupEvents();
     drawTimeline();
     animate();
-    showMsg('System Loaded');
+    showMsg('System Ready');
   }
 
   function resetCamera() {
@@ -342,7 +338,7 @@
     if (spine) rigGroup.add(spine);
     if (neck) rigGroup.add(neck);
 
-    const headRadius = Math.min(0.1, modelHeight * 0.05);
+    const headRadius = Math.min(0.08, modelHeight * 0.04);
     const headMesh = new THREE.Mesh(new THREE.SphereGeometry(headRadius, 10, 10), mat);
     headMesh.position.set(0, headY, 0);
     rigGroup.add(headMesh);
@@ -371,7 +367,7 @@
 
     scene.add(rigGroup);
     currentSkeletonGroup = rigGroup;
-    showMsg('Auto Rig Applied! Tap bones/joints to move.');
+    showMsg('Rig Applied! Tap bones/joints to move.');
   }
 
   function selectObject(obj) {
@@ -442,18 +438,6 @@
     drawTimeline();
   }
 
-  function bindBtn(id, fn) {
-    const el = document.getElementById(id);
-    if (!el) return;
-    const handler = (e) => {
-      e.preventDefault();
-      e.stopPropagation();
-      fn();
-    };
-    el.addEventListener('touchstart', handler, { passive: false });
-    el.addEventListener('click', handler);
-  }
-
   function setupEvents() {
     const canvas = document.getElementById('three-canvas');
 
@@ -478,27 +462,27 @@
       }
     });
 
-    bindBtn('btn-home', () => { resetCamera(); showMsg('Camera Reset'); });
-    bindBtn('btn-mode-trans', () => { transform.setMode('translate'); showMsg('Move Mode'); });
-    bindBtn('btn-mode-rot', () => { transform.setMode('rotate'); showMsg('Rotate Mode'); });
-    bindBtn('btn-mode-scale', () => { transform.setMode('scale'); showMsg('Scale Mode'); });
-    bindBtn('btn-bone-rig', () => { applyBoneRig(); });
-    bindBtn('btn-add-keyframe', () => { addKeyframe(); });
-    bindBtn('btn-delete', () => { deleteSelectedObject(); });
+    document.getElementById('btn-home').onclick = () => { resetCamera(); showMsg('Camera Reset'); };
+    document.getElementById('btn-mode-trans').onclick = () => { transform.setMode('translate'); showMsg('Move Mode'); };
+    document.getElementById('btn-mode-rot').onclick = () => { transform.setMode('rotate'); showMsg('Rotate Mode'); };
+    document.getElementById('btn-mode-scale').onclick = () => { transform.setMode('scale'); showMsg('Scale Mode'); };
+    document.getElementById('btn-bone-rig').onclick = () => { applyBoneRig(); };
+    document.getElementById('btn-add-keyframe').onclick = () => { addKeyframe(); };
+    document.getElementById('btn-delete').onclick = () => { deleteSelectedObject(); };
 
-    bindBtn('btn-add-model', () => { document.getElementById('file-model').click(); });
-    bindBtn('btn-upload-photo', () => { document.getElementById('file-photo').click(); });
+    document.getElementById('btn-add-model').onclick = () => { document.getElementById('file-model').click(); };
+    document.getElementById('btn-upload-photo').onclick = () => { document.getElementById('file-photo').click(); };
     
-    bindBtn('btn-add-cube', () => {
+    document.getElementById('btn-add-cube').onclick = () => {
       const cube = new THREE.Mesh(new THREE.BoxGeometry(0.8, 0.8, 0.8), new THREE.MeshStandardMaterial({ color: 0x007aff }));
       cube.position.set(0, 0.4, 0);
       addObject(cube, 'Cube');
-    });
+    };
 
-    bindBtn('tl-play-btn', () => {
+    document.getElementById('tl-play-btn').onclick = () => {
       isPlaying = !isPlaying;
-      document.getElementById('tl-play-btn').innerText = isPlaying ? '⏸' : '▶';
-    });
+      document.getElementById('tl-play-btn').innerText = isPlaying ? '⏸ Pause' : '▶ Play';
+    };
 
     document.getElementById('file-model').onchange = (e) => {
       const file = e.target.files[0];
@@ -588,4 +572,11 @@
     objects.forEach(obj => {
       const item = document.createElement('div');
       item.className = 'tree-item' + (selectedObj === obj ? ' selected' : '');
-      item.innerText = '📦 ' + (obj.name.length > 8 ? obj.name.substring(0,7)+'..' : obj.name)
+      item.innerText = '📦 ' + (obj.name.length > 8 ? obj.name.substring(0,7)+'..' : obj.name);
+      item.onclick = (e) => { e.stopPropagation(); selectObject(obj); };
+      treeRoot.appendChild(item);
+    });
+  }
+
+  function drawTimeline() {
+    const w = tlCanvas.width = tlWra
