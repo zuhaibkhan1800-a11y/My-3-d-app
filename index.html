@@ -210,6 +210,7 @@
   let objects = [], selectedObj = null;
   let keyframes = []; 
   let currentSkeletonGroup = null;
+  let rigInteractiveParts = [];
   let raycaster = new THREE.Raycaster();
   let mouse = new THREE.Vector2();
   let isPlaying = false, currentTime = 0, duration = 5.0;
@@ -279,6 +280,7 @@
     if (currentSkeletonGroup) {
       scene.remove(currentSkeletonGroup);
       currentSkeletonGroup = null;
+      rigInteractiveParts = [];
     }
 
     let hasSkeleton = false;
@@ -298,73 +300,78 @@
 
     const box = new THREE.Box3().setFromObject(selectedObj);
     const size = new THREE.Vector3();
+    const center = new THREE.Vector3();
     box.getSize(size);
+    box.getCenter(center);
 
     const modelHeight = size.y || 1.8;
     const minY = box.min.y;
 
     const rigGroup = new THREE.Group();
-    const mat = new THREE.MeshBasicMaterial({ color: 0x34c759, wireframe: true, depthTest: false, transparent: true, opacity: 0.8 });
+    rigGroup.position.set(center.x, 0, center.z);
+
+    const mat = new THREE.MeshBasicMaterial({ color: 0x34c759, wireframe: true, depthTest: false, transparent: true, opacity: 0.85 });
     const jointMat = new THREE.MeshBasicMaterial({ color: 0xff9500, depthTest: false });
 
-    const createBone = (startY, endY, radiusTop = 0.03, radiusBot = 0.03) => {
-      const h = endY - startY;
-      const geo = new THREE.CylinderGeometry(radiusTop, radiusBot, h, 8);
+    const createBone = (x, startY, endY, r1 = 0.015, r2 = 0.02) => {
+      const h = Math.abs(endY - startY);
+      if (h <= 0.01) return null;
+      const geo = new THREE.CylinderGeometry(r1, r2, h, 8);
       geo.translate(0, h / 2, 0);
       const mesh = new THREE.Mesh(geo, mat);
-      mesh.position.y = startY;
+      mesh.position.set(x, Math.min(startY, endY), 0);
+      rigInteractiveParts.push(mesh);
       return mesh;
     };
 
-    const createJoint = (y, r = 0.04) => {
+    const createJoint = (x, y, r = 0.025) => {
       const j = new THREE.Mesh(new THREE.SphereGeometry(r, 8, 8), jointMat);
-      j.position.y = y;
+      j.position.set(x, y, 0);
+      rigInteractiveParts.push(j);
       return j;
     };
 
-    const spineStart = minY + modelHeight * 0.5;
-    const chestHeight = minY + modelHeight * 0.75;
-    const neckHeight = minY + modelHeight * 0.85;
-    const headHeight = minY + modelHeight * 0.95;
+    const hipY = minY + modelHeight * 0.52;
+    const chestY = minY + modelHeight * 0.75;
+    const neckY = minY + modelHeight * 0.86;
+    const headY = minY + modelHeight * 0.94;
+    const kneeY = minY + modelHeight * 0.27;
 
-    rigGroup.add(createBone(spineStart, chestHeight, 0.04, 0.05));
-    rigGroup.add(createBone(chestHeight, neckHeight, 0.03, 0.04));
-    rigGroup.add(createJoint(chestHeight));
-    
-    const headMesh = new THREE.Mesh(new THREE.SphereGeometry(modelHeight * 0.08, 12, 12), mat);
-    headMesh.position.y = headHeight;
+    const spine = createBone(0, hipY, chestY, 0.02, 0.03);
+    const neck = createBone(0, chestY, neckY, 0.015, 0.02);
+    if (spine) rigGroup.add(spine);
+    if (neck) rigGroup.add(neck);
+
+    const headRadius = Math.min(0.1, modelHeight * 0.05);
+    const headMesh = new THREE.Mesh(new THREE.SphereGeometry(headRadius, 10, 10), mat);
+    headMesh.position.set(0, headY, 0);
     rigGroup.add(headMesh);
+    rigInteractiveParts.push(headMesh);
 
-    const hipWidth = size.x * 0.15 || 0.15;
-    [-hipWidth, hipWidth].forEach(x => {
-      const kneeY = minY + modelHeight * 0.25;
-      const thigh = createBone(kneeY, spineStart, 0.03, 0.04);
-      thigh.position.x = x;
-      const shin = createBone(minY, kneeY, 0.02, 0.03);
-      shin.position.x = x;
-      rigGroup.add(thigh);
-      rigGroup.add(shin);
-      
-      const kneeJoint = createJoint(kneeY, 0.035);
-      kneeJoint.position.x = x;
-      rigGroup.add(kneeJoint);
+    const hipOffset = Math.min(0.12, (size.x || 0.4) * 0.2);
+    [-hipOffset, hipOffset].forEach(x => {
+      const thigh = createBone(x, kneeY, hipY, 0.02, 0.025);
+      const shin = createBone(x, minY, kneeY, 0.015, 0.02);
+      if (thigh) rigGroup.add(thigh);
+      if (shin) rigGroup.add(shin);
+      rigGroup.add(createJoint(x, kneeY, 0.02));
     });
 
-    const shoulderWidth = size.x * 0.25 || 0.25;
-    [-shoulderWidth, shoulderWidth].forEach(x => {
-      const elbowY = minY + modelHeight * 0.62;
-      const handY = minY + modelHeight * 0.5;
-      const arm = createBone(elbowY, chestHeight, 0.025, 0.03);
-      arm.position.x = x;
-      const forearm = createBone(handY, elbowY, 0.02, 0.025);
-      forearm.position.x = x;
-      rigGroup.add(arm);
-      rigGroup.add(forearm);
+    const shoulderOffset = Math.min(0.2, (size.x || 0.5) * 0.35);
+    [-shoulderOffset, shoulderOffset].forEach(x => {
+      const elbowY = minY + modelHeight * 0.63;
+      const wristY = minY + modelHeight * 0.52;
+
+      const arm = createBone(x, elbowY, chestY, 0.015, 0.02);
+      const forearm = createBone(x, wristY, elbowY, 0.012, 0.015);
+      if (arm) rigGroup.add(arm);
+      if (forearm) rigGroup.add(forearm);
+      rigGroup.add(createJoint(x, elbowY, 0.018));
     });
 
     scene.add(rigGroup);
     currentSkeletonGroup = rigGroup;
-    showMsg('Auto-Scaled Rig Applied!');
+    showMsg('Auto Rig Applied! Tap bones/joints to move.');
   }
 
   function selectObject(obj) {
@@ -395,6 +402,7 @@
     if (currentSkeletonGroup) {
       scene.remove(currentSkeletonGroup);
       currentSkeletonGroup = null;
+      rigInteractiveParts = [];
     }
     scene.remove(selectedObj);
 
@@ -456,12 +464,17 @@
       mouse.y = -((e.clientY - rect.top) / canvas.clientHeight) * 2 + 1;
 
       raycaster.setFromCamera(mouse, camera);
-      const intersects = raycaster.intersectObjects(objects, true);
+
+      let targetList = [...objects];
+      if (rigInteractiveParts.length > 0) {
+        targetList = [...rigInteractiveParts, ...objects];
+      }
+
+      const intersects = raycaster.intersectObjects(targetList, true);
 
       if (intersects.length > 0) {
-        let topObj = intersects[0].object;
-        while (topObj.parent && topObj.parent !== scene) topObj = topObj.parent;
-        selectObject(topObj);
+        let hitObj = intersects[0].object;
+        selectObject(hitObj);
       }
     });
 
@@ -575,69 +588,4 @@
     objects.forEach(obj => {
       const item = document.createElement('div');
       item.className = 'tree-item' + (selectedObj === obj ? ' selected' : '');
-      item.innerText = '📦 ' + (obj.name.length > 8 ? obj.name.substring(0,7)+'..' : obj.name);
-      item.onclick = (e) => { e.stopPropagation(); selectObject(obj); };
-      treeRoot.appendChild(item);
-    });
-  }
-
-  function drawTimeline() {
-    const w = tlCanvas.width = tlWrap.clientWidth;
-    const h = tlCanvas.height = tlWrap.clientHeight;
-    
-    tlCtx.fillStyle = '#111';
-    tlCtx.fillRect(0, 0, w, h);
-    
-    tlCtx.fillStyle = '#666';
-    tlCtx.font = '9px sans-serif';
-    tlCtx.strokeStyle = '#222';
-
-    for(let i = 0; i <= 5; i++) {
-      let x = (i / 5) * (w - 20) + 10;
-      tlCtx.fillText(i + 's', x - 4, 10);
-      tlCtx.beginPath(); tlCtx.moveTo(x, 14); tlCtx.lineTo(x, h); tlCtx.stroke();
-    }
-
-    keyframes.forEach(kf => {
-      let kfX = (kf.time / duration) * (w - 20) + 10;
-      tlCtx.fillStyle = '#ffcc00';
-      tlCtx.beginPath();
-      tlCtx.arc(kfX, 45, 4, 0, Math.PI * 2);
-      tlCtx.fill();
-    });
-
-    let playheadX = (currentTime / duration) * (w - 20) + 10;
-    tlCtx.strokeStyle = '#ffffff';
-    tlCtx.lineWidth = 2;
-    tlCtx.beginPath();
-    tlCtx.moveTo(playheadX, 0);
-    tlCtx.lineTo(playheadX, h);
-    tlCtx.stroke();
-
-    let sec = currentTime.toFixed(2);
-    document.getElementById('time-val').innerText = '00:' + (sec < 10 ? '0' : '') + sec + ' of 05:00';
-  }
-
-  function animate() {
-    requestAnimationFrame(animate);
-    if (isPlaying) {
-      currentTime += 0.016;
-      if (currentTime > duration) currentTime = 0;
-      applyKeyframesAtTime(currentTime);
-      drawTimeline();
-    }
-    
-    if (currentSkeletonGroup && selectedObj && currentSkeletonGroup.type === 'Group') {
-      currentSkeletonGroup.position.copy(selectedObj.position);
-      currentSkeletonGroup.rotation.copy(selectedObj.rotation);
-      currentSkeletonGroup.scale.copy(selectedObj.scale);
-    }
-
-    orbit.update();
-    renderer.render(scene, camera);
-  }
-
-  window.onload = initApp;
-</script>
-</body>
-</html>
+      item.innerText = '📦 ' + (obj.name.length > 8 ? obj.name.substring(0,7)+'..' : obj.name)
