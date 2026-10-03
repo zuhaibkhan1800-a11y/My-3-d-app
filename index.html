@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>3D Editor - Prisma 3D Skeleton Rigging & Multi-Track</title>
+  <title>3D Editor - Prisma 3D Interactive Skeleton Rigging</title>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; -webkit-tap-highlight-color: transparent; }
     html, body { width: 100%; height: 100dvh; overflow: hidden; background: #0d0d0d; color: #fff; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
@@ -79,7 +79,6 @@
     <div id="toast">Ready</div>
   </div>
 
-  <!-- Prisma 3D Style Multi-Track Timeline -->
   <div id="timeline-panel">
     <div id="tl-header">
       <button id="tl-play-btn" onclick="togglePlay()">▶ Play</button>
@@ -121,16 +120,17 @@
 
 <script>
   let scene, camera, renderer, orbit, transform;
-  let objects = [], selectedObj = null, selectedBone = null;
+  let objects = [], selectedObj = null, selectedJointSphere = null;
   let keyframes = []; 
   let isPlaying = false, currentTime = 0, duration = 5.0;
   let raycaster = new THREE.Raycaster();
   let mouse = new THREE.Vector2();
 
-  // Rigging Helpers
-  let skeletonHelper = null;
+  // Skeleton / Joint Rig System
   let jointSpheresGroup = new THREE.Group();
+  let boneLinesGroup = new THREE.Group();
   let isRigVisible = false;
+  let jointConnections = [];
 
   function showToast(msg) {
     const t = document.getElementById('toast');
@@ -161,9 +161,11 @@
 
     transform = new THREE.TransformControls(camera, renderer.domElement);
     transform.addEventListener('dragging-changed', e => orbit.enabled = !e.value);
+    transform.addEventListener('change', () => { updateBoneLines(); });
     scene.add(transform);
 
     scene.add(jointSpheresGroup);
+    scene.add(boneLinesGroup);
 
     const light = new THREE.DirectionalLight(0xffffff, 1.2);
     light.position.set(5, 10, 7);
@@ -184,21 +186,16 @@
 
       raycaster.setFromCamera(mouse, camera);
 
-      // Check Joint selection first if Rig is active
+      // Check Joint selection when Rig is active
       if (isRigVisible && jointSpheresGroup.children.length > 0) {
         const jointIntersects = raycaster.intersectObjects(jointSpheresGroup.children, true);
         if (jointIntersects.length > 0) {
-          const selectedJoint = jointIntersects[0].object;
-          if (selectedJoint.userData && selectedJoint.userData.bone) {
-            selectedBone = selectedJoint.userData.bone;
-            transform.attach(selectedBone);
-            showToast('Bone Selected: ' + (selectedBone.name || 'Joint'));
-            return;
-          }
+          selectJointSphere(jointIntersects[0].object);
+          return;
         }
       }
 
-      // Check object selection
+      // Check main object selection
       const intersects = raycaster.intersectObjects(objects, true);
       if (intersects.length > 0) {
         let root = intersects[0].object;
@@ -237,7 +234,7 @@
 
   function selectObject(obj) {
     selectedObj = obj;
-    selectedBone = null;
+    selectedJointSphere = null;
     if (obj) {
       transform.attach(obj);
     } else {
@@ -247,6 +244,18 @@
     updateHierarchy();
     updateTimelineTracks();
     drawTimeline();
+  }
+
+  function selectJointSphere(sphere) {
+    if (selectedJointSphere) {
+      selectedJointSphere.material.color.setHex(0xffffff); // Reset previous sphere to white
+    }
+    selectedJointSphere = sphere;
+    selectedJointSphere.material.color.setHex(0xffcc00); // Highlight selected dot yellow
+
+    // Attach gizmo directly to the dot to move/set its position
+    transform.attach(sphere);
+    showToast('Joint Selected: ' + (sphere.userData.name || 'Joint'));
   }
 
   function deleteObject() {
@@ -330,18 +339,21 @@
     });
   }
 
-  /* Prisma 3D Skeleton Rigging System */
+  /* Prisma 3D Moveable Skeleton Rigging System */
   function clearRigHelpers() {
-    if (skeletonHelper) {
-      scene.remove(skeletonHelper);
-      skeletonHelper = null;
-    }
     while (jointSpheresGroup.children.length > 0) {
       const child = jointSpheresGroup.children[0];
       jointSpheresGroup.remove(child);
       if (child.geometry) child.geometry.dispose();
       if (child.material) child.material.dispose();
     }
+    while (boneLinesGroup.children.length > 0) {
+      const child = boneLinesGroup.children[0];
+      boneLinesGroup.remove(child);
+      if (child.geometry) child.geometry.dispose();
+      if (child.material) child.material.dispose();
+    }
+    jointConnections = [];
   }
 
   function toggleBoneRig() {
@@ -350,7 +362,7 @@
     if (isRigVisible) {
       btn.classList.add('active');
       updateRigHelper();
-      showToast('Rig View ON (Prisma 3D Style)');
+      showToast('Rig View ON: Tap any dot to move & set!');
     } else {
       btn.classList.remove('active');
       clearRigHelpers();
@@ -363,72 +375,84 @@
     clearRigHelpers();
     if (!isRigVisible || !selectedObj) return;
 
-    // Search for bones inside selected model
-    let bones = [];
-    selectedObj.traverse((child) => {
-      if (child.isBone) bones.push(child);
-    });
-
-    // If GLTF/FBX has actual SkinnedMesh Bones
-    if (bones.length > 0) {
-      skeletonHelper = new THREE.SkeletonHelper(selectedObj);
-      skeletonHelper.material.linewidth = 2;
-      scene.add(skeletonHelper);
-
-      // Create Prisma 3D style white joint spheres for each bone
-      const sphereGeo = new THREE.SphereGeometry(0.04, 16, 16);
-      const sphereMat = new THREE.MeshBasicMaterial({ color: 0xffffff, depthTest: false });
-
-      bones.forEach(bone => {
-        const sphere = new THREE.Mesh(sphereGeo, sphereMat);
-        sphere.renderOrder = 999;
-        sphere.userData = { bone: bone };
-        jointSpheresGroup.add(sphere);
-      });
-    } else {
-      // Fallback procedural joints for simple models
-      generateProceduralJoints(selectedObj);
-    }
-  }
-
-  function generateProceduralJoints(obj) {
-    const box = new THREE.Box3().setFromObject(obj);
+    const box = new THREE.Box3().setFromObject(selectedObj);
     const center = new THREE.Vector3();
     const size = new THREE.Vector3();
     box.getCenter(center);
     box.getSize(size);
 
-    // Standard joint positions relative to model bounding box
-    const jointOffsets = [
-      { name: 'Head', pos: new THREE.Vector3(center.x, center.y + size.y * 0.4, center.z) },
-      { name: 'Neck', pos: new THREE.Vector3(center.x, center.y + size.y * 0.3, center.z) },
-      { name: 'Shoulder_L', pos: new THREE.Vector3(center.x - size.x * 0.3, center.y + size.y * 0.25, center.z) },
-      { name: 'Shoulder_R', pos: new THREE.Vector3(center.x + size.x * 0.3, center.y + size.y * 0.25, center.z) },
-      { name: 'Elbow_L', pos: new THREE.Vector3(center.x - size.x * 0.35, center.y, center.z) },
-      { name: 'Elbow_R', pos: new THREE.Vector3(center.x + size.x * 0.35, center.y, center.z) },
-      { name: 'Hips', pos: new THREE.Vector3(center.x, center.y - size.y * 0.1, center.z) },
-      { name: 'Knee_L', pos: new THREE.Vector3(center.x - size.x * 0.15, center.y - size.y * 0.3, center.z) },
-      { name: 'Knee_R', pos: new THREE.Vector3(center.x + size.x * 0.15, center.y - size.y * 0.3, center.z) }
+    // Standard human joint positions
+    const jointData = [
+      { id: 'head', name: 'Head', pos: new THREE.Vector3(center.x, center.y + size.y * 0.42, center.z) },
+      { id: 'neck', name: 'Neck', pos: new THREE.Vector3(center.x, center.y + size.y * 0.32, center.z) },
+      { id: 'shoulder_l', name: 'Left Shoulder', pos: new THREE.Vector3(center.x - size.x * 0.25, center.y + size.y * 0.28, center.z) },
+      { id: 'shoulder_r', name: 'Right Shoulder', pos: new THREE.Vector3(center.x + size.x * 0.25, center.y + size.y * 0.28, center.z) },
+      { id: 'elbow_l', name: 'Left Elbow', pos: new THREE.Vector3(center.x - size.x * 0.32, center.y + size.y * 0.05, center.z) },
+      { id: 'elbow_r', name: 'Right Elbow', pos: new THREE.Vector3(center.x + size.x * 0.32, center.y + size.y * 0.05, center.z) },
+      { id: 'wrist_l', name: 'Left Wrist', pos: new THREE.Vector3(center.x - size.x * 0.4, center.y - size.y * 0.15, center.z) },
+      { id: 'wrist_r', name: 'Right Wrist', pos: new THREE.Vector3(center.x + size.x * 0.4, center.y - size.y * 0.15, center.z) },
+      { id: 'spine', name: 'Spine', pos: new THREE.Vector3(center.x, center.y + size.y * 0.1, center.z) },
+      { id: 'hips', name: 'Hips', pos: new THREE.Vector3(center.x, center.y - size.y * 0.1, center.z) },
+      { id: 'knee_l', name: 'Left Knee', pos: new THREE.Vector3(center.x - size.x * 0.12, center.y - size.y * 0.32, center.z) },
+      { id: 'knee_r', name: 'Right Knee', pos: new THREE.Vector3(center.x + size.x * 0.12, center.y - size.y * 0.32, center.z) },
+      { id: 'ankle_l', name: 'Left Ankle', pos: new THREE.Vector3(center.x - size.x * 0.12, center.y - size.y * 0.48, center.z) },
+      { id: 'ankle_r', name: 'Right Ankle', pos: new THREE.Vector3(center.x + size.x * 0.12, center.y - size.y * 0.48, center.z) }
     ];
 
-    const sphereGeo = new THREE.SphereGeometry(0.04, 16, 16);
-    const sphereMat = new THREE.MeshBasicMaterial({ color: 0xffffff, depthTest: false });
+    const sphereGeo = new THREE.SphereGeometry(0.045, 16, 16);
+    let createdJoints = {};
 
-    jointOffsets.forEach(j => {
+    jointData.forEach(j => {
+      const sphereMat = new THREE.MeshBasicMaterial({ color: 0xffffff, depthTest: false });
       const sphere = new THREE.Mesh(sphereGeo, sphereMat);
       sphere.position.copy(j.pos);
       sphere.renderOrder = 999;
-      sphere.userData = { bone: obj, name: j.name };
+      sphere.userData = { id: j.id, name: j.name, parentObj: selectedObj };
       jointSpheresGroup.add(sphere);
+      createdJoints[j.id] = sphere;
     });
+
+    // Bone links between dots
+    jointConnections = [
+      ['head', 'neck'],
+      ['neck', 'spine'],
+      ['spine', 'hips'],
+      ['neck', 'shoulder_l'],
+      ['shoulder_l', 'elbow_l'],
+      ['elbow_l', 'wrist_l'],
+      ['neck', 'shoulder_r'],
+      ['shoulder_r', 'elbow_r'],
+      ['elbow_r', 'wrist_r'],
+      ['hips', 'knee_l'],
+      ['knee_l', 'ankle_l'],
+      ['hips', 'knee_r'],
+      ['knee_r', 'ankle_r']
+    ].map(pair => ({
+      start: createdJoints[pair[0]],
+      end: createdJoints[pair[1]]
+    })).filter(c => c.start && c.end);
+
+    updateBoneLines();
   }
 
-  function syncJointPositions() {
-    if (!isRigVisible || jointSpheresGroup.children.length === 0) return;
-    jointSpheresGroup.children.forEach(sphere => {
-      if (sphere.userData && sphere.userData.bone && sphere.userData.bone !== selectedObj) {
-        sphere.position.setFromMatrixPosition(sphere.userData.bone.matrixWorld);
-      }
+  function updateBoneLines() {
+    if (!isRigVisible || jointConnections.length === 0) return;
+
+    while (boneLinesGroup.children.length > 0) {
+      const child = boneLinesGroup.children[0];
+      boneLinesGroup.remove(child);
+      if (child.geometry) child.geometry.dispose();
+      if (child.material) child.material.dispose();
+    }
+
+    const lineMat = new THREE.LineBasicMaterial({ color: 0x34c759, linewidth: 2, depthTest: false });
+
+    jointConnections.forEach(conn => {
+      const points = [conn.start.position.clone(), conn.end.position.clone()];
+      const geo = new THREE.BufferGeometry().setFromPoints(points);
+      const line = new THREE.Line(geo, lineMat);
+      line.renderOrder = 998;
+      boneLinesGroup.add(line);
     });
   }
 
@@ -459,189 +483,4 @@
       return;
     }
     objects.forEach(obj => {
-      const item = document.createElement('div');
-      item.className = 'tree-item' + (selectedObj === obj ? ' selected' : '');
-      item.innerText = '📦 ' + (obj.name.length > 9 ? obj.name.substring(0, 8) + '..' : obj.name);
-      item.onclick = (e) => { e.stopPropagation(); selectObject(obj); };
-      tree.appendChild(item);
-    });
-  }
-
-  /* Prisma 3D Multi-Track Timeline System */
-  function setupTimeline() {
-    const container = document.getElementById('tl-canvas-container');
-
-    const scrub = (e) => {
-      const rect = container.getBoundingClientRect();
-      const clientX = e.clientX || (e.touches && e.touches[0].clientX);
-      let ratio = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
-      currentTime = ratio * duration;
-      applyAnimation(currentTime);
-      drawTimeline();
-    };
-
-    container.addEventListener('pointerdown', scrub);
-    container.addEventListener('pointermove', (e) => { if (e.buttons > 0) scrub(e); });
-    updateTimelineTracks();
-  }
-
-  function updateTimelineTracks() {
-    const labels = document.getElementById('tl-track-labels');
-    labels.innerHTML = '';
-
-    if (objects.length === 0) {
-      labels.innerHTML = '<div class="track-label">No Object</div>';
-      return;
-    }
-
-    objects.forEach(obj => {
-      const lbl = document.createElement('div');
-      lbl.className = 'track-label' + (selectedObj === obj ? ' active' : '');
-      lbl.innerText = (selectedObj === obj ? '▶ ' : '   ') + (obj.name.length > 8 ? obj.name.substring(0, 7) + '..' : obj.name);
-      lbl.onclick = () => selectObject(obj);
-      labels.appendChild(lbl);
-    });
-  }
-
-  function addKeyframe() {
-    const targetObj = selectedBone || selectedObj;
-    if (!targetObj) {
-      showToast('Select a model or bone first!');
-      return;
-    }
-    const time = parseFloat(currentTime.toFixed(2));
-    keyframes = keyframes.filter(kf => !(kf.obj === targetObj && Math.abs(kf.time - time) < 0.05));
-    keyframes.push({
-      obj: targetObj,
-      time: time,
-      pos: targetObj.position.clone(),
-      rot: targetObj.rotation.clone(),
-      scale: targetObj.scale.clone()
-    });
-    drawTimeline();
-    showToast('Keyframe set!');
-  }
-
-  function togglePlay() {
-    isPlaying = !isPlaying;
-    document.getElementById('tl-play-btn').innerText = isPlaying ? '⏸ Pause' : '▶ Play';
-  }
-
-  function applyAnimation(time) {
-    objects.forEach(obj => {
-      const animateTarget = (target) => {
-        const objKFs = keyframes.filter(kf => kf.obj === target).sort((a,b) => a.time - b.time);
-        if (objKFs.length === 0) return;
-
-        if (time <= objKFs[0].time) {
-          target.position.copy(objKFs[0].pos);
-          target.rotation.copy(objKFs[0].rot);
-          target.scale.copy(objKFs[0].scale);
-        } else if (time >= objKFs[objKFs.length - 1].time) {
-          const last = objKFs[objKFs.length - 1];
-          target.position.copy(last.pos);
-          target.rotation.copy(last.rot);
-          target.scale.copy(last.scale);
-        } else {
-          for (let i = 0; i < objKFs.length - 1; i++) {
-            let k1 = objKFs[i], k2 = objKFs[i+1];
-            if (time >= k1.time && time <= k2.time) {
-              let alpha = (time - k1.time) / (k2.time - k1.time);
-              target.position.lerpVectors(k1.pos, k2.pos, alpha);
-              target.scale.lerpVectors(k1.scale, k2.scale, alpha);
-              target.rotation.x = THREE.MathUtils.lerp(k1.rot.x, k2.rot.x, alpha);
-              target.rotation.y = THREE.MathUtils.lerp(k1.rot.y, k2.rot.y, alpha);
-              target.rotation.z = THREE.MathUtils.lerp(k1.rot.z, k2.rot.z, alpha);
-              break;
-            }
-          }
-        }
-      };
-
-      animateTarget(obj);
-      obj.traverse(child => { if (child.isBone) animateTarget(child); });
-    });
-  }
-
-  function drawTimeline() {
-    const container = document.getElementById('tl-canvas-container');
-    const tlCanvas = document.getElementById('tl-canvas');
-    const w = tlCanvas.width = container.clientWidth;
-    const h = tlCanvas.height = container.clientHeight;
-    const ctx = tlCanvas.getContext('2d');
-
-    ctx.fillStyle = '#111';
-    ctx.fillRect(0, 0, w, h);
-
-    // Track Background rows
-    const trackHeight = 32;
-    objects.forEach((obj, idx) => {
-      let y = idx * trackHeight;
-      ctx.fillStyle = (selectedObj === obj) ? 'rgba(0, 122, 255, 0.12)' : (idx % 2 === 0 ? '#141414' : '#111');
-      ctx.fillRect(0, y, w, trackHeight);
-      ctx.strokeStyle = '#222';
-      ctx.beginPath(); ctx.moveTo(0, y + trackHeight); ctx.lineTo(w, y + trackHeight); ctx.stroke();
-    });
-
-    // Time grids
-    ctx.strokeStyle = '#282828';
-    ctx.lineWidth = 1;
-    for (let i = 0; i <= 5; i++) {
-      let x = (i / 5) * (w - 20) + 10;
-      ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, h); ctx.stroke();
-    }
-
-    // Keyframe diamonds for each object track
-    keyframes.forEach(kf => {
-      let parentObj = kf.obj;
-      while (parentObj.parent && parentObj.parent !== scene && !objects.includes(parentObj)) {
-        parentObj = parentObj.parent;
-      }
-      let objIndex = objects.indexOf(parentObj);
-      if (objIndex !== -1) {
-        let kfX = (kf.time / duration) * (w - 20) + 10;
-        let kfY = objIndex * trackHeight + (trackHeight / 2);
-        
-        ctx.fillStyle = (selectedObj === parentObj) ? '#ffcc00' : '#888';
-        ctx.beginPath();
-        ctx.arc(kfX, kfY, 4, 0, Math.PI * 2);
-        ctx.fill();
-      }
-    });
-
-    // Red Playhead bar
-    let playheadX = (currentTime / duration) * (w - 20) + 10;
-    ctx.strokeStyle = '#ff3b30';
-    ctx.lineWidth = 2;
-    ctx.beginPath();
-    ctx.moveTo(playheadX, 0);
-    ctx.lineTo(playheadX, h);
-    ctx.stroke();
-
-    let sec = currentTime.toFixed(2);
-    document.getElementById('time-val').innerText = '00:' + (sec < 10 ? '0' : '') + sec + ' of 05:00';
-  }
-
-  function animate() {
-    requestAnimationFrame(animate);
-    if (isPlaying) {
-      currentTime += 0.016;
-      if (currentTime > duration) currentTime = 0;
-      applyAnimation(currentTime);
-      drawTimeline();
-    }
-    syncJointPositions();
-    if (orbit) orbit.update();
-    if (renderer && scene && camera) renderer.render(scene, camera);
-  }
-
-  function onWindowResize() {
-    const vp = document.getElementById('viewport');
-    camera.aspect = vp.clientWidth / vp.clientHeight;
-    camera.updateProjectionMatrix();
-    renderer.setSize(vp.clientWidth, vp.clientHeight);
-    drawTimeline();
-  }
-</script>
-</body>
-</html>
+      const item = document.createEle
