@@ -26,7 +26,7 @@
     .tree-item { padding: 5px 6px; border-radius: 4px; margin-top: 3px; background: rgba(255,255,255,0.05); cursor: pointer; text-overflow: ellipsis; overflow: hidden; white-space: nowrap; }
     .tree-item.selected { background: #007aff; color: #fff; font-weight: bold; }
 
-    /* Prisma 3D Style Multi-Track Timeline */
+    /* Timeline Panel */
     #timeline-panel { height: 110px; background: #141414; border-top: 1px solid #282828; display: flex; flex-direction: column; flex-shrink: 0; z-index: 100; }
     #tl-header { height: 26px; background: #1c1c1c; display: flex; align-items: center; justify-content: space-between; padding: 0 10px; font-size: 10px; color: #aaa; border-bottom: 1px solid #2a2a2a; }
     #tl-play-btn { background: #333; border: 1px solid #555; color: #fff; font-size: 11px; padding: 2px 8px; border-radius: 4px; cursor: pointer; }
@@ -48,10 +48,10 @@
     input[type="file"] { display: none !important; }
   </style>
 
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/TransformControls.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
+  <script src="https://unpkg.com/three@0.128.0/build/three.min.js"></script>
+  <script src="https://unpkg.com/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+  <script src="https://unpkg.com/three@0.128.0/examples/js/controls/TransformControls.js"></script>
+  <script src="https://unpkg.com/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
 </head>
 <body>
 
@@ -126,7 +126,6 @@
   let raycaster = new THREE.Raycaster();
   let mouse = new THREE.Vector2();
 
-  // Skeleton / Joint Rig System
   let jointSpheresGroup = new THREE.Group();
   let boneLinesGroup = new THREE.Group();
   let isRigVisible = false;
@@ -134,6 +133,7 @@
 
   function showToast(msg) {
     const t = document.getElementById('toast');
+    if (!t) return;
     t.innerText = msg;
     t.style.display = 'block';
     setTimeout(() => { t.style.display = 'none'; }, 2200);
@@ -147,14 +147,26 @@
 
   function initScene() {
     const vp = document.getElementById('viewport');
+    if (!vp) return;
+
     scene = new THREE.Scene();
     scene.background = new THREE.Color(0x121212);
 
     camera = new THREE.PerspectiveCamera(60, vp.clientWidth / vp.clientHeight, 0.1, 1000);
     
-    renderer = new THREE.WebGLRenderer({ canvas: document.getElementById('three-canvas'), antialias: true });
+    const canvas = document.getElementById('three-canvas');
+    renderer = new THREE.WebGLRenderer({ canvas: canvas, antialias: true, alpha: false });
     renderer.setSize(vp.clientWidth, vp.clientHeight);
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+
+    canvas.addEventListener('webglcontextlost', (e) => {
+      e.preventDefault();
+      showToast('Restoring 3D View...');
+    }, false);
+
+    canvas.addEventListener('webglcontextrestored', () => {
+      initScene();
+    }, false);
 
     orbit = new THREE.OrbitControls(camera, renderer.domElement);
     orbit.enableDamping = true;
@@ -186,7 +198,6 @@
 
       raycaster.setFromCamera(mouse, camera);
 
-      // Check Joint selection when Rig is active
       if (isRigVisible && jointSpheresGroup.children.length > 0) {
         const jointIntersects = raycaster.intersectObjects(jointSpheresGroup.children, true);
         if (jointIntersects.length > 0) {
@@ -195,7 +206,6 @@
         }
       }
 
-      // Check main object selection
       const intersects = raycaster.intersectObjects(objects, true);
       if (intersects.length > 0) {
         let root = intersects[0].object;
@@ -212,6 +222,7 @@
   }
 
   function resetCamera() {
+    if (!camera || !orbit) return;
     camera.position.set(0, 2, 5);
     orbit.target.set(0, 0.5, 0);
     orbit.update();
@@ -248,12 +259,11 @@
 
   function selectJointSphere(sphere) {
     if (selectedJointSphere) {
-      selectedJointSphere.material.color.setHex(0xffffff); // Reset previous sphere to white
+      selectedJointSphere.material.color.setHex(0xffffff);
     }
     selectedJointSphere = sphere;
-    selectedJointSphere.material.color.setHex(0xffcc00); // Highlight selected dot yellow
+    selectedJointSphere.material.color.setHex(0xffcc00);
 
-    // Attach gizmo directly to the dot to move/set its position
     transform.attach(sphere);
     showToast('Joint Selected: ' + (sphere.userData.name || 'Joint'));
   }
@@ -282,7 +292,6 @@
     }
   }
 
-  /* Upload Handlers */
   function triggerModelUpload() { document.getElementById('file-model-input').click(); }
   function triggerImageUpload() { document.getElementById('file-image-input').click(); }
 
@@ -339,7 +348,6 @@
     });
   }
 
-  /* Prisma 3D Moveable Skeleton Rigging System */
   function clearRigHelpers() {
     while (jointSpheresGroup.children.length > 0) {
       const child = jointSpheresGroup.children[0];
@@ -381,7 +389,6 @@
     box.getCenter(center);
     box.getSize(size);
 
-    // Standard human joint positions
     const jointData = [
       { id: 'head', name: 'Head', pos: new THREE.Vector3(center.x, center.y + size.y * 0.42, center.z) },
       { id: 'neck', name: 'Neck', pos: new THREE.Vector3(center.x, center.y + size.y * 0.32, center.z) },
@@ -412,7 +419,6 @@
       createdJoints[j.id] = sphere;
     });
 
-    // Bone links between dots
     jointConnections = [
       ['head', 'neck'],
       ['neck', 'spine'],
@@ -477,10 +483,12 @@
 
   function updateHierarchy() {
     const tree = document.getElementById('tree-root');
+    if (!tree) return;
     tree.innerHTML = '';
     if (objects.length === 0) {
       tree.innerHTML = '<div style="color:#666;">No Objects</div>';
       return;
     }
     objects.forEach(obj => {
-      const item = document.createEle
+      const item = document.createElement('div');
+      item.className = 'tree-item' + (selectedObj === obj ? ' selected' : '')
