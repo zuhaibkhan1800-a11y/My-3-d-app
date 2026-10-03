@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>3D Editor - Prisma 3D Interactive Skeleton Rigging</title>
+  <title>3D Editor - Prisma 3D Interactive</title>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; -webkit-tap-highlight-color: transparent; }
     html, body { width: 100%; height: 100dvh; overflow: hidden; background: #0d0d0d; color: #fff; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
@@ -26,7 +26,6 @@
     .tree-item { padding: 5px 6px; border-radius: 4px; margin-top: 3px; background: rgba(255,255,255,0.05); cursor: pointer; text-overflow: ellipsis; overflow: hidden; white-space: nowrap; }
     .tree-item.selected { background: #007aff; color: #fff; font-weight: bold; }
 
-    /* Timeline Panel */
     #timeline-panel { height: 110px; background: #141414; border-top: 1px solid #282828; display: flex; flex-direction: column; flex-shrink: 0; z-index: 100; }
     #tl-header { height: 26px; background: #1c1c1c; display: flex; align-items: center; justify-content: space-between; padding: 0 10px; font-size: 10px; color: #aaa; border-bottom: 1px solid #2a2a2a; }
     #tl-play-btn { background: #333; border: 1px solid #555; color: #fff; font-size: 11px; padding: 2px 8px; border-radius: 4px; cursor: pointer; }
@@ -45,13 +44,15 @@
     .tool-item:active { color: #007aff; }
 
     #toast { position: absolute; top: 12px; left: 50%; transform: translateX(-50%); background: rgba(0,0,0,0.9); color: #fff; padding: 6px 14px; border-radius: 20px; font-size: 11px; display: none; z-index: 1000; border: 1px solid #555; pointer-events: none; }
+    #error-notice { position: absolute; top: 40%; left: 10%; right: 10%; background: #300; border: 1px solid #f00; color: #fff; padding: 15px; border-radius: 8px; text-align: center; font-size: 12px; display: none; z-index: 2000; }
     input[type="file"] { display: none !important; }
   </style>
 
-  <script src="https://unpkg.com/three@0.128.0/build/three.min.js"></script>
-  <script src="https://unpkg.com/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
-  <script src="https://unpkg.com/three@0.128.0/examples/js/controls/TransformControls.js"></script>
-  <script src="https://unpkg.com/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
+  <!-- CDNs with Fallback -->
+  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/build/three.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/TransformControls.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
 </head>
 <body>
 
@@ -77,6 +78,7 @@
       <div id="tree-root"></div>
     </div>
     <div id="toast">Ready</div>
+    <div id="error-notice">WebGL or Three.js library failed to load. Please check internet connection or reload page.</div>
   </div>
 
   <div id="timeline-panel">
@@ -94,24 +96,12 @@
   </div>
 
   <div id="bottom-toolbar">
-    <div class="tool-item" onclick="triggerModelUpload()">
-      <span>📦</span>Models
-    </div>
-    <div class="tool-item" onclick="toggleSky()">
-      <span>🌐</span>Sky
-    </div>
-    <div class="tool-item" onclick="addCamera()">
-      <span>🎥</span>Camera
-    </div>
-    <div class="tool-item" onclick="addLight()">
-      <span>💡</span>Light
-    </div>
-    <div class="tool-item" onclick="triggerImageUpload()">
-      <span>🖼️</span>Media
-    </div>
-    <div class="tool-item" onclick="addCube()">
-      <span>🧊</span>Cube
-    </div>
+    <div class="tool-item" onclick="triggerModelUpload()"><span>📦</span>Models</div>
+    <div class="tool-item" onclick="toggleSky()"><span>🌐</span>Sky</div>
+    <div class="tool-item" onclick="addCamera()"><span>🎥</span>Camera</div>
+    <div class="tool-item" onclick="addLight()"><span>💡</span>Light</div>
+    <div class="tool-item" onclick="triggerImageUpload()"><span>🖼️</span>Media</div>
+    <div class="tool-item" onclick="addCube()"><span>🧊</span>Cube</div>
   </div>
 </div>
 
@@ -139,7 +129,11 @@
     setTimeout(() => { t.style.display = 'none'; }, 2200);
   }
 
-  window.addEventListener('load', () => {
+  window.addEventListener('DOMContentLoaded', () => {
+    if (typeof THREE === 'undefined') {
+      document.getElementById('error-notice').style.display = 'block';
+      return;
+    }
     initScene();
     setupTimeline();
     setupFileInputs();
@@ -147,85 +141,89 @@
 
   function initScene() {
     const vp = document.getElementById('viewport');
-    if (!vp) return;
-
-    scene = new THREE.Scene();
-    scene.background = new THREE.Color(0x121212);
-
-    camera = new THREE.PerspectiveCamera(60, vp.clientWidth / vp.clientHeight, 0.1, 1000);
-    
     const canvas = document.getElementById('three-canvas');
-    renderer = new THREE.WebGLRenderer({ canvas: canvas, antialias: true, alpha: false });
-    renderer.setSize(vp.clientWidth, vp.clientHeight);
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    if (!vp || !canvas) return;
 
-    canvas.addEventListener('webglcontextlost', (e) => {
-      e.preventDefault();
-      showToast('Restoring 3D View...');
-    }, false);
+    try {
+      scene = new THREE.Scene();
+      scene.background = new THREE.Color(0x121212);
 
-    canvas.addEventListener('webglcontextrestored', () => {
-      initScene();
-    }, false);
+      camera = new THREE.PerspectiveCamera(60, vp.clientWidth / vp.clientHeight, 0.1, 1000);
+      
+      renderer = new THREE.WebGLRenderer({ canvas: canvas, antialias: true, alpha: false, preserveDrawingBuffer: true });
+      renderer.setSize(vp.clientWidth, vp.clientHeight);
+      renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
 
-    orbit = new THREE.OrbitControls(camera, renderer.domElement);
-    orbit.enableDamping = true;
-
-    transform = new THREE.TransformControls(camera, renderer.domElement);
-    transform.addEventListener('dragging-changed', e => orbit.enabled = !e.value);
-    transform.addEventListener('change', () => { updateBoneLines(); });
-    scene.add(transform);
-
-    scene.add(jointSpheresGroup);
-    scene.add(boneLinesGroup);
-
-    const light = new THREE.DirectionalLight(0xffffff, 1.2);
-    light.position.set(5, 10, 7);
-    scene.add(light);
-    scene.add(new THREE.AmbientLight(0xffffff, 0.6));
-
-    const grid = new THREE.GridHelper(20, 20, 0x444444, 0x222222);
-    scene.add(grid);
-
-    resetCamera();
-    addCube();
-
-    renderer.domElement.addEventListener('pointerdown', (e) => {
-      if (transform.dragging) return;
-      const rect = renderer.domElement.getBoundingClientRect();
-      mouse.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
-      mouse.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
-
-      raycaster.setFromCamera(mouse, camera);
-
-      if (isRigVisible && jointSpheresGroup.children.length > 0) {
-        const jointIntersects = raycaster.intersectObjects(jointSpheresGroup.children, true);
-        if (jointIntersects.length > 0) {
-          selectJointSphere(jointIntersects[0].object);
-          return;
-        }
+      if (typeof THREE.OrbitControls !== 'undefined') {
+        orbit = new THREE.OrbitControls(camera, renderer.domElement);
+        orbit.enableDamping = true;
       }
 
-      const intersects = raycaster.intersectObjects(objects, true);
-      if (intersects.length > 0) {
-        let root = intersects[0].object;
-        while (root.parent && root.parent !== scene && !objects.includes(root)) {
-          root = root.parent;
+      if (typeof THREE.TransformControls !== 'undefined') {
+        transform = new THREE.TransformControls(camera, renderer.domElement);
+        if (orbit) {
+          transform.addEventListener('dragging-changed', e => orbit.enabled = !e.value);
         }
-        selectObject(root);
+        transform.addEventListener('change', () => { updateBoneLines(); });
+        scene.add(transform);
       }
-    });
 
-    window.addEventListener('resize', onWindowResize);
-    animate();
-    showToast("Editor Ready!");
+      scene.add(jointSpheresGroup);
+      scene.add(boneLinesGroup);
+
+      const light = new THREE.DirectionalLight(0xffffff, 1.2);
+      light.position.set(5, 10, 7);
+      scene.add(light);
+      scene.add(new THREE.AmbientLight(0xffffff, 0.6));
+
+      const grid = new THREE.GridHelper(20, 20, 0x444444, 0x222222);
+      scene.add(grid);
+
+      resetCamera();
+      addCube();
+
+      canvas.addEventListener('pointerdown', (e) => {
+        if (transform && transform.dragging) return;
+        const rect = canvas.getBoundingClientRect();
+        mouse.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
+        mouse.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
+
+        raycaster.setFromCamera(mouse, camera);
+
+        if (isRigVisible && jointSpheresGroup.children.length > 0) {
+          const jointIntersects = raycaster.intersectObjects(jointSpheresGroup.children, true);
+          if (jointIntersects.length > 0) {
+            selectJointSphere(jointIntersects[0].object);
+            return;
+          }
+        }
+
+        const intersects = raycaster.intersectObjects(objects, true);
+        if (intersects.length > 0) {
+          let root = intersects[0].object;
+          while (root.parent && root.parent !== scene && !objects.includes(root)) {
+            root = root.parent;
+          }
+          selectObject(root);
+        }
+      });
+
+      window.addEventListener('resize', onWindowResize);
+      animate();
+      showToast("3D Engine Loaded!");
+    } catch(err) {
+      console.error(err);
+      document.getElementById('error-notice').style.display = 'block';
+    }
   }
 
   function resetCamera() {
-    if (!camera || !orbit) return;
+    if (!camera) return;
     camera.position.set(0, 2, 5);
-    orbit.target.set(0, 0.5, 0);
-    orbit.update();
+    if (orbit) {
+      orbit.target.set(0, 0.5, 0);
+      orbit.update();
+    }
   }
 
   function addCube() {
@@ -246,10 +244,9 @@
   function selectObject(obj) {
     selectedObj = obj;
     selectedJointSphere = null;
-    if (obj) {
-      transform.attach(obj);
-    } else {
-      transform.detach();
+    if (transform) {
+      if (obj) transform.attach(obj);
+      else transform.detach();
     }
     updateRigHelper();
     updateHierarchy();
@@ -258,23 +255,18 @@
   }
 
   function selectJointSphere(sphere) {
-    if (selectedJointSphere) {
-      selectedJointSphere.material.color.setHex(0xffffff);
-    }
+    if (selectedJointSphere) selectedJointSphere.material.color.setHex(0xffffff);
     selectedJointSphere = sphere;
     selectedJointSphere.material.color.setHex(0xffcc00);
 
-    transform.attach(sphere);
+    if (transform) transform.attach(sphere);
     showToast('Joint Selected: ' + (sphere.userData.name || 'Joint'));
   }
 
   function deleteObject() {
-    if (!selectedObj) {
-      showToast('Select an object to delete');
-      return;
-    }
+    if (!selectedObj) return showToast('Select an object to delete');
     clearRigHelpers();
-    transform.detach();
+    if (transform) transform.detach();
     scene.remove(selectedObj);
     objects = objects.filter(o => o !== selectedObj);
     keyframes = keyframes.filter(kf => kf.obj !== selectedObj);
@@ -310,10 +302,7 @@
           model.position.set(0, 0, 0);
           addObjectToScene(model, file.name.split('.')[0]);
           showToast('Model Loaded!');
-        }, undefined, (err) => {
-          console.error(err);
-          showToast('Error loading model!');
-        });
+        }, undefined, () => showToast('Error loading model!'));
       }
       e.target.value = '';
     });
@@ -322,9 +311,7 @@
       const file = e.target.files[0];
       if (!file) return;
 
-      showToast('Uploading Image...');
       const url = URL.createObjectURL(file);
-
       new THREE.TextureLoader().load(url, (texture) => {
         if (selectedObj) {
           selectedObj.traverse((child) => {
@@ -349,18 +336,8 @@
   }
 
   function clearRigHelpers() {
-    while (jointSpheresGroup.children.length > 0) {
-      const child = jointSpheresGroup.children[0];
-      jointSpheresGroup.remove(child);
-      if (child.geometry) child.geometry.dispose();
-      if (child.material) child.material.dispose();
-    }
-    while (boneLinesGroup.children.length > 0) {
-      const child = boneLinesGroup.children[0];
-      boneLinesGroup.remove(child);
-      if (child.geometry) child.geometry.dispose();
-      if (child.material) child.material.dispose();
-    }
+    while (jointSpheresGroup.children.length > 0) jointSpheresGroup.remove(jointSpheresGroup.children[0]);
+    while (boneLinesGroup.children.length > 0) boneLinesGroup.remove(boneLinesGroup.children[0]);
     jointConnections = [];
   }
 
@@ -370,11 +347,11 @@
     if (isRigVisible) {
       btn.classList.add('active');
       updateRigHelper();
-      showToast('Rig View ON: Tap any dot to move & set!');
+      showToast('Rig View ON');
     } else {
       btn.classList.remove('active');
       clearRigHelpers();
-      if (selectedObj) transform.attach(selectedObj);
+      if (selectedObj && transform) transform.attach(selectedObj);
       showToast('Rig View OFF');
     }
   }
@@ -420,39 +397,20 @@
     });
 
     jointConnections = [
-      ['head', 'neck'],
-      ['neck', 'spine'],
-      ['spine', 'hips'],
-      ['neck', 'shoulder_l'],
-      ['shoulder_l', 'elbow_l'],
-      ['elbow_l', 'wrist_l'],
-      ['neck', 'shoulder_r'],
-      ['shoulder_r', 'elbow_r'],
-      ['elbow_r', 'wrist_r'],
-      ['hips', 'knee_l'],
-      ['knee_l', 'ankle_l'],
-      ['hips', 'knee_r'],
-      ['knee_r', 'ankle_r']
-    ].map(pair => ({
-      start: createdJoints[pair[0]],
-      end: createdJoints[pair[1]]
-    })).filter(c => c.start && c.end);
+      ['head', 'neck'], ['neck', 'spine'], ['spine', 'hips'],
+      ['neck', 'shoulder_l'], ['shoulder_l', 'elbow_l'], ['elbow_l', 'wrist_l'],
+      ['neck', 'shoulder_r'], ['shoulder_r', 'elbow_r'], ['elbow_r', 'wrist_r'],
+      ['hips', 'knee_l'], ['knee_l', 'ankle_l'], ['hips', 'knee_r'], ['knee_r', 'ankle_r']
+    ].map(pair => ({ start: createdJoints[pair[0]], end: createdJoints[pair[1]] })).filter(c => c.start && c.end);
 
     updateBoneLines();
   }
 
   function updateBoneLines() {
     if (!isRigVisible || jointConnections.length === 0) return;
-
-    while (boneLinesGroup.children.length > 0) {
-      const child = boneLinesGroup.children[0];
-      boneLinesGroup.remove(child);
-      if (child.geometry) child.geometry.dispose();
-      if (child.material) child.material.dispose();
-    }
+    while (boneLinesGroup.children.length > 0) boneLinesGroup.remove(boneLinesGroup.children[0]);
 
     const lineMat = new THREE.LineBasicMaterial({ color: 0x34c759, linewidth: 2, depthTest: false });
-
     jointConnections.forEach(conn => {
       const points = [conn.start.position.clone(), conn.end.position.clone()];
       const geo = new THREE.BufferGeometry().setFromPoints(points);
@@ -491,4 +449,4 @@
     }
     objects.forEach(obj => {
       const item = document.createElement('div');
-      item.className = 'tree-item' + (selectedObj === obj ? ' selected' : '')
+      item.class
