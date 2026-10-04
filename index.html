@@ -561,4 +561,30 @@
       tctx.beginPath(); tctx.arc(x, y, 4, 0, Math.PI*2); tctx.fill();
     });
 
-    let px = (currentTi
+    let px = (currentTime / duration) * (tw - 20) + 10;
+    tctx.strokeStyle = '#ff3b30'; tctx.lineWidth = 2;
+    tctx.beginPath(); tctx.moveTo(px, 0); tctx.lineTo(px, th); tctx.stroke();
+
+    let sec = currentTime.toFixed(2);
+    document.getElementById('time-val').innerText = '00:' + (sec < 10 ? '0' : '') + sec + ' of 05:00';
+  }
+
+  function loop() {
+    if (isPlaying) {
+      currentTime += 0.016;
+      if (currentTime > duration) currentTime = 0;
+      applyAnimation();
+      drawScene();
+      drawTimeline();
+    }
+    requestAnimationFrame(loop);
+  }
+
+  window.addEventListener('resize', resize);
+  
+  addCube();
+  resize();
+  loop();
+</script>
+</body>
+</html>
