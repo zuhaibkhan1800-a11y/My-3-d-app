@@ -3,13 +3,12 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>Prisma 3D Editor - Grid & Control Fix</title>
+  <title>Prisma 3D Editor - Real 3D File Parser</title>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; -webkit-tap-highlight-color: transparent; }
     html, body { width: 100%; height: 100dvh; overflow: hidden; background: #0f0f11; color: #fff; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
     #app { display: flex; flex-direction: column; width: 100%; height: 100dvh; position: relative; }
     
-    /* Top Bar - Sliding */
     #top-bar { height: 50px; background: #18181a; display: flex; align-items: center; gap: 8px; padding: 0 8px; border-bottom: 1px solid #28282e; flex-shrink: 0; z-index: 100; overflow-x: auto; white-space: nowrap; scrollbar-width: none; }
     #top-bar::-webkit-scrollbar { display: none; }
     
@@ -23,7 +22,7 @@
     #viewport { flex: 1; position: relative; background: #121215; width: 100%; min-height: 0; overflow: hidden; }
     #canvas3d { width: 100%; height: 100%; display: block; position: absolute; top:0; left:0; touch-action: none; }
     
-    #hierarchy { position: absolute; top: 12px; left: 12px; width: 130px; max-height: 160px; background: rgba(20, 20, 24, 0.88); border: 1px solid #33333d; border-radius: 8px; padding: 8px; z-index: 10; font-size: 11px; overflow-y: auto; backdrop-filter: blur(6px); }
+    #hierarchy { position: absolute; top: 12px; left: 12px; width: 140px; max-height: 160px; background: rgba(20, 20, 24, 0.88); border: 1px solid #33333d; border-radius: 8px; padding: 8px; z-index: 10; font-size: 11px; overflow-y: auto; backdrop-filter: blur(6px); }
     .tree-item { padding: 6px 8px; border-radius: 4px; margin-top: 4px; background: rgba(255,255,255,0.05); cursor: pointer; text-overflow: ellipsis; overflow: hidden; white-space: nowrap; }
     .tree-item.selected { background: #007aff; color: #fff; font-weight: bold; }
 
@@ -39,7 +38,6 @@
     #tl-canvas-container { flex: 1; position: relative; height: 100%; min-width: 100%; }
     #tl-canvas { width: 100%; height: 100%; display: block; }
 
-    /* Bottom Toolbar */
     #bottom-toolbar { height: 58px; background: #18181a; border-top: 1px solid #28282e; display: flex; align-items: center; gap: 12px; padding: 0 12px; flex-shrink: 0; z-index: 100; overflow-x: auto; scrollbar-width: none; }
     #bottom-toolbar::-webkit-scrollbar { display: none; }
     
@@ -90,14 +88,14 @@
     <div class="tool-item" onclick="addCube()"><span>🧊</span>Cube</div>
     <div class="tool-item" onclick="addSphere()"><span>🔮</span>Sphere</div>
     <div class="tool-item" onclick="addLight()"><span>💡</span>Light</div>
-    <div class="tool-item" onclick="triggerImport()"><span>📂</span>Import</div>
+    <div class="tool-item" onclick="triggerImport()"><span>📂</span>Import .OBJ</div>
     <div class="tool-item" onclick="triggerImgUpload()"><span>🖼️</span>Texture</div>
     <div class="tool-item" onclick="toggleBg()"><span>🌐</span>BG Toggle</div>
   </div>
 </div>
 
 <input type="file" id="img-input" accept="image/*">
-<input type="file" id="import-input" accept=".obj,.gltf,.glb,.json">
+<input type="file" id="import-input" accept=".obj">
 
 <script>
   const canvas = document.getElementById('canvas3d');
@@ -112,7 +110,6 @@
   let isRigActive = false;
   let bgDark = true;
 
-  // Fixed Orbit Camera Parameters
   let cameraDistance = 6.0;
   let yaw = 0.0;
   let pitch = 0.4;
@@ -135,25 +132,21 @@
     setTimeout(() => { t.style.display = 'none'; }, 2000);
   }
 
-  // Smooth & Accurate 3D Orbit Projection Fix
   function project(x, y, z) {
     let cosY = Math.cos(yaw), sinY = Math.sin(yaw);
     let cosP = Math.cos(pitch), sinP = Math.sin(pitch);
 
-    // Calculate relative position to Camera Target
     let dx = x - targetX;
     let dy = y - targetY;
     let dz = z - targetZ;
 
-    // Y-axis Rotation (Yaw)
     let rx = cosY * dx - sinY * dz;
     let rz = sinY * dx + cosY * dz;
 
-    // X-axis Rotation (Pitch)
     let ry = cosP * dy - sinP * rz;
     let finalZ = sinP * dy + cosP * rz + cameraDistance;
 
-    if (finalZ <= 0.1) return null; // Clip behind camera
+    if (finalZ <= 0.1) return null;
 
     let fov = 380;
     return {
@@ -165,7 +158,7 @@
 
   function createCube() {
     return {
-      type: 'Cube',
+      type: 'Mesh',
       name: 'Cube ' + (objects.length + 1),
       x: 0, y: 0.5, z: 0,
       rx: 0, ry: 0, rz: 0,
@@ -191,7 +184,6 @@
 
   function addSphere() {
     const sphere = createCube();
-    sphere.type = 'Sphere';
     sphere.name = 'Sphere ' + (objects.length + 1);
     sphere.color = '#ff9500';
     objects.push(sphere);
@@ -217,17 +209,77 @@
     document.getElementById('import-input').click();
   }
 
+  // Real OBJ File Parser
   document.getElementById('import-input').addEventListener('change', (e) => {
     const file = e.target.files[0];
-    if (file) {
-      const importedObj = createCube();
-      importedObj.name = file.name.split('.')[0];
-      importedObj.color = '#af52de';
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = function(evt) {
+      const text = evt.target.result;
+      const lines = text.split('\n');
+      
+      const parsedVertices = [];
+      const parsedFaces = [];
+
+      lines.forEach(line => {
+        line = line.trim();
+        if (line.startsWith('v ')) {
+          const parts = line.split(/\s+/).slice(1).map(Number);
+          parsedVertices.push(parts);
+        } else if (line.startsWith('f ')) {
+          const parts = line.split(/\s+/).slice(1).map(p => {
+            const idx = p.split('/')[0];
+            return parseInt(idx) - 1;
+          });
+          if (parts.length >= 3) {
+            parsedFaces.push(parts);
+          }
+        }
+      });
+
+      if (parsedVertices.length === 0) {
+        showToast("Invalid OBJ file!");
+        return;
+      }
+
+      // Auto Scale/Center Model
+      let maxX = -Infinity, minX = Infinity;
+      let maxY = -Infinity, minY = Infinity;
+      let maxZ = -Infinity, minZ = Infinity;
+
+      parsedVertices.forEach(v => {
+        if(v[0] > maxX) maxX = v[0]; if(v[0] < minX) minX = v[0];
+        if(v[1] > maxY) maxY = v[1]; if(v[1] < minY) minY = v[1];
+        if(v[2] > maxZ) maxZ = v[2]; if(v[2] < minZ) minZ = v[2];
+      });
+
+      let maxDim = Math.max(maxX - minX, maxY - minY, maxZ - minZ);
+      let scaleFactor = maxDim > 0 ? 2.0 / maxDim : 1;
+
+      let normalizedVertices = parsedVertices.map(v => [
+        (v[0] - (maxX + minX) / 2) * scaleFactor,
+        (v[1] - (maxY + minY) / 2) * scaleFactor + 0.5,
+        (v[2] - (maxZ + minZ) / 2) * scaleFactor
+      ]);
+
+      const importedObj = {
+        type: 'Mesh',
+        name: file.name.split('.')[0],
+        x: 0, y: 0, z: 0,
+        rx: 0, ry: 0, rz: 0,
+        sx: 1, sy: 1, sz: 1,
+        color: '#af52de',
+        vertices: normalizedVertices,
+        faces: parsedFaces
+      };
+
       objects.push(importedObj);
       selectedIdx = objects.length - 1;
       updateUI();
-      showToast("Model Imported!");
-    }
+      showToast("OBJ Model Imported!");
+    };
+    reader.readAsText(file);
   });
 
   function resetCam() {
@@ -266,7 +318,6 @@
     }
   }
 
-  // Stable Grid Rendering (No Glitch)
   function drawGrid() {
     ctx.strokeStyle = bgDark ? '#282834' : '#d0d0d8';
     ctx.lineWidth = 1;
@@ -312,22 +363,26 @@
     });
 
     obj.faces.forEach((face, fIdx) => {
-      let p0 = renderVertices[face[0]].proj;
-      let p1 = renderVertices[face[1]].proj;
-      let p2 = renderVertices[face[2]].proj;
-      let p3 = renderVertices[face[3]].proj;
+      if (face.length < 3) return;
+      let p0 = renderVertices[face[0]]?.proj;
+      let p1 = renderVertices[face[1]]?.proj;
+      let p2 = renderVertices[face[2]]?.proj;
 
-      if (p0 && p1 && p2 && p3) {
+      if (p0 && p1 && p2) {
         ctx.beginPath();
-        ctx.moveTo(p0.x, p0.y); ctx.lineTo(p1.x, p1.y);
-        ctx.lineTo(p2.x, p2.y); ctx.lineTo(p3.x, p3.y);
+        ctx.moveTo(p0.x, p0.y); ctx.lineTo(p1.x, p1.y); ctx.lineTo(p2.x, p2.y);
+        
+        if (face.length === 4 && renderVertices[face[3]]?.proj) {
+          let p3 = renderVertices[face[3]].proj;
+          ctx.lineTo(p3.x, p3.y);
+        }
         ctx.closePath();
 
         ctx.fillStyle = isSelected ? (fIdx % 2 === 0 ? obj.color : '#3388ff') : obj.color;
         ctx.globalAlpha = 0.85; ctx.fill();
 
         ctx.strokeStyle = isSelected ? '#ffffff' : '#000000';
-        ctx.lineWidth = isSelected ? 2 : 1;
+        ctx.lineWidth = isSelected ? 1.5 : 0.5;
         ctx.globalAlpha = 1.0; ctx.stroke();
       }
     });
@@ -365,7 +420,6 @@
     objects.forEach((obj, idx) => renderObject(obj, idx));
   }
 
-  // Smooth Control Handler
   canvas.addEventListener('pointerdown', (e) => {
     isDragging = true;
     lastX = e.clientX;
@@ -385,10 +439,9 @@
         obj.ry += dx * 0.02;
       }
     } else {
-      // Corrected Drag Controls
       yaw += dx * 0.006;
       pitch += dy * 0.006;
-      pitch = Math.max(-1.4, Math.min(1.4, pitch)); // Lock gimbal flips
+      pitch = Math.max(-1.4, Math.min(1.4, pitch));
     }
 
     lastX = e.clientX;
@@ -508,30 +561,4 @@
       tctx.beginPath(); tctx.arc(x, y, 4, 0, Math.PI*2); tctx.fill();
     });
 
-    let px = (currentTime / duration) * (tw - 20) + 10;
-    tctx.strokeStyle = '#ff3b30'; tctx.lineWidth = 2;
-    tctx.beginPath(); tctx.moveTo(px, 0); tctx.lineTo(px, th); tctx.stroke();
-
-    let sec = currentTime.toFixed(2);
-    document.getElementById('time-val').innerText = '00:' + (sec < 10 ? '0' : '') + sec + ' of 05:00';
-  }
-
-  function loop() {
-    if (isPlaying) {
-      currentTime += 0.016;
-      if (currentTime > duration) currentTime = 0;
-      applyAnimation();
-      drawScene();
-      drawTimeline();
-    }
-    requestAnimationFrame(loop);
-  }
-
-  window.addEventListener('resize', resize);
-  
-  addCube();
-  resize();
-  loop();
-</script>
-</body>
-</html>
+    let px = (currentTi
