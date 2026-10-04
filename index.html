@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>Prisma 3D Editor - Permanent Blank Screen Fix</title>
+  <title>Prisma 3D Editor - Camera & Blank Fix</title>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; -webkit-tap-highlight-color: transparent; }
     html, body { width: 100%; height: 100dvh; overflow: hidden; background: #0f0f11; color: #fff; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
@@ -53,7 +53,7 @@
 
 <div id="app">
   <div id="top-bar">
-    <button class="icon-btn" onclick="resetCam()">🏠 Home</button>
+    <button class="icon-btn" onclick="resetCam()">🏠 Focus Cam</button>
     <button class="icon-btn" onclick="setMode('translate')">✢ Move</button>
     <button class="icon-btn" onclick="setMode('rotate')">🔄 Rotate</button>
     <button id="rig-btn" class="icon-btn rig-btn" onclick="toggleRig()">🦴 Bone Rig</button>
@@ -110,10 +110,11 @@
   let isRigActive = false;
   let bgDark = true;
 
-  let cameraDistance = 6.0;
-  let yaw = 0.0;
-  let pitch = 0.4;
-  let targetX = 0, targetY = 0.5, targetZ = 0;
+  // Safe Camera Setup
+  let cameraDistance = 5.0;
+  let yaw = 0.3;
+  let pitch = 0.3;
+  let targetX = 0, targetY = 0, targetZ = 0;
 
   let isDragging = false;
   let lastX = 0, lastY = 0;
@@ -146,9 +147,9 @@
     let ry = cosP * dy - sinP * rz;
     let finalZ = sinP * dy + cosP * rz + cameraDistance;
 
-    if (finalZ <= 0.1) return null;
+    if (finalZ <= 0.1) finalZ = 0.1;
 
-    let fov = 380;
+    let fov = Math.min(width, height) * 0.8;
     return {
       x: width / 2 + (rx * fov) / finalZ,
       y: height / 2 - (ry * fov) / finalZ,
@@ -160,7 +161,9 @@
     return {
       type: 'Mesh',
       name: 'Cube ' + (objects.length + 1),
-      x: 0, y: 0.5, z: 0,
+      x: (Math.random() - 0.5) * 0.5,
+      y: (Math.random() - 0.5) * 0.5,
+      z: 0,
       rx: 0, ry: 0, rz: 0,
       sx: 1, sy: 1, sz: 1,
       color: '#007aff',
@@ -178,6 +181,7 @@
     const cube = createCube();
     objects.push(cube);
     selectedIdx = objects.length - 1;
+    resetCam();
     updateUI();
     showToast("Cube Added!");
   }
@@ -188,6 +192,7 @@
     sphere.color = '#ff9500';
     objects.push(sphere);
     selectedIdx = objects.length - 1;
+    resetCam();
     updateUI();
     showToast("Sphere Added!");
   }
@@ -196,7 +201,7 @@
     const light = {
       type: 'Light',
       name: 'PointLight ' + (objects.length + 1),
-      x: 0, y: 3, z: 0,
+      x: 0, y: 2, z: 0,
       color: '#ffcc00'
     };
     objects.push(light);
@@ -253,11 +258,11 @@
       });
 
       let maxDim = Math.max(maxX - minX, maxY - minY, maxZ - minZ);
-      let scaleFactor = maxDim > 0 ? 2.0 / maxDim : 1;
+      let scaleFactor = maxDim > 0 ? 1.8 / maxDim : 1;
 
       let normalizedVertices = parsedVertices.map(v => [
         (v[0] - (maxX + minX) / 2) * scaleFactor,
-        (v[1] - (maxY + minY) / 2) * scaleFactor + 0.5,
+        (v[1] - (maxY + minY) / 2) * scaleFactor,
         (v[2] - (maxZ + minZ) / 2) * scaleFactor
       ]);
 
@@ -274,6 +279,7 @@
 
       objects.push(importedObj);
       selectedIdx = objects.length - 1;
+      resetCam();
       updateUI();
       showToast("OBJ Model Imported!");
     };
@@ -281,10 +287,16 @@
   });
 
   function resetCam() {
-    cameraDistance = 6.0;
-    yaw = 0.0;
-    pitch = 0.4;
-    targetX = 0; targetY = 0.5; targetZ = 0;
+    cameraDistance = 5.0;
+    yaw = 0.3;
+    pitch = 0.3;
+    if (selectedIdx >= 0 && objects[selectedIdx]) {
+      targetX = objects[selectedIdx].x;
+      targetY = objects[selectedIdx].y;
+      targetZ = objects[selectedIdx].z;
+    } else {
+      targetX = 0; targetY = 0; targetZ = 0;
+    }
     drawScene();
   }
 
@@ -317,18 +329,18 @@
   }
 
   function drawGrid() {
-    ctx.strokeStyle = bgDark ? '#282834' : '#d0d0d8';
+    ctx.strokeStyle = bgDark ? '#2c2c38' : '#c8c8d0';
     ctx.lineWidth = 1;
-    let size = 6, step = 1;
+    let size = 5, step = 1;
 
     for (let i = -size; i <= size; i += step) {
-      let p1 = project(i, 0, -size);
-      let p2 = project(i, 0, size);
+      let p1 = project(i, -1, -size);
+      let p2 = project(i, -1, size);
       if (p1 && p2) {
         ctx.beginPath(); ctx.moveTo(p1.x, p1.y); ctx.lineTo(p2.x, p2.y); ctx.stroke();
       }
-      let p3 = project(-size, 0, i);
-      let p4 = project(size, 0, i);
+      let p3 = project(-size, -1, i);
+      let p4 = project(size, -1, i);
       if (p3 && p4) {
         ctx.beginPath(); ctx.moveTo(p3.x, p3.y); ctx.lineTo(p4.x, p4.y); ctx.stroke();
       }
@@ -376,35 +388,29 @@
         }
         ctx.closePath();
 
-        ctx.fillStyle = isSelected ? (fIdx % 2 === 0 ? obj.color : '#3388ff') : obj.color;
-        ctx.globalAlpha = 0.85; ctx.fill();
+        ctx.fillStyle = isSelected ? (fIdx % 2 === 0 ? '#007aff' : '#3399ff') : obj.color;
+        ctx.globalAlpha = 0.88; ctx.fill();
 
-        ctx.strokeStyle = isSelected ? '#ffffff' : '#000000';
-        ctx.lineWidth = isSelected ? 1.5 : 0.5;
+        ctx.strokeStyle = isSelected ? '#ffffff' : '#111111';
+        ctx.lineWidth = isSelected ? 1.5 : 0.8;
         ctx.globalAlpha = 1.0; ctx.stroke();
       }
     });
 
     if (isRigActive && isSelected) {
-      const joints = [
-        { pos: project(obj.x, obj.y + 0.8, obj.z) },
-        { pos: project(obj.x, obj.y, obj.z) },
-        { pos: project(obj.x, obj.y - 0.5, obj.z) }
-      ];
+      const j1 = project(obj.x, obj.y + 0.6, obj.z);
+      const j2 = project(obj.x, obj.y, obj.z);
+      const j3 = project(obj.x, obj.y - 0.4, obj.z);
 
-      ctx.strokeStyle = '#34c759'; ctx.lineWidth = 3;
-      if (joints[0].pos && joints[1].pos && joints[2].pos) {
+      if (j1 && j2 && j3) {
+        ctx.strokeStyle = '#34c759'; ctx.lineWidth = 3;
         ctx.beginPath();
-        ctx.moveTo(joints[0].pos.x, joints[0].pos.y);
-        ctx.lineTo(joints[1].pos.x, joints[1].pos.y);
-        ctx.lineTo(joints[2].pos.x, joints[2].pos.y);
+        ctx.moveTo(j1.x, j1.y); ctx.lineTo(j2.x, j2.y); ctx.lineTo(j3.x, j3.y);
         ctx.stroke();
 
-        joints.forEach(j => {
-          if (j.pos) {
-            ctx.fillStyle = '#ffcc00';
-            ctx.beginPath(); ctx.arc(j.pos.x, j.pos.y, 6, 0, Math.PI * 2); ctx.fill();
-          }
+        [j1, j2, j3].forEach(j => {
+          ctx.fillStyle = '#ffcc00';
+          ctx.beginPath(); ctx.arc(j.x, j.y, 5, 0, Math.PI * 2); ctx.fill();
         });
       }
     }
@@ -430,17 +436,14 @@
     let dx = e.clientX - lastX;
     let dy = e.clientY - lastY;
 
-    if (selectedIdx >= 0 && e.shiftKey) {
+    if (selectedIdx >= 0 && currentMode === 'translate') {
       let obj = objects[selectedIdx];
-      if (currentMode === 'translate') {
-        obj.x += dx * 0.01; obj.y -= dy * 0.01;
-      } else if (currentMode === 'rotate') {
-        obj.ry += dx * 0.02;
-      }
+      obj.x += dx * 0.005;
+      obj.y -= dy * 0.005;
     } else {
-      yaw += dx * 0.006;
-      pitch += dy * 0.006;
-      pitch = Math.max(-1.4, Math.min(1.4, pitch));
+      yaw += dx * 0.008;
+      pitch += dy * 0.008;
+      pitch = Math.max(-1.2, Math.min(1.2, pitch));
     }
 
     lastX = e.clientX;
@@ -461,7 +464,7 @@
         const div = document.createElement('div');
         div.className = 'tree-item' + (i === selectedIdx ? ' selected' : '');
         div.innerText = (o.type === 'Light' ? '💡 ' : '📦 ') + o.name;
-        div.onclick = () => { selectedIdx = i; updateUI(); };
+        div.onclick = () => { selectedIdx = i; resetCam(); updateUI(); };
         root.appendChild(div);
       });
     }
@@ -532,7 +535,7 @@
       let d = document.createElement('div');
       d.className = 'track-label' + (i === selectedIdx ? ' active' : '');
       d.innerText = (i === selectedIdx ? '▶ ' : '   ') + o.name;
-      d.onclick = () => { selectedIdx = i; updateUI(); };
+      d.onclick = () => { selectedIdx = i; resetCam(); updateUI(); };
       labels.appendChild(d);
     });
     drawTimeline();
@@ -556,5 +559,4 @@
     keyframes.forEach(k => {
       let x = (k.time / duration) * (tw - 20) + 10;
       let y = k.objIdx * 32 + 16;
-      tctx.fillStyle = '#ffcc00';
-      tctx.beginPath(); tctx.arc(x, y, 4, 0, Math.PI*2); t
+      t
