@@ -1,13 +1,12 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="hi">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>Prisma 3D Editor - Complete Interactive Rigging</title>
+  <title>Prisma 3D Pro Rigging Engine</title>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; -webkit-tap-highlight-color: transparent; }
-    html, body { width: 100vw; height: 100dvh; overflow: hidden; background: #0f0f11; color: #fff; font-family: system-ui, -apple-system, sans-serif; }
-    
+    html, body { width: 100vw; height: 100dvh; overflow: hidden; background: #121215; color: #fff; font-family: system-ui, -apple-system, sans-serif; }
     #app { display: flex; flex-direction: column; width: 100%; height: 100dvh; position: relative; }
 
     #top-bar { height: 46px; background: #18181a; display: flex; align-items: center; gap: 6px; padding: 0 8px; border-bottom: 1px solid #28282e; flex-shrink: 0; overflow-x: auto; scrollbar-width: none; z-index: 10; }
@@ -24,85 +23,39 @@
     #canvas3d { width: 100%; height: 100%; display: block; touch-action: none; }
 
     #outliner-panel {
-      position: absolute;
-      top: 10px;
-      left: 10px;
-      width: 150px;
-      max-height: 220px;
-      background: rgba(24, 24, 28, 0.9);
-      backdrop-filter: blur(8px);
-      border: 1px solid #33333d;
-      border-radius: 8px;
-      display: flex;
-      flex-direction: column;
-      z-index: 50;
-      box-shadow: 0 4px 12px rgba(0,0,0,0.5);
-      overflow: hidden;
+      position: absolute; top: 10px; left: 10px; width: 150px; max-height: 200px;
+      background: rgba(24, 24, 28, 0.88); backdrop-filter: blur(8px);
+      border: 1px solid #33333d; border-radius: 8px; display: flex; flex-direction: column; z-index: 50; overflow: hidden;
     }
-
-    #outliner-header {
-      height: 28px;
-      background: #1f1f26;
-      padding: 0 8px;
-      font-size: 10px;
-      font-weight: bold;
-      color: #007aff;
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      border-bottom: 1px solid #2a2a35;
-    }
-
+    #outliner-header { height: 26px; background: #1f1f26; padding: 0 8px; font-size: 10px; font-weight: bold; color: #007aff; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid #2a2a35; }
     #outliner-list { flex: 1; overflow-y: auto; padding: 4px 0; scrollbar-width: none; }
-    #outliner-list::-webkit-scrollbar { display: none; }
+    .tree-item { padding: 5px 8px; font-size: 11px; color: #ccc; cursor: pointer; display: flex; align-items: center; gap: 6px; border-left: 2px solid transparent; }
+    .tree-item.selected { background: rgba(0, 122, 255, 0.2); color: #007aff; font-weight: bold; border-left-color: #007aff; }
 
-    .tree-item {
-      padding: 6px 8px;
-      font-size: 11px;
-      color: #ccc;
-      cursor: pointer;
-      display: flex;
-      align-items: center;
-      gap: 6px;
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
-      border-left: 2px solid transparent;
-    }
-    .tree-item:hover { background: rgba(255,255,255,0.05); }
-    .tree-item.selected {
-      background: rgba(0, 122, 255, 0.18);
-      color: #007aff;
-      font-weight: bold;
-      border-left-color: #007aff;
-    }
-
-    #timeline-panel { height: 130px; background: #141417; border-top: 2px solid #007aff; display: flex; flex-direction: column; flex-shrink: 0; z-index: 10; }
+    #timeline-panel { height: 110px; background: #141417; border-top: 2px solid #007aff; display: flex; flex-direction: column; flex-shrink: 0; z-index: 10; }
     #tl-header { height: 26px; background: #1c1c20; display: flex; align-items: center; justify-content: space-between; padding: 0 10px; font-size: 10px; color: #aaa; border-bottom: 1px solid #2a2a30; }
     #tl-play-btn { background: #007aff; border: none; color: #fff; font-size: 10px; padding: 3px 10px; border-radius: 4px; cursor: pointer; font-weight: bold; }
-    
     #tl-main { flex: 1; display: flex; position: relative; overflow: hidden; }
-    #tl-tracks { width: 120px; background: #18181c; border-right: 1px solid #28282e; overflow-y: hidden; flex-shrink: 0; font-size: 10px; }
-    .track-row { height: 28px; display: flex; align-items: center; padding: 0 8px; border-bottom: 1px solid #232328; color: #aaa; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; gap: 4px; }
+    #tl-tracks { width: 110px; background: #18181c; border-right: 1px solid #28282e; overflow: hidden; flex-shrink: 0; font-size: 10px; }
+    .track-row { height: 26px; display: flex; align-items: center; padding: 0 8px; border-bottom: 1px solid #232328; color: #aaa; white-space: nowrap; }
     .track-row.selected { background: #252530; color: #007aff; font-weight: bold; }
-
     #tl-canvas-wrap { flex: 1; position: relative; overflow: hidden; background: #0d0d0f; }
     #tl-canvas { width: 100%; height: 100%; display: block; cursor: pointer; }
 
     #bottom-toolbar { height: 50px; background: #18181a; border-top: 1px solid #28282e; display: flex; align-items: center; gap: 8px; padding: 0 10px; flex-shrink: 0; z-index: 20; overflow-x: auto; scrollbar-width: none; }
-    #bottom-toolbar::-webkit-scrollbar { display: none; }
-    
     .tool-item { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; color: #aaa; font-size: 10px; cursor: pointer; flex-shrink: 0; width: 54px; height: 100%; }
     .tool-item span { font-size: 16px; }
 
-    #toast { position: absolute; top: 10px; right: 10px; background: rgba(0,0,0,0.85); color: #fff; padding: 5px 14px; border-radius: 20px; font-size: 11px; display: none; z-index: 1000; border: 1px solid #444; pointer-events: none; }
+    #toast { position: absolute; top: 10px; right: 10px; background: rgba(0,0,0,0.85); color: #fff; padding: 6px 14px; border-radius: 20px; font-size: 11px; display: none; z-index: 1000; border: 1px solid #444; pointer-events: none; }
     input[type="file"] { display: none !important; }
   </style>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/TransformControls.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/OBJLoader.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
+
+  <!-- High-Speed CDN Libraries -->
+  <script src="https://unpkg.com/three@0.128.0/build/three.min.js"></script>
+  <script src="https://unpkg.com/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+  <script src="https://unpkg.com/three@0.128.0/examples/js/controls/TransformControls.js"></script>
+  <script src="https://unpkg.com/three@0.128.0/examples/js/loaders/OBJLoader.js"></script>
+  <script src="https://unpkg.com/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
 </head>
 <body>
 
@@ -111,8 +64,7 @@
     <button class="btn" onclick="resetCam()">🏠 Center</button>
     <button class="btn" onclick="setMode('translate')">✢ Move</button>
     <button class="btn" onclick="setMode('rotate')">🔄 Rotate</button>
-    <button id="rig-btn" class="btn btn-green active" onclick="toggleRig()">🦴 Rig</button>
-    <button id="confirm-btn" class="btn btn-green" onclick="confirmRig()" style="display:none;">✔ Confirm Rig</button>
+    <button id="rig-btn" class="btn btn-green active" onclick="toggleRig()">🦴 Rig: Visible</button>
     <button class="btn btn-yellow" onclick="addKeyframe()">🔑 Keyframe</button>
     <button class="btn btn-red" onclick="deleteObj()">🗑 Delete</button>
   </div>
@@ -120,20 +72,19 @@
   <div id="viewport">
     <div id="outliner-panel">
       <div id="outliner-header">
-        <span>≡ OBJECTS</span>
+        <span>≡ SCENE OBJECTS</span>
         <span id="obj-count" style="color:#777;">0</span>
       </div>
       <div id="outliner-list"></div>
     </div>
-
     <canvas id="canvas3d"></canvas>
-    <div id="toast">Ready</div>
+    <div id="toast">Initializing...</div>
   </div>
 
   <div id="timeline-panel">
     <div id="tl-header">
       <button id="tl-play-btn" onclick="togglePlay()">▶ Play</button>
-      <span style="color:#aaa; font-size:10px;">TIMELINE TRACKS</span>
+      <span>ANIMATION TIMELINE</span>
       <span id="time-val" style="font-family: monospace;">00:00.00 / 05:00</span>
     </div>
     <div id="tl-main">
@@ -149,7 +100,7 @@
     <div class="tool-item" onclick="addSphere()"><span>🔮</span>Sphere</div>
     <div class="tool-item" onclick="addLight()"><span>💡</span>Light</div>
     <div class="tool-item" onclick="triggerModelUpload()"><span>📂</span>Import 3D</div>
-    <div class="tool-item" onclick="triggerImgUpload()"><span>🖼️</span>Texture</div>
+    <div class="tool-item" onclick="triggerImgUpload()"><span>🖼</span>Texture</div>
     <div class="tool-item" onclick="toggleBg()"><span>🌐</span>BG Toggle</div>
   </div>
 </div>
@@ -157,221 +108,15 @@
 <input type="file" id="img-input" accept="image/*">
 <input type="file" id="model-input" accept=".obj,.gltf,.glb">
 
-<script>
-  let scene, camera, renderer, orbit, transformControl;
-  let raycaster, mouse;
-  let selectedObject = null;
-  const objects = [];
-  let isPlaying = false, currentTime = 0, duration = 5.0;
-  let isRigVisible = true;
-  let objCounter = 1;
 
-  function showToast(msg) {
-    const t = document.getElementById('toast');
-    t.innerText = msg;
-    t.style.display = 'block';
-    setTimeout(() => { t.style.display = 'none'; }, 1800);
-  }
-
-  function init3D() {
-    const container = document.getElementById('viewport');
-    const canvas = document.getElementById('canvas3d');
-
-    scene = new THREE.Scene();
-    scene.background = new THREE.Color(0x121215);
-
-    camera = new THREE.PerspectiveCamera(60, container.clientWidth / container.clientHeight, 0.1, 1000);
-    camera.position.set(0, 2.2, 4.5);
-
-    renderer = new THREE.WebGLRenderer({ canvas: canvas, antialias: true });
-    renderer.setSize(container.clientWidth, container.clientHeight);
-    renderer.setPixelRatio(window.devicePixelRatio);
-
-    orbit = new THREE.OrbitControls(camera, renderer.domElement);
-    orbit.enableDamping = true;
-
-    transformControl = new THREE.TransformControls(camera, renderer.domElement);
-    transformControl.addEventListener('dragging-changed', (event) => {
-      orbit.enabled = !event.value;
-    });
-    scene.addAapki screenshot se problem bilkul samajh aa gayi hai! Pehle do issue ho rahe the:
-
-1. **Import 3D Par Hardcoded Model:** `triggerModelUpload` function real file load karne ke bajaye demo human model create kar raha tha, jisse har file import karne par wahi basic figure aa jata tha.
-2. **Joint Selection & Raycasting Issue:** Rig points (spheres) alag se click aur Move (TransformControls) nahi ho pa rahe the, aur sare body joints cover nahi the.
-
-Neeche poora **fixed code** diya gaya hai. Iss code me ye sabhi fixes include kar diye gaye hain:
-
-* **Real 3D File Loader:** `.obj`, `.gltf`, aur `.glb` files ab sahi se read aur display honge.
-* **Full Skeleton Rig Points:** Head, Neck, Shoulders, Elbows, Wrists, Spine, Hips, Knees, aur Ankles ke saare interactive points include kar diye gaye hain.
-* **Direct Joint Move/Set:** Aap screen par kisi bhi white rig sphere par direct click karke use **Move** ya **Rotate** tool se jagah par adjust/set kar sakte hain.
-
-```html
-<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>Prisma 3D Editor - Advanced Rigging</title>
-  <style>
-    * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; -webkit-tap-highlight-color: transparent; }
-    html, body { width: 100vw; height: 100dvh; overflow: hidden; background: #0f0f11; color: #fff; font-family: system-ui, -apple-system, sans-serif; }
-    
-    #app { display: flex; flex-direction: column; width: 100%; height: 100dvh; position: relative; }
-
-    #top-bar { height: 46px; background: #18181a; display: flex; align-items: center; gap: 6px; padding: 0 8px; border-bottom: 1px solid #28282e; flex-shrink: 0; overflow-x: auto; scrollbar-width: none; z-index: 10; }
-    #top-bar::-webkit-scrollbar { display: none; }
-    
-    .btn { background: #25252a; border: 1px solid #3d3d45; color: #eee; font-size: 11px; padding: 6px 10px; border-radius: 6px; cursor: pointer; flex-shrink: 0; display: inline-flex; align-items: center; gap: 4px; }
-    .btn:active { background: #007aff; color: #fff; }
-    .btn-green { background: rgba(52, 199, 89, 0.2); color: #34c759; border-color: rgba(52, 199, 89, 0.4); }
-    .btn-green.active { background: #34c759; color: #000; font-weight: bold; }
-    .btn-yellow { background: rgba(255, 204, 0, 0.2); color: #ffcc00; border-color: rgba(255, 204, 0, 0.4); }
-    .btn-red { background: rgba(255, 59, 48, 0.2); color: #ff3b30; border-color: rgba(255, 59, 48, 0.4); }
-
-    #viewport { flex: 1; position: relative; background: #121215; min-height: 0; }
-    #canvas3d { width: 100%; height: 100%; display: block; touch-action: none; }
-
-    #outliner-panel {
-      position: absolute;
-      top: 10px;
-      left: 10px;
-      width: 150px;
-      max-height: 220px;
-      background: rgba(24, 24, 28, 0.9);
-      backdrop-filter: blur(8px);
-      border: 1px solid #33333d;
-      border-radius: 8px;
-      display: flex;
-      flex-direction: column;
-      z-index: 50;
-      box-shadow: 0 4px 12px rgba(0,0,0,0.5);
-      overflow: hidden;
-    }
-
-    #outliner-header {
-      height: 28px;
-      background: #1f1f26;
-      padding: 0 8px;
-      font-size: 10px;
-      font-weight: bold;
-      color: #007aff;
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      border-bottom: 1px solid #2a2a35;
-    }
-
-    #outliner-list { flex: 1; overflow-y: auto; padding: 4px 0; scrollbar-width: none; }
-    #outliner-list::-webkit-scrollbar { display: none; }
-
-    .tree-item {
-      padding: 6px 8px;
-      font-size: 11px;
-      color: #ccc;
-      cursor: pointer;
-      display: flex;
-      align-items: center;
-      gap: 6px;
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
-      border-left: 2px solid transparent;
-    }
-    .tree-item:hover { background: rgba(255,255,255,0.05); }
-    .tree-item.selected {
-      background: rgba(0, 122, 255, 0.18);
-      color: #007aff;
-      font-weight: bold;
-      border-left-color: #007aff;
-    }
-
-    #timeline-panel { height: 130px; background: #141417; border-top: 2px solid #007aff; display: flex; flex-direction: column; flex-shrink: 0; z-index: 10; }
-    #tl-header { height: 26px; background: #1c1c20; display: flex; align-items: center; justify-content: space-between; padding: 0 10px; font-size: 10px; color: #aaa; border-bottom: 1px solid #2a2a30; }
-    #tl-play-btn { background: #007aff; border: none; color: #fff; font-size: 10px; padding: 3px 10px; border-radius: 4px; cursor: pointer; font-weight: bold; }
-    
-    #tl-main { flex: 1; display: flex; position: relative; overflow: hidden; }
-    #tl-tracks { width: 120px; background: #18181c; border-right: 1px solid #28282e; overflow-y: hidden; flex-shrink: 0; font-size: 10px; }
-    .track-row { height: 28px; display: flex; align-items: center; padding: 0 8px; border-bottom: 1px solid #232328; color: #aaa; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; gap: 4px; }
-    .track-row.selected { background: #252530; color: #007aff; font-weight: bold; }
-
-    #tl-canvas-wrap { flex: 1; position: relative; overflow: hidden; background: #0d0d0f; }
-    #tl-canvas { width: 100%; height: 100%; display: block; cursor: pointer; }
-
-    #bottom-toolbar { height: 50px; background: #18181a; border-top: 1px solid #28282e; display: flex; align-items: center; gap: 8px; padding: 0 10px; flex-shrink: 0; z-index: 20; overflow-x: auto; scrollbar-width: none; }
-    #bottom-toolbar::-webkit-scrollbar { display: none; }
-    
-    .tool-item { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; color: #aaa; font-size: 10px; cursor: pointer; flex-shrink: 0; width: 54px; height: 100%; }
-    .tool-item span { font-size: 16px; }
-
-    #toast { position: absolute; top: 10px; right: 10px; background: rgba(0,0,0,0.85); color: #fff; padding: 5px 14px; border-radius: 20px; font-size: 11px; display: none; z-index: 1000; border: 1px solid #444; pointer-events: none; }
-    input[type="file"] { display: none !important; }
-  </style>
-  <script src="[https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js](https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js)"></script>
-  <script src="[https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js](https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js)"></script>
-  <script src="[https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/TransformControls.js](https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/TransformControls.js)"></script>
-  <script src="[https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/OBJLoader.js](https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/OBJLoader.js)"></script>
-  <script src="[https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js](https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js)"></script>
-</head>
-<body>
-
-<div id="app">
-  <div id="top-bar">
-    <button class="btn" onclick="resetCam()">🏠 Center</button>
-    <button class="btn" onclick="setMode('translate')">✢ Move</button>
-    <button class="btn" onclick="setMode('rotate')">🔄 Rotate</button>
-    <button id="rig-btn" class="btn btn-green active" onclick="toggleRig()">🦴 Rig</button>
-    <button id="confirm-btn" class="btn btn-green" onclick="confirmRig()">✔ Confirm Rig</button>
-    <button class="btn btn-yellow" onclick="addKeyframe()">🔑 Keyframe</button>
-    <button class="btn btn-red" onclick="deleteObj()">🗑 Delete</button>
-  </div>
-
-  <div id="viewport">
-    <div id="outliner-panel">
-      <div id="outliner-header">
-        <span>≡ OBJECTS</span>
-        <span id="obj-count" style="color:#777;">0</span>
-      </div>
-      <div id="outliner-list"></div>
-    </div>
-
-    <canvas id="canvas3d"></canvas>
-    <div id="toast">Ready</div>
-  </div>
-
-  <div id="timeline-panel">
-    <div id="tl-header">
-      <button id="tl-play-btn" onclick="togglePlay()">▶ Play</button>
-      <span style="color:#aaa; font-size:10px;">TIMELINE TRACKS</span>
-      <span id="time-val" style="font-family: monospace;">00:00.00 / 05:00</span>
-    </div>
-    <div id="tl-main">
-      <div id="tl-tracks"></div>
-      <div id="tl-canvas-wrap" onclick="seekTimeline(event)">
-        <canvas id="tl-canvas"></canvas>
-      </div>
-    </div>
-  </div>
-
-  <div id="bottom-toolbar">
-    <div class="tool-item" onclick="addCube()"><span>🧊</span>Cube</div>
-    <div class="tool-item" onclick="addSphere()"><span>🔮</span>Sphere</div>
-    <div class="tool-item" onclick="addLight()"><span>💡</span>Light</div>
-    <div class="tool-item" onclick="triggerModelUpload()"><span>📂</span>Import 3D</div>
-    <div class="tool-item" onclick="triggerImgUpload()"><span>🖼️</span>Texture</div>
-    <div class="tool-item" onclick="toggleBg()"><span>🌐</span>BG Toggle</div>
-  </div>
-</div>
-
-<input type="file" id="img-input" accept="image/*">
-<input type="file" id="model-input" accept=".obj,.gltf,.glb">
-
-<script>
+  <script>
   let scene, camera, renderer, orbit, transformControl;
   let selectedObject = null;
   const objects = [];
   let isPlaying = false, currentTime = 0, duration = 5.0;
   let isRigVisible = true;
   let objCounter = 1;
+  let skeletonHelper = null;
   const raycaster = new THREE.Raycaster();
   const mouse = new THREE.Vector2();
 
@@ -379,47 +124,426 @@ Neeche poora **fixed code** diya gaya hai. Iss code me ye sabhi fixes include ka
     const t = document.getElementById('toast');
     t.innerText = msg;
     t.style.display = 'block';
-    setTimeout(() => { t.style.display = 'none'; }, 1800);
+    setTimeout(() => { t.style.display = 'none'; }, 1600);
   }
 
   function init3D() {
-    const container = document.getElementById('viewport');
-    const canvas = document.getElementById('canvas3d');
+    try {
+      const container = document.getElementById('viewport');
+      const canvas = document.getElementById('canvas3d');
 
-    scene = new THREE.Scene();
-    scene.background = new THREE.Color(0x121215);
+      scene = new THREE.Scene();
+      scene.background = new THREE.Color(0x18181c);
 
-    camera = new THREE.PerspectiveCamera(60, container.clientWidth / container.clientHeight, 0.1, 1000);
-    camera.position.set(0, 2.2, 4.5);
+      camera = new THREE.PerspectiveCamera(60, container.clientWidth / container.clientHeight, 0.1, 1000);
+      camera.position.set(0, 2.5, 5);
 
-    renderer = new THREE.WebGLRenderer({ canvas: canvas, antialias: true });
-    renderer.setSize(container.clientWidth, container.clientHeight);
-    renderer.setPixelRatio(window.devicePixelRatio);
+      renderer = new THREE.WebGLRenderer({ canvas: canvas, antialias: true, powerPreference: "high-performance" });
+      renderer.setSize(container.clientWidth, container.clientHeight);
+      renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
 
-    orbit = new THREE.OrbitControls(camera, renderer.domElement);
-    orbit.enableDamping = true;
+      orbit = new THREE.OrbitControls(camera, renderer.domElement);
+      orbit.enableDamping = true;
+      orbit.target.set(0, 1.2, 0);
 
-    transformControl = new THREE.TransformControls(camera, renderer.domElement);
-    transformControl.addEventListener('dragging-changed', (event) => {
-      orbit.enabled = !event.value;
+      transformControl = new THREE.TransformControls(camera, renderer.domElement);
+      transformControl.addEventListener('dragging-changed', (e) => { orbit.enabled = !e.value; });
+      scene.add(transformControl);
+
+      const ambientLight = new THREE.AmbientLight(0xffffff, 0.8);
+      scene.add(ambientLight);
+
+      const dirLight = new THREE.DirectionalLight(0xffffff, 1.0);
+      dirLight.position.set(5, 10, 7);
+      scene.add(dirLight);
+
+      const grid = new THREE.GridHelper(10, 10, 0x444444, 0x222222);
+      scene.add(grid);
+
+      renderer.domElement.addEventListener('pointerdown', onPointerDown);
+
+      buildRealRiggedCharacter();
+      initTimeline();
+
+      function animate() {
+        requestAnimationFrame(animate);
+        if (isPlaying) {
+          currentTime += 0.016;
+          if (currentTime > duration) currentTime = 0;
+          applyKeyframesAtTime(currentTime);
+          updateTimeline();
+        }
+        orbit.update();
+        renderer.render(scene, camera);
+      }
+      animate();
+      showToast("App Loaded Successfully!");
+    } catch (err) {
+      console.error(err);
+      showToast("Engine Error!");
+    }
+  }
+
+  // Real Skinned Mesh + Bone Rig Hierarchy
+  function buildRealRiggedCharacter() {
+    const charGroup = new THREE.Group();
+    charGroup.name = "Humanoid Rig";
+
+    // 1. Create Skeleton Bones
+    const rootBone = new THREE.Bone(); rootBone.name = "Hips"; rootBone.position.y = 1.0;
+    const spineBone = new THREE.Bone(); spineBone.name = "Spine"; spineBone.position.y = 0.5;
+    const neckBone = new THREE.Bone(); neckBone.name = "Neck"; neckBone.position.y = 0.5;
+    
+    // Arm Right
+    const armR = new THREE.Bone(); armR.name = "R_Arm"; armR.position.set(-0.35, 0.4, 0);
+    const forearmR = new THREE.Bone(); forearmR.name = "R_Forearm"; forearmR.position.set(-0.4, 0, 0);
+    
+    // Arm Left
+    const armL = new THREE.Bone(); armL.name = "L_Arm"; armL.position.set(0.35, 0.4, 0);
+    const forearmL = new THREE.Bone(); forearmL.name = "L_Forearm"; forearmL.position.set(0.4, 0, 0);
+
+    rootBone.add(spineBone);
+    spineBone.add(neckBone);
+    spineBone.add(armR); armR.add(forearmR);
+    spineBone.add(armL); armL.add(forearmL);
+
+    const skeleton = new THREE.Skeleton([rootBone, spineBone, neckBone, armR, forearmR, armL, forearmL]);
+
+    // 2. Mesh Cylinder Body Attached with Skeleton
+    const geometry = new THREE.CylinderGeometry(0.25, 0.18, 1.8, 16, 16);
+    const position = geometry.attributes.position;
+    const skinIndices = [];
+    const skinWeights = [];
+
+    for (let i = 0; i < position.count; i++) {
+      const y = position.getY(i);
+      if (y < -0.2) {
+        skinIndices.push(0, 1, 0, 0);
+        skinWeights.push(0.8, 0.2, 0, 0);
+      } else if (y < 0.4) {
+        skinIndices.push(1, 2, 0, 0);
+        skinWeights.push(0.7, 0.3, 0, 0);
+      } else {
+        skinIndices.push(2, 1, 0, 0);
+        skinWeights.push(0.8, 0.2, 0, 0);
+      }
+    }
+
+    geometry.setAttribute('skinIndex', new THREE.Uint16BufferAttribute(skinIndices, 4));
+    geometry.setAttribute('skinWeight', new THREE.Float32BufferAttribute(skinWeights, 4));
+
+    const material = new THREE.MeshStandardMaterial({ color: 0x007aff, roughness: 0.3, wireframe: false });
+    const skinnedMesh = new THREE.SkinnedMesh(geometry, material);
+
+    skinnedMesh.add(rootBone);
+    skinnedMesh.bind(skeleton);
+
+    charGroup.add(skinnedMesh);
+
+    skeletonHelper = new THREE.SkeletonHelper(charGroup);
+    skeletonHelper.material.linewidth = 3;
+    scene.add(skeletonHelper);
+
+    // Register all bones for selection
+    skeleton.bones.forEach(b => {
+      b.userData.isBone = true;
+      objects.push(b);
     });
-    scene.add(transformControl);
 
-    const ambientLight = new THREE.AmbientLight(0xffffff, 0.7);
-    scene.add(ambientLight);
+    registerObject(charGroup, "Human Rig", '🧍');
+  }
 
-    const dirLight = new THREE.DirectionalLight(0xffffff, 0.8);
-    dirLight.position.set(5, 10, 7);
-    scene.add(dirLight);
 
-    const grid = new THREE.GridHelper(10, 10, 0x444444, 0x222222);
-    scene.add(grid);
 
-    // Click on joint to move it
-    renderer.domElement.addEventListener('pointerdown', onPointerDown);
+      function onPointerDown(event) {
+    if (transformControl.dragging) return;
+    const rect = renderer.domElement.getBoundingClientRect();
+    mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+    mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
 
-    createHumanModel();
-    initTimeline();
+    raycaster.setFromCamera(mouse, camera);
 
-    function animate() {
+    const intersects = raycaster.intersectObjects(scene.children, true);
+    if (intersects.length > 0) {
+      let hit = intersects[0].object;
+      if (hit.type === "Bone" || hit.isMesh) {
+        selectObject(hit);
+      }
+    }
+  }
+
+  function registerObject(obj, name, icon = '📦') {
+    obj.name = name || ("Object_" + objCounter++);
+    obj.userData.icon = icon;
+    obj.userData.keyframes = [];
+    objects.push(obj);
+    scene.add(obj);
+    selectObject(obj);
+  }
+
+  function addCube() {
+    const cube = new THREE.Mesh(new THREE.BoxGeometry(1, 1, 1), new THREE.MeshStandardMaterial({ color: 0x34c759 }));
+    cube.position.set(1.5, 0.5, 0);
+    registerObject(cube, "Cube_" + objCounter, '🧊');
+  }
+
+  function addSphere() {
+    const sphere = new THREE.Mesh(new THREE.SphereGeometry(0.5, 24, 24), new THREE.MeshStandardMaterial({ color: 0xffcc00 }));
+    sphere.position.set(-1.5, 0.5, 0);
+    registerObject(sphere, "Sphere_" + objCounter, '🔮');
+  }
+
+  function addLight() {
+    const light = new THREE.PointLight(0xffaa00, 1, 10);
+    light.position.set(0, 3, 0);
+    registerObject(light, "Light_" + objCounter, '💡');
+  }
+
+  function selectObject(obj) {
+    if (!obj) return;
+    selectedObject = obj;
+    transformControl.attach(obj);
+    updateUI();
+  }
+
+  function toggleRig() {
+    isRigVisible = !isRigVisible;
+    if (skeletonHelper) skeletonHelper.visible = isRigVisible;
+    const btn = document.getElementById('rig-btn');
+    btn.classList.toggle('active', isRigVisible);
+    btn.innerText = isRigVisible ? "🦴 Rig: Visible" : "🦴 Rig: Hidden";
+    showToast(isRigVisible ? "Rig Bones Shown" : "Rig Bones Hidden");
+  }
+
+  function updateUI() {
+    updateOutlinerUI();
+    updateTimelineUI();
+  }
+
+  function updateOutlinerUI() {
+    const list = document.getElementById('outliner-list');
+    list.innerHTML = '';
+    document.getElementById('obj-count').innerText = objects.length;
+
+    objects.forEach(obj => {
+      const item = document.createElement('div');
+      item.className = 'tree-item' + (selectedObject === obj ? ' selected' : '');
+      item.innerHTML = `<span>${obj.userData.icon || (obj.type==='Bone'?'🦴':'📦')}</span> <span>${obj.name}</span>`;
+      item.onclick = (e) => { e.stopPropagation(); selectObject(obj); };
+      list.appendChild(item);
+    });
+  }
+
+  function addKeyframe() {
+    if (!selectedObject) { showToast("Select Bone or Object!"); return; }
+    if (!selectedObject.userData.keyframes) selectedObject.userData.keyframes = [];
+
+    const kfs = selectedObject.userData.keyframes;
+    const time = parseFloat(currentTime.toFixed(2));
+    const existingIndex = kfs.findIndex(k => Math.abs(k.time - time) < 0.05);
+
+    const newFrame = { time: time, position: selectedObject.position.clone(), rotation: selectedObject.rotation.clone() };
+
+    if (existingIndex >= 0) kfs[existingIndex] = newFrame;
+    else { kfs.push(newFrame); kfs.sort((a, b) => a.time - b.time); }
+
+    showToast(`Keyframe Saved (${time}s)`);
+    updateUI();
+  }
+
+  function applyKeyframesAtTime(t) {
+    objects.forEach(obj => {
+      const kfs = obj.userData.keyframes;
+      if (!kfs || kfs.length === 0) return;
+
+      if (t <= kfs[0].time) {
+        obj.position.copy(kfs[0].position);
+        obj.rotation.copy(kfs[0].rotation);
+        return;
+      }
+      if (t >= kfs[kfs.length - 1].time) {
+        obj.position.copy(kfs[kfs.length - 1].position);
+        obj.rotation.copy(kfs[kfs.length - 1].rotation);
+        return;
+      }
+
+      for (let i = 0; i < kfs.length - 1; i++) {
+        if (t >= kfs[i].time && t <= kfs[i + 1].time) {
+          const factor = (t - kfs[i].time) / (kfs[i + 1].time - kfs[i].time);
+          obj.position.lerpVectors(kfs[i].position, kfs[i + 1].position, factor);
+          obj.rotation.x = THREE.MathUtils.lerp(kfs[i].rotation.x, kfs[i + 1].rotation.x, factor);
+          obj.rotation.y = THREE.MathUtils.lerp(kfs[i].rotation.y, kfs[i + 1].rotation.y, factor);
+          obj.rotation.z = THREE.MathUtils.lerp(kfs[i].rotation.z, kfs[i + 1].rotation.z, factor);
+          break;
+        }
+      }
+    });
+  }
+
+  function initTimeline() { updateUI(); }
+
+  function updateTimelineUI() {
+    const tracksContainer = document.getElementById('tl-tracks');
+    tracksContainer.innerHTML = '';
+
+    objects.forEach(obj => {
+      const div = document.createElement('div');
+      div.className = 'track-row' + (selectedObject === obj ? ' selected' : '');
+      div.innerHTML = `<span>${obj.type==='Bone'?'🦴':'✏️'}</span> <span>${obj.name}</span>`;
+      div.onclick = () => selectObject(obj);
+      tracksContainer.appendChild(div);
+    });
+
+    updateTimeline();
+  }
+
+  function seekTimeline(e) {
+    const rect = e.currentTarget.getBoundingClientRect();
+    currentTime = Math.max(0, Math.min(duration, ((e.clientX - rect.left) / rect.width) * duration));
+    applyKeyframesAtTime(currentTime);
+    updateTimeline();
+  }
+
+  function updateTimeline() {
+    const wrap = document.getElementById('tl-canvas-wrap');
+    const tlCanvas = document.getElementById('tl-canvas');
+    if (!tlCanvas || !wrap) return;
+
+    tlCanvas.width = wrap.clientWidth;
+    tlCanvas.height = wrap.clientHeight;
+
+    const ctx = tlCanvas.getContext('2d');
+    const tw = tlCanvas.width;
+    const th = tlCanvas.height;
+
+    ctx.fillStyle = '#0d0d0f';
+    ctx.fillRect(0, 0, tw, th);
+
+    const rowHeight = 26;
+    objects.forEach((obj, idx) => {
+      let y = idx * rowHeight;
+      if (selectedObject === obj) {
+        ctx.fillStyle = '#1c1c24';
+        ctx.fillRect(0, y, tw, rowHeight);
+      }
+      ctx.strokeStyle = '#22222a';
+      ctx.beginPath(); ctx.moveTo(0, y + rowHeight); ctx.lineTo(tw, y + rowHeight); ctx.stroke();
+
+      if (obj.userData.keyframes) {
+        ctx.fillStyle = selectedObject === obj ? '#ffcc00' : '#888';
+        obj.userData.keyframes.forEach(kf => {
+          let kx = (kf.time / duration) * tw;
+          let ky = y + rowHeight / 2;
+          ctx.beginPath(); ctx.arc(kx, ky, 3, 0, Math.PI * 2); ctx.fill();
+        });
+      }
+    });
+
+    let px = (currentTime / duration) * tw;
+    ctx.strokeStyle = '#007aff';
+    ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.moveTo(px, 0); ctx.lineTo(px, th); ctx.stroke();
+
+    let sec = currentTime.toFixed(2);
+    document.getElementById('time-val').innerText = '00:' + (sec < 10 ? '0' : '') + sec + ' / 05:00';
+  }
+
+  function triggerModelUpload() { document.getElementById('model-input').click(); }
+  document.getElementById('model-input').addEventListener('change', (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    showToast("Importing 3D Model...");
+    const filename = file.name.toLowerCase();
+    const reader = new FileReader();
+
+    if (filename.endsWith('.obj')) {
+      reader.onload = (evt) => {
+        const importedObj = new THREE.OBJLoader().parse(evt.target.result);
+        registerObject(importedObj, file.name.split('.')[0], '🤖');
+        showToast("Model Loaded!");
+      };
+      reader.readAsText(file);
+    } else if (filename.endsWith('.gltf') || filename.endsWith('.glb')) {
+      reader.onload = (evt) => {
+        new THREE.GLTFLoader().parse(evt.target.result, '', (gltf) => {
+          registerObject(gltf.scene, file.name.split('.')[0], '🤖');
+          showToast("Model Loaded!");
+        });
+      };
+      reader.readAsArrayBuffer(file);
+    }
+  });
+
+  function triggerImgUpload() {
+    if (!selectedObject) { showToast("Select Object First!"); return; }
+    document.getElementById('img-input').click();
+  }
+
+  document.getElementById('img-input').addEventListener('change', (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (evt) => {
+      new THREE.TextureLoader().load(evt.target.result, (texture) => {
+        if (selectedObject) {
+          selectedObject.traverse((child) => {
+            if (child.isMesh) {
+              child.material.map = texture;
+              child.material.needsUpdate = true;
+            }
+          });
+          showToast("Texture Applied!");
+        }
+      });
+    };
+    reader.readAsDataURL(file);
+  });
+
+  function setMode(mode) {
+    if (transformControl) transformControl.setMode(mode);
+    showToast("Mode: " + mode.toUpperCase());
+  }
+
+  function resetCam() {
+    camera.position.set(0, 2.5, 5);
+    orbit.target.set(0, 1.2, 0);
+    orbit.update();
+  }
+
+  function toggleBg() {
+    scene.background = scene.background.getHex() === 0x18181c ? new THREE.Color(0xd0d0d5) : new THREE.Color(0x18181c);
+  }
+
+  function deleteObj() {
+    if (selectedObject) {
+      transformControl.detach();
+      scene.remove(selectedObject);
+      const idx = objects.indexOf(selectedObject);
+      if (idx > -1) objects.splice(idx, 1);
+      selectedObject = null;
+      showToast("Deleted");
+      updateUI();
+    }
+  }
+
+  function togglePlay() {
+    isPlaying = !isPlaying;
+    document.getElementById('tl-play-btn').innerText = isPlaying ? '⏸ Pause' : '▶ Play';
+  }
+
+  window.addEventListener('resize', () => {
+    const container = document.getElementById('viewport');
+    camera.aspect = container.clientWidth / container.clientHeight;
+    camera.updateProjectionMatrix();
+    renderer.setSize(container.clientWidth, container.clientHeight);
+    updateUI();
+  });
+
+  window.addEventListener('load', init3D);
+</script>
+</body>
+</html>
+
+    
   
