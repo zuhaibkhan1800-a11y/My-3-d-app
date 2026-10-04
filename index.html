@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>Prisma 3D Editor - Working Keyframes</title>
+  <title>Prisma 3D Editor - Track Timeline</title>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; -webkit-tap-highlight-color: transparent; }
     html, body { width: 100vw; height: 100dvh; overflow: hidden; background: #0f0f11; color: #fff; font-family: system-ui, -apple-system, sans-serif; }
@@ -23,15 +23,23 @@
     #viewport { flex: 1; position: relative; background: #121215; min-height: 0; }
     #canvas3d { width: 100%; height: 100%; display: block; touch-action: none; }
 
-    /* Timeline Panel */
-    #timeline-panel { height: 95px; background: #141417; border-top: 1px solid #28282e; display: flex; flex-direction: column; flex-shrink: 0; z-index: 10; }
+    /* Timeline Container */
+    #timeline-panel { height: 140px; background: #141417; border-top: 2px solid #007aff; display: flex; flex-direction: column; flex-shrink: 0; z-index: 10; }
     #tl-header { height: 26px; background: #1c1c20; display: flex; align-items: center; justify-content: space-between; padding: 0 10px; font-size: 10px; color: #aaa; border-bottom: 1px solid #2a2a30; }
     #tl-play-btn { background: #007aff; border: none; color: #fff; font-size: 10px; padding: 3px 10px; border-radius: 4px; cursor: pointer; font-weight: bold; }
     
-    #tl-body { flex: 1; background: #0d0d0f; position: relative; cursor: pointer; }
-    #tl-canvas { width: 100%; height: 100%; display: block; }
+    #tl-main { flex: 1; display: flex; position: relative; overflow: hidden; }
+    
+    /* Tracks List Side Panel */
+    #tl-tracks { width: 100px; background: #18181c; border-right: 1px solid #28282e; overflow-y: hidden; flex-shrink: 0; font-size: 10px; }
+    .track-row { height: 24px; display: flex; align-items: center; padding: 0 6px; border-bottom: 1px solid #232328; color: #aaa; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .track-row.selected { background: #252530; color: #007aff; font-weight: bold; }
 
-    #bottom-toolbar { height: 55px; background: #18181a; border-top: 1px solid #28282e; display: flex; align-items: center; gap: 8px; padding: 0 10px; flex-shrink: 0; z-index: 20; overflow-x: auto; scrollbar-width: none; }
+    /* Keyframes Canvas Area */
+    #tl-canvas-wrap { flex: 1; position: relative; overflow: hidden; background: #0d0d0f; }
+    #tl-canvas { width: 100%; height: 100%; display: block; cursor: pointer; }
+
+    #bottom-toolbar { height: 50px; background: #18181a; border-top: 1px solid #28282e; display: flex; align-items: center; gap: 8px; padding: 0 10px; flex-shrink: 0; z-index: 20; overflow-x: auto; scrollbar-width: none; }
     #bottom-toolbar::-webkit-scrollbar { display: none; }
     
     .tool-item { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; color: #aaa; font-size: 10px; cursor: pointer; flex-shrink: 0; width: 54px; height: 100%; }
@@ -66,11 +74,14 @@
   <div id="timeline-panel">
     <div id="tl-header">
       <button id="tl-play-btn" onclick="togglePlay()">▶ Play</button>
-      <span id="selected-name" style="color:#007aff; font-weight:bold;">No Selection</span>
+      <span style="color:#aaa; font-size:10px;">TIMELINE TRACKS</span>
       <span id="time-val" style="font-family: monospace;">00:00.00 / 05:00</span>
     </div>
-    <div id="tl-body" onclick="seekTimeline(event)">
-      <canvas id="tl-canvas"></canvas>
+    <div id="tl-main">
+      <div id="tl-tracks"></div>
+      <div id="tl-canvas-wrap" onclick="seekTimeline(event)">
+        <canvas id="tl-canvas"></canvas>
+      </div>
     </div>
   </div>
 
@@ -156,7 +167,7 @@
 
   function registerObject(obj, name) {
     obj.name = name || ("Object_" + objCounter++);
-    obj.userData.keyframes = []; // Storage for per-object keyframes
+    obj.userData.keyframes = [];
     objects.push(obj);
     scene.add(obj);
     selectObject(obj);
@@ -187,21 +198,18 @@
   function selectObject(obj) {
     selectedObject = obj;
     transformControl.attach(obj);
-    document.getElementById('selected-name').innerText = obj.name;
-    updateTimeline();
+    updateTimelineUI();
   }
 
-  /* KEYFRAME SYSTEM LOGIC */
   function addKeyframe() {
     if (!selectedObject) {
-      showToast("Pehle koi Object select karein!");
+      showToast("Select Object First!");
       return;
     }
 
     const kfs = selectedObject.userData.keyframes;
     const time = parseFloat(currentTime.toFixed(2));
 
-    // Remove existing keyframe at exact same time if present
     const existingIndex = kfs.findIndex(k => Math.abs(k.time - time) < 0.05);
     const newFrame = {
       time: time,
@@ -217,7 +225,7 @@
     }
 
     showToast(`Keyframe set at ${time}s!`);
-    updateTimeline();
+    updateTimelineUI();
   }
 
   function applyKeyframesAtTime(t) {
@@ -251,12 +259,23 @@
     });
   }
 
-  /* TIMELINE DRAWING & SEEK */
   function initTimeline() {
-    const tlCanvas = document.getElementById('tl-canvas');
-    const container = document.getElementById('tl-body');
-    tlCanvas.width = container.clientWidth;
-    tlCanvas.height = container.clientHeight;
+    updateTimelineUI();
+  }
+
+  function updateTimelineUI() {
+    const tracksContainer = document.getElementById('tl-tracks');
+    tracksContainer.innerHTML = '';
+
+    // Render Track Names on Left Panel
+    objects.forEach(obj => {
+      const div = document.createElement('div');
+      div.className = 'track-row' + (selectedObject === obj ? ' selected' : '');
+      div.innerText = obj.name;
+      div.onclick = () => selectObject(obj);
+      tracksContainer.appendChild(div);
+    });
+
     updateTimeline();
   }
 
@@ -270,8 +289,13 @@
   }
 
   function updateTimeline() {
+    const wrap = document.getElementById('tl-canvas-wrap');
     const tlCanvas = document.getElementById('tl-canvas');
-    if (!tlCanvas) return;
+    if (!tlCanvas || !wrap) return;
+
+    tlCanvas.width = wrap.clientWidth;
+    tlCanvas.height = wrap.clientHeight;
+
     const ctx = tlCanvas.getContext('2d');
     const tw = tlCanvas.width;
     const th = tlCanvas.height;
@@ -279,30 +303,41 @@
     ctx.fillStyle = '#0d0d0f';
     ctx.fillRect(0, 0, tw, th);
 
-    // Grid ruler
-    ctx.strokeStyle = '#28282e';
-    ctx.beginPath();
-    for (let i = 0; i < tw; i += tw / 10) {
-      ctx.moveTo(i, 0);
-      ctx.lineTo(i, 10);
-    }
-    ctx.stroke();
+    const rowHeight = 24;
 
-    // Draw Selected Object's Keyframe Diamonds
-    if (selectedObject && selectedObject.userData.keyframes) {
-      ctx.fillStyle = '#ffcc00';
-      selectedObject.userData.keyframes.forEach(kf => {
-        let kx = (kf.time / duration) * tw;
-        ctx.beginPath();
-        ctx.moveTo(kx, th / 2 - 5);
-        ctx.lineTo(kx + 5, th / 2);
-        ctx.lineTo(kx, th / 2 + 5);
-        ctx.lineTo(kx - 5, th / 2);
-        ctx.fill();
-      });
-    }
+    // Draw track grid lines & keyframe diamonds for each object row
+    objects.forEach((obj, idx) => {
+      let y = idx * rowHeight;
 
-    // Playhead Line
+      // Track Row Background
+      if (selectedObject === obj) {
+        ctx.fillStyle = '#1c1c24';
+        ctx.fillRect(0, y, tw, rowHeight);
+      }
+
+      ctx.strokeStyle = '#1e1e24';
+      ctx.beginPath();
+      ctx.moveTo(0, y + rowHeight);
+      ctx.lineTo(tw, y + rowHeight);
+      ctx.stroke();
+
+      // Render Keyframes
+      if (obj.userData.keyframes) {
+        ctx.fillStyle = selectedObject === obj ? '#ffcc00' : '#888';
+        obj.userData.keyframes.forEach(kf => {
+          let kx = (kf.time / duration) * tw;
+          let ky = y + rowHeight / 2;
+          ctx.beginPath();
+          ctx.moveTo(kx, ky - 4);
+          ctx.lineTo(kx + 4, ky);
+          ctx.lineTo(kx, ky + 4);
+          ctx.lineTo(kx - 4, ky);
+          ctx.fill();
+        });
+      }
+    });
+
+    // Red Playhead Line
     let px = (currentTime / duration) * tw;
     ctx.strokeStyle = '#ff3b30';
     ctx.lineWidth = 2;
@@ -315,7 +350,7 @@
     document.getElementById('time-val').innerText = '00:' + (sec < 10 ? '0' : '') + sec + ' / 05:00';
   }
 
-  /* MODEL & TEXTURE IMPORT */
+  /* MODEL & TEXTURE IMPORT LOGIC */
   function triggerModelUpload() { document.getElementById('model-input').click(); }
   document.getElementById('model-input').addEventListener('change', (e) => {
     const file = e.target.files[0];
@@ -328,7 +363,7 @@
       reader.onload = function(evt) {
         const loader = new THREE.OBJLoader();
         const obj = loader.parse(evt.target.result);
-        registerObject(obj, file.name);
+        registerObject(obj, file.name.split('.')[0]);
         showToast("OBJ Loaded!");
       };
       reader.readAsText(file);
@@ -337,7 +372,7 @@
         const loader = new THREE.GLTFLoader();
         loader.parse(evt.target.result, '', (gltf) => {
           const model = gltf.scene;
-          registerObject(model, file.name);
+          registerObject(model, file.name.split('.')[0]);
           showToast("GLTF Loaded!");
         });
       };
@@ -346,7 +381,7 @@
   });
 
   function triggerImgUpload() {
-    if (!selectedObject) { showToast("Pehle Object select karein!"); return; }
+    if (!selectedObject) { showToast("Select Object First!"); return; }
     document.getElementById('img-input').click();
   }
 
@@ -400,9 +435,8 @@
       const idx = objects.indexOf(selectedObject);
       if (idx > -1) objects.splice(idx, 1);
       selectedObject = null;
-      document.getElementById('selected-name').innerText = "No Selection";
       showToast("Deleted");
-      updateTimeline();
+      updateTimelineUI();
     }
   }
 
@@ -416,7 +450,7 @@
     camera.aspect = container.clientWidth / container.clientHeight;
     camera.updateProjectionMatrix();
     renderer.setSize(container.clientWidth, container.clientHeight);
-    initTimeline();
+    updateTimelineUI();
   });
 
   window.addEventListener('load', init3D);
