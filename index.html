@@ -3,14 +3,13 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>Prisma 3D Editor - Full Features</title>
+  <title>Prisma 3D Editor - Working Keyframes</title>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; -webkit-tap-highlight-color: transparent; }
     html, body { width: 100vw; height: 100dvh; overflow: hidden; background: #0f0f11; color: #fff; font-family: system-ui, -apple-system, sans-serif; }
     
     #app { display: flex; flex-direction: column; width: 100%; height: 100dvh; position: relative; }
 
-    /* Top Bar */
     #top-bar { height: 46px; background: #18181a; display: flex; align-items: center; gap: 6px; padding: 0 8px; border-bottom: 1px solid #28282e; flex-shrink: 0; overflow-x: auto; scrollbar-width: none; z-index: 10; }
     #top-bar::-webkit-scrollbar { display: none; }
     
@@ -21,19 +20,17 @@
     .btn-yellow { background: rgba(255, 204, 0, 0.2); color: #ffcc00; border-color: rgba(255, 204, 0, 0.4); }
     .btn-red { background: rgba(255, 59, 48, 0.2); color: #ff3b30; border-color: rgba(255, 59, 48, 0.4); }
 
-    /* Viewport */
     #viewport { flex: 1; position: relative; background: #121215; min-height: 0; }
     #canvas3d { width: 100%; height: 100%; display: block; touch-action: none; }
 
     /* Timeline Panel */
-    #timeline-panel { height: 85px; background: #141417; border-top: 1px solid #28282e; display: flex; flex-direction: column; flex-shrink: 0; z-index: 10; }
+    #timeline-panel { height: 95px; background: #141417; border-top: 1px solid #28282e; display: flex; flex-direction: column; flex-shrink: 0; z-index: 10; }
     #tl-header { height: 26px; background: #1c1c20; display: flex; align-items: center; justify-content: space-between; padding: 0 10px; font-size: 10px; color: #aaa; border-bottom: 1px solid #2a2a30; }
     #tl-play-btn { background: #007aff; border: none; color: #fff; font-size: 10px; padding: 3px 10px; border-radius: 4px; cursor: pointer; font-weight: bold; }
     
-    #tl-body { flex: 1; background: #0d0d0f; position: relative; }
+    #tl-body { flex: 1; background: #0d0d0f; position: relative; cursor: pointer; }
     #tl-canvas { width: 100%; height: 100%; display: block; }
 
-    /* Bottom Toolbar */
     #bottom-toolbar { height: 55px; background: #18181a; border-top: 1px solid #28282e; display: flex; align-items: center; gap: 8px; padding: 0 10px; flex-shrink: 0; z-index: 20; overflow-x: auto; scrollbar-width: none; }
     #bottom-toolbar::-webkit-scrollbar { display: none; }
     
@@ -43,7 +40,6 @@
     #toast { position: absolute; top: 10px; left: 50%; transform: translateX(-50%); background: rgba(0,0,0,0.85); color: #fff; padding: 5px 14px; border-radius: 20px; font-size: 11px; display: none; z-index: 1000; border: 1px solid #444; pointer-events: none; }
     input[type="file"] { display: none !important; }
   </style>
-  <!-- Three.js Engine & Loaders -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/TransformControls.js"></script>
@@ -70,10 +66,10 @@
   <div id="timeline-panel">
     <div id="tl-header">
       <button id="tl-play-btn" onclick="togglePlay()">▶ Play</button>
+      <span id="selected-name" style="color:#007aff; font-weight:bold;">No Selection</span>
       <span id="time-val" style="font-family: monospace;">00:00.00 / 05:00</span>
-      <span style="font-size: 10px; color: #666;">FPS: 30</span>
     </div>
-    <div id="tl-body">
+    <div id="tl-body" onclick="seekTimeline(event)">
       <canvas id="tl-canvas"></canvas>
     </div>
   </div>
@@ -97,6 +93,7 @@
   const objects = [];
   let isPlaying = false, currentTime = 0, duration = 5.0;
   let isRigActive = false;
+  let objCounter = 1;
 
   function showToast(msg) {
     const t = document.getElementById('toast');
@@ -143,15 +140,26 @@
 
     function animate() {
       requestAnimationFrame(animate);
+
       if (isPlaying) {
         currentTime += 0.016;
         if (currentTime > duration) currentTime = 0;
+        applyKeyframesAtTime(currentTime);
         updateTimeline();
       }
+
       orbit.update();
       renderer.render(scene, camera);
     }
     animate();
+  }
+
+  function registerObject(obj, name) {
+    obj.name = name || ("Object_" + objCounter++);
+    obj.userData.keyframes = []; // Storage for per-object keyframes
+    objects.push(obj);
+    scene.add(obj);
+    selectObject(obj);
   }
 
   function addCube() {
@@ -159,9 +167,7 @@
     const material = new THREE.MeshStandardMaterial({ color: 0x007aff });
     const cube = new THREE.Mesh(geometry, material);
     cube.position.y = 0.5;
-    scene.add(cube);
-    objects.push(cube);
-    selectObject(cube);
+    registerObject(cube, "Cube_" + objCounter);
   }
 
   function addSphere() {
@@ -169,33 +175,151 @@
     const material = new THREE.MeshStandardMaterial({ color: 0xffcc00 });
     const sphere = new THREE.Mesh(geometry, material);
     sphere.position.y = 0.6;
-    scene.add(sphere);
-    objects.push(sphere);
-    selectObject(sphere);
+    registerObject(sphere, "Sphere_" + objCounter);
   }
 
   function addLight() {
     const light = new THREE.PointLight(0xffaa00, 1, 10);
     light.position.set(0, 2, 0);
-    scene.add(light);
-    objects.push(light);
-    selectObject(light);
+    registerObject(light, "Light_" + objCounter);
   }
 
   function selectObject(obj) {
     selectedObject = obj;
     transformControl.attach(obj);
+    document.getElementById('selected-name').innerText = obj.name;
+    updateTimeline();
   }
 
-  /* 3D MODEL IMPORT LOGIC */
-  function triggerModelUpload() {
-    document.getElementById('model-input').click();
+  /* KEYFRAME SYSTEM LOGIC */
+  function addKeyframe() {
+    if (!selectedObject) {
+      showToast("Pehle koi Object select karein!");
+      return;
+    }
+
+    const kfs = selectedObject.userData.keyframes;
+    const time = parseFloat(currentTime.toFixed(2));
+
+    // Remove existing keyframe at exact same time if present
+    const existingIndex = kfs.findIndex(k => Math.abs(k.time - time) < 0.05);
+    const newFrame = {
+      time: time,
+      position: selectedObject.position.clone(),
+      rotation: selectedObject.rotation.clone()
+    };
+
+    if (existingIndex >= 0) {
+      kfs[existingIndex] = newFrame;
+    } else {
+      kfs.push(newFrame);
+      kfs.sort((a, b) => a.time - b.time);
+    }
+
+    showToast(`Keyframe set at ${time}s!`);
+    updateTimeline();
   }
 
+  function applyKeyframesAtTime(t) {
+    objects.forEach(obj => {
+      const kfs = obj.userData.keyframes;
+      if (!kfs || kfs.length === 0) return;
+
+      if (t <= kfs[0].time) {
+        obj.position.copy(kfs[0].position);
+        obj.rotation.copy(kfs[0].rotation);
+        return;
+      }
+
+      if (t >= kfs[kfs.length - 1].time) {
+        obj.position.copy(kfs[kfs.length - 1].position);
+        obj.rotation.copy(kfs[kfs.length - 1].rotation);
+        return;
+      }
+
+      for (let i = 0; i < kfs.length - 1; i++) {
+        if (t >= kfs[i].time && t <= kfs[i + 1].time) {
+          const factor = (t - kfs[i].time) / (kfs[i + 1].time - kfs[i].time);
+          obj.position.lerpVectors(kfs[i].position, kfs[i + 1].position, factor);
+          
+          obj.rotation.x = THREE.MathUtils.lerp(kfs[i].rotation.x, kfs[i + 1].rotation.x, factor);
+          obj.rotation.y = THREE.MathUtils.lerp(kfs[i].rotation.y, kfs[i + 1].rotation.y, factor);
+          obj.rotation.z = THREE.MathUtils.lerp(kfs[i].rotation.z, kfs[i + 1].rotation.z, factor);
+          break;
+        }
+      }
+    });
+  }
+
+  /* TIMELINE DRAWING & SEEK */
+  function initTimeline() {
+    const tlCanvas = document.getElementById('tl-canvas');
+    const container = document.getElementById('tl-body');
+    tlCanvas.width = container.clientWidth;
+    tlCanvas.height = container.clientHeight;
+    updateTimeline();
+  }
+
+  function seekTimeline(e) {
+    const rect = e.currentTarget.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    currentTime = (x / rect.width) * duration;
+    currentTime = Math.max(0, Math.min(duration, currentTime));
+    applyKeyframesAtTime(currentTime);
+    updateTimeline();
+  }
+
+  function updateTimeline() {
+    const tlCanvas = document.getElementById('tl-canvas');
+    if (!tlCanvas) return;
+    const ctx = tlCanvas.getContext('2d');
+    const tw = tlCanvas.width;
+    const th = tlCanvas.height;
+
+    ctx.fillStyle = '#0d0d0f';
+    ctx.fillRect(0, 0, tw, th);
+
+    // Grid ruler
+    ctx.strokeStyle = '#28282e';
+    ctx.beginPath();
+    for (let i = 0; i < tw; i += tw / 10) {
+      ctx.moveTo(i, 0);
+      ctx.lineTo(i, 10);
+    }
+    ctx.stroke();
+
+    // Draw Selected Object's Keyframe Diamonds
+    if (selectedObject && selectedObject.userData.keyframes) {
+      ctx.fillStyle = '#ffcc00';
+      selectedObject.userData.keyframes.forEach(kf => {
+        let kx = (kf.time / duration) * tw;
+        ctx.beginPath();
+        ctx.moveTo(kx, th / 2 - 5);
+        ctx.lineTo(kx + 5, th / 2);
+        ctx.lineTo(kx, th / 2 + 5);
+        ctx.lineTo(kx - 5, th / 2);
+        ctx.fill();
+      });
+    }
+
+    // Playhead Line
+    let px = (currentTime / duration) * tw;
+    ctx.strokeStyle = '#ff3b30';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(px, 0);
+    ctx.lineTo(px, th);
+    ctx.stroke();
+
+    let sec = currentTime.toFixed(2);
+    document.getElementById('time-val').innerText = '00:' + (sec < 10 ? '0' : '') + sec + ' / 05:00';
+  }
+
+  /* MODEL & TEXTURE IMPORT */
+  function triggerModelUpload() { document.getElementById('model-input').click(); }
   document.getElementById('model-input').addEventListener('change', (e) => {
     const file = e.target.files[0];
     if (!file) return;
-
     showToast("Loading 3D Model...");
     const filename = file.name.toLowerCase();
     const reader = new FileReader();
@@ -204,10 +328,7 @@
       reader.onload = function(evt) {
         const loader = new THREE.OBJLoader();
         const obj = loader.parse(evt.target.result);
-        obj.position.set(0, 0, 0);
-        scene.add(obj);
-        objects.push(obj);
-        selectObject(obj);
+        registerObject(obj, file.name);
         showToast("OBJ Loaded!");
       };
       reader.readAsText(file);
@@ -216,10 +337,7 @@
         const loader = new THREE.GLTFLoader();
         loader.parse(evt.target.result, '', (gltf) => {
           const model = gltf.scene;
-          model.position.set(0, 0, 0);
-          scene.add(model);
-          objects.push(model);
-          selectObject(model);
+          registerObject(model, file.name);
           showToast("GLTF Loaded!");
         });
       };
@@ -227,19 +345,14 @@
     }
   });
 
-  /* IMAGE TEXTURE LOGIC */
   function triggerImgUpload() {
-    if (!selectedObject) {
-      showToast("Pehle Object select karein!");
-      return;
-    }
+    if (!selectedObject) { showToast("Pehle Object select karein!"); return; }
     document.getElementById('img-input').click();
   }
 
   document.getElementById('img-input').addEventListener('change', (e) => {
     const file = e.target.files[0];
     if (!file) return;
-
     const reader = new FileReader();
     reader.onload = function(evt) {
       const loader = new THREE.TextureLoader();
@@ -287,54 +400,15 @@
       const idx = objects.indexOf(selectedObject);
       if (idx > -1) objects.splice(idx, 1);
       selectedObject = null;
+      document.getElementById('selected-name').innerText = "No Selection";
       showToast("Deleted");
+      updateTimeline();
     }
   }
 
   function togglePlay() {
     isPlaying = !isPlaying;
     document.getElementById('tl-play-btn').innerText = isPlaying ? '⏸ Pause' : '▶ Play';
-  }
-
-  function addKeyframe() {
-    showToast("Keyframe Added!");
-  }
-
-  function initTimeline() {
-    const tlCanvas = document.getElementById('tl-canvas');
-    const container = document.getElementById('tl-body');
-    tlCanvas.width = container.clientWidth;
-    tlCanvas.height = container.clientHeight;
-    updateTimeline();
-  }
-
-  function updateTimeline() {
-    const tlCanvas = document.getElementById('tl-canvas');
-    const ctx = tlCanvas.getContext('2d');
-    const tw = tlCanvas.width;
-    const th = tlCanvas.height;
-
-    ctx.fillStyle = '#0d0d0f';
-    ctx.fillRect(0, 0, tw, th);
-
-    ctx.strokeStyle = '#28282e';
-    ctx.beginPath();
-    for (let i = 0; i < tw; i += 20) {
-      ctx.moveTo(i, 0);
-      ctx.lineTo(i, 10);
-    }
-    ctx.stroke();
-
-    let px = (currentTime / duration) * (tw - 20) + 10;
-    ctx.strokeStyle = '#ff3b30';
-    ctx.lineWidth = 2;
-    ctx.beginPath();
-    ctx.moveTo(px, 0);
-    ctx.lineTo(px, th);
-    ctx.stroke();
-
-    let sec = currentTime.toFixed(2);
-    document.getElementById('time-val').innerText = '00:' + (sec < 10 ? '0' : '') + sec + ' / 05:00';
   }
 
   window.addEventListener('resize', () => {
