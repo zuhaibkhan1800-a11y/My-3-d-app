@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>Prisma 3D Editor - Real 3D File Parser</title>
+  <title>Prisma 3D Editor - Permanent Blank Screen Fix</title>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; -webkit-tap-highlight-color: transparent; }
     html, body { width: 100%; height: 100dvh; overflow: hidden; background: #0f0f11; color: #fff; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
@@ -101,7 +101,7 @@
   const canvas = document.getElementById('canvas3d');
   const ctx = canvas.getContext('2d');
   
-  let width, height;
+  let width = 0, height = 0;
   let objects = [];
   let selectedIdx = -1;
   let keyframes = [];
@@ -120,8 +120,8 @@
 
   function resize() {
     const vp = document.getElementById('viewport');
-    width = canvas.width = vp.clientWidth;
-    height = canvas.height = vp.clientHeight;
+    width = canvas.width = vp.clientWidth || window.innerWidth;
+    height = canvas.height = vp.clientHeight || (window.innerHeight - 218);
     drawScene();
   }
 
@@ -209,7 +209,6 @@
     document.getElementById('import-input').click();
   }
 
-  // Real OBJ File Parser
   document.getElementById('import-input').addEventListener('change', (e) => {
     const file = e.target.files[0];
     if (!file) return;
@@ -243,7 +242,6 @@
         return;
       }
 
-      // Auto Scale/Center Model
       let maxX = -Infinity, minX = Infinity;
       let maxY = -Infinity, minY = Infinity;
       let maxZ = -Infinity, minZ = Infinity;
@@ -413,6 +411,7 @@
   }
 
   function drawScene() {
+    if (!width || !height) resize();
     ctx.fillStyle = bgDark ? '#121215' : '#e5e5ea';
     ctx.fillRect(0, 0, width, height);
 
@@ -558,33 +557,4 @@
       let x = (k.time / duration) * (tw - 20) + 10;
       let y = k.objIdx * 32 + 16;
       tctx.fillStyle = '#ffcc00';
-      tctx.beginPath(); tctx.arc(x, y, 4, 0, Math.PI*2); tctx.fill();
-    });
-
-    let px = (currentTime / duration) * (tw - 20) + 10;
-    tctx.strokeStyle = '#ff3b30'; tctx.lineWidth = 2;
-    tctx.beginPath(); tctx.moveTo(px, 0); tctx.lineTo(px, th); tctx.stroke();
-
-    let sec = currentTime.toFixed(2);
-    document.getElementById('time-val').innerText = '00:' + (sec < 10 ? '0' : '') + sec + ' of 05:00';
-  }
-
-  function loop() {
-    if (isPlaying) {
-      currentTime += 0.016;
-      if (currentTime > duration) currentTime = 0;
-      applyAnimation();
-      drawScene();
-      drawTimeline();
-    }
-    requestAnimationFrame(loop);
-  }
-
-  window.addEventListener('resize', resize);
-  
-  addCube();
-  resize();
-  loop();
-</script>
-</body>
-</html>
+      tctx.beginPath(); tctx.arc(x, y, 4, 0, Math.PI*2); t
