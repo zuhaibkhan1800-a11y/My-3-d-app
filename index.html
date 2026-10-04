@@ -3,49 +3,54 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>Prisma 3D Editor - Camera & Blank Fix</title>
+  <title>Prisma 3D Editor - Layout & UI Fix</title>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; -webkit-tap-highlight-color: transparent; }
     html, body { width: 100%; height: 100dvh; overflow: hidden; background: #0f0f11; color: #fff; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+    
     #app { display: flex; flex-direction: column; width: 100%; height: 100dvh; position: relative; }
     
-    #top-bar { height: 50px; background: #18181a; display: flex; align-items: center; gap: 8px; padding: 0 8px; border-bottom: 1px solid #28282e; flex-shrink: 0; z-index: 100; overflow-x: auto; white-space: nowrap; scrollbar-width: none; }
+    /* Top Bar - Fixed height */
+    #top-bar { height: 46px; background: #18181a; display: flex; align-items: center; gap: 6px; padding: 0 8px; border-bottom: 1px solid #28282e; flex-shrink: 0; z-index: 100; overflow-x: auto; white-space: nowrap; scrollbar-width: none; }
     #top-bar::-webkit-scrollbar { display: none; }
     
-    .icon-btn { background: #25252a; border: 1px solid #3d3d45; color: #eee; font-size: 11px; padding: 6px 12px; border-radius: 6px; cursor: pointer; display: inline-flex; align-items: center; gap: 4px; flex-shrink: 0; }
+    .icon-btn { background: #25252a; border: 1px solid #3d3d45; color: #eee; font-size: 11px; padding: 5px 10px; border-radius: 6px; cursor: pointer; display: inline-flex; align-items: center; gap: 4px; flex-shrink: 0; }
     .icon-btn:active { background: #007aff; color: #fff; }
     .icon-btn.rig-btn { background: rgba(52, 199, 89, 0.15); color: #34c759; border-color: rgba(52, 199, 89, 0.4); }
     .icon-btn.rig-btn.active { background: #34c759; color: #000; font-weight: bold; }
     .icon-btn.keyframe-btn { background: rgba(255, 204, 0, 0.15); color: #ffcc00; border-color: rgba(255, 204, 0, 0.4); }
     .icon-btn.delete-btn { background: rgba(255, 59, 48, 0.15); color: #ff3b30; border-color: rgba(255, 59, 48, 0.4); }
 
+    /* 3D Viewport - Flexible space */
     #viewport { flex: 1; position: relative; background: #121215; width: 100%; min-height: 0; overflow: hidden; }
     #canvas3d { width: 100%; height: 100%; display: block; position: absolute; top:0; left:0; touch-action: none; }
     
-    #hierarchy { position: absolute; top: 12px; left: 12px; width: 140px; max-height: 160px; background: rgba(20, 20, 24, 0.88); border: 1px solid #33333d; border-radius: 8px; padding: 8px; z-index: 10; font-size: 11px; overflow-y: auto; backdrop-filter: blur(6px); }
-    .tree-item { padding: 6px 8px; border-radius: 4px; margin-top: 4px; background: rgba(255,255,255,0.05); cursor: pointer; text-overflow: ellipsis; overflow: hidden; white-space: nowrap; }
+    #hierarchy { position: absolute; top: 10px; left: 10px; width: 130px; max-height: 140px; background: rgba(20, 20, 24, 0.88); border: 1px solid #33333d; border-radius: 8px; padding: 6px; z-index: 10; font-size: 11px; overflow-y: auto; backdrop-filter: blur(6px); }
+    .tree-item { padding: 5px 6px; border-radius: 4px; margin-top: 3px; background: rgba(255,255,255,0.05); cursor: pointer; text-overflow: ellipsis; overflow: hidden; white-space: nowrap; }
     .tree-item.selected { background: #007aff; color: #fff; font-weight: bold; }
 
-    #timeline-panel { height: 110px; background: #141417; border-top: 1px solid #28282e; display: flex; flex-direction: column; flex-shrink: 0; z-index: 100; }
-    #tl-header { height: 28px; background: #1c1c20; display: flex; align-items: center; justify-content: space-between; padding: 0 12px; font-size: 11px; color: #aaa; border-bottom: 1px solid #2a2a30; }
-    #tl-play-btn { background: #2a2a32; border: 1px solid #444; color: #fff; font-size: 11px; padding: 3px 10px; border-radius: 4px; cursor: pointer; }
+    /* Timeline Panel - Explicit Height & Proper Flex */
+    #timeline-panel { height: 95px; background: #141417; border-top: 1px solid #28282e; display: flex; flex-direction: column; flex-shrink: 0; z-index: 90; }
+    #tl-header { height: 26px; background: #1c1c20; display: flex; align-items: center; justify-content: space-between; padding: 0 10px; font-size: 11px; color: #aaa; border-bottom: 1px solid #2a2a30; }
+    #tl-play-btn { background: #007aff; border: none; color: #fff; font-size: 11px; padding: 2px 10px; border-radius: 4px; cursor: pointer; font-weight: bold; }
     
     #tl-body { flex: 1; display: flex; overflow-x: auto; position: relative; background: #101012; }
-    #tl-track-labels { width: 95px; background: #161619; border-right: 1px solid #28282e; flex-shrink: 0; z-index: 5; }
-    .track-label { height: 32px; display: flex; align-items: center; padding: 0 8px; font-size: 10px; color: #888; border-bottom: 1px solid #222226; text-overflow: ellipsis; overflow: hidden; white-space: nowrap; }
-    .track-label.active { color: #fff; background: rgba(0, 122, 255, 0.2); font-weight: bold; }
+    #tl-track-labels { width: 85px; background: #161619; border-right: 1px solid #28282e; flex-shrink: 0; z-index: 5; }
+    .track-label { height: 28px; display: flex; align-items: center; padding: 0 6px; font-size: 10px; color: #888; border-bottom: 1px solid #222226; text-overflow: ellipsis; overflow: hidden; white-space: nowrap; }
+    .track-label.active { color: #fff; background: rgba(0, 122, 255, 0.25); font-weight: bold; }
     
     #tl-canvas-container { flex: 1; position: relative; height: 100%; min-width: 100%; }
     #tl-canvas { width: 100%; height: 100%; display: block; }
 
-    #bottom-toolbar { height: 58px; background: #18181a; border-top: 1px solid #28282e; display: flex; align-items: center; gap: 12px; padding: 0 12px; flex-shrink: 0; z-index: 100; overflow-x: auto; scrollbar-width: none; }
+    /* Bottom Toolbar - Strictly Visible */
+    #bottom-toolbar { height: 55px; background: #18181a; border-top: 1px solid #28282e; display: flex; align-items: center; gap: 8px; padding: 0 10px; flex-shrink: 0; z-index: 100; overflow-x: auto; scrollbar-width: none; }
     #bottom-toolbar::-webkit-scrollbar { display: none; }
     
-    .tool-item { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; color: #aaa; font-size: 10px; cursor: pointer; flex-shrink: 0; min-width: 55px; height: 100%; }
-    .tool-item span { font-size: 18px; }
+    .tool-item { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; color: #aaa; font-size: 10px; cursor: pointer; flex-shrink: 0; width: 52px; height: 100%; }
+    .tool-item span { font-size: 16px; }
     .tool-item:active { color: #007aff; }
 
-    #toast { position: absolute; top: 12px; left: 50%; transform: translateX(-50%); background: rgba(0,0,0,0.85); color: #fff; padding: 6px 16px; border-radius: 20px; font-size: 11px; display: none; z-index: 1000; border: 1px solid #444; pointer-events: none; }
+    #toast { position: absolute; top: 10px; left: 50%; transform: translateX(-50%); background: rgba(0,0,0,0.85); color: #fff; padding: 5px 14px; border-radius: 20px; font-size: 11px; display: none; z-index: 1000; border: 1px solid #444; pointer-events: none; }
     input[type="file"] { display: none !important; }
   </style>
 </head>
@@ -53,7 +58,7 @@
 
 <div id="app">
   <div id="top-bar">
-    <button class="icon-btn" onclick="resetCam()">🏠 Focus Cam</button>
+    <button class="icon-btn" onclick="resetCam()">🏠 Focus</button>
     <button class="icon-btn" onclick="setMode('translate')">✢ Move</button>
     <button class="icon-btn" onclick="setMode('rotate')">🔄 Rotate</button>
     <button id="rig-btn" class="icon-btn rig-btn" onclick="toggleRig()">🦴 Bone Rig</button>
@@ -64,7 +69,7 @@
   <div id="viewport">
     <canvas id="canvas3d"></canvas>
     <div id="hierarchy">
-      <div style="font-weight: bold; border-bottom: 1px solid #444; padding-bottom:3px; color:#aaa;">Objects</div>
+      <div style="font-weight: bold; border-bottom: 1px solid #444; padding-bottom:2px; color:#aaa;">Objects</div>
       <div id="tree-root"></div>
     </div>
     <div id="toast">Ready</div>
@@ -73,7 +78,7 @@
   <div id="timeline-panel">
     <div id="tl-header">
       <button id="tl-play-btn" onclick="togglePlay()">▶ Play</button>
-      <span id="time-val" style="font-family: monospace;">00:00.00 of 05:00</span>
+      <span id="time-val" style="font-family: monospace;">00:00.00 / 05:00</span>
       <span style="font-size: 10px; color: #666;">FPS: 30</span>
     </div>
     <div id="tl-body">
@@ -88,7 +93,7 @@
     <div class="tool-item" onclick="addCube()"><span>🧊</span>Cube</div>
     <div class="tool-item" onclick="addSphere()"><span>🔮</span>Sphere</div>
     <div class="tool-item" onclick="addLight()"><span>💡</span>Light</div>
-    <div class="tool-item" onclick="triggerImport()"><span>📂</span>Import .OBJ</div>
+    <div class="tool-item" onclick="triggerImport()"><span>📂</span>Import</div>
     <div class="tool-item" onclick="triggerImgUpload()"><span>🖼️</span>Texture</div>
     <div class="tool-item" onclick="toggleBg()"><span>🌐</span>BG Toggle</div>
   </div>
@@ -110,20 +115,18 @@
   let isRigActive = false;
   let bgDark = true;
 
-  // Safe Camera Setup
   let cameraDistance = 5.0;
-  let yaw = 0.3;
-  let pitch = 0.3;
+  let yaw = 0.3, pitch = 0.3;
   let targetX = 0, targetY = 0, targetZ = 0;
 
-  let isDragging = false;
-  let lastX = 0, lastY = 0;
+  let isDragging = false, lastX = 0, lastY = 0;
 
   function resize() {
     const vp = document.getElementById('viewport');
     width = canvas.width = vp.clientWidth || window.innerWidth;
-    height = canvas.height = vp.clientHeight || (window.innerHeight - 218);
+    height = canvas.height = vp.clientHeight || (window.innerHeight - 200);
     drawScene();
+    drawTimeline();
   }
 
   function showToast(msg) {
@@ -161,9 +164,7 @@
     return {
       type: 'Mesh',
       name: 'Cube ' + (objects.length + 1),
-      x: (Math.random() - 0.5) * 0.5,
-      y: (Math.random() - 0.5) * 0.5,
-      z: 0,
+      x: 0, y: 0, z: 0,
       rx: 0, ry: 0, rz: 0,
       sx: 1, sy: 1, sz: 1,
       color: '#007aff',
@@ -210,9 +211,8 @@
     showToast("Light Added!");
   }
 
-  function triggerImport() {
-    document.getElementById('import-input').click();
-  }
+  function triggerImport() { document.getElementById('import-input').click(); }
+  function triggerImgUpload() { document.getElementById('img-input').click(); }
 
   document.getElementById('import-input').addEventListener('change', (e) => {
     const file = e.target.files[0];
@@ -232,25 +232,14 @@
           const parts = line.split(/\s+/).slice(1).map(Number);
           parsedVertices.push(parts);
         } else if (line.startsWith('f ')) {
-          const parts = line.split(/\s+/).slice(1).map(p => {
-            const idx = p.split('/')[0];
-            return parseInt(idx) - 1;
-          });
-          if (parts.length >= 3) {
-            parsedFaces.push(parts);
-          }
+          const parts = line.split(/\s+/).slice(1).map(p => parseInt(p.split('/')[0]) - 1);
+          if (parts.length >= 3) parsedFaces.push(parts);
         }
       });
 
-      if (parsedVertices.length === 0) {
-        showToast("Invalid OBJ file!");
-        return;
-      }
+      if (parsedVertices.length === 0) return showToast("Invalid OBJ!");
 
-      let maxX = -Infinity, minX = Infinity;
-      let maxY = -Infinity, minY = Infinity;
-      let maxZ = -Infinity, minZ = Infinity;
-
+      let maxX = -Infinity, minX = Infinity, maxY = -Infinity, minY = Infinity, maxZ = -Infinity, minZ = Infinity;
       parsedVertices.forEach(v => {
         if(v[0] > maxX) maxX = v[0]; if(v[0] < minX) minX = v[0];
         if(v[1] > maxY) maxY = v[1]; if(v[1] < minY) minY = v[1];
@@ -281,15 +270,13 @@
       selectedIdx = objects.length - 1;
       resetCam();
       updateUI();
-      showToast("OBJ Model Imported!");
+      showToast("Model Loaded!");
     };
     reader.readAsText(file);
   });
 
   function resetCam() {
-    cameraDistance = 5.0;
-    yaw = 0.3;
-    pitch = 0.3;
+    cameraDistance = 5.0; yaw = 0.3; pitch = 0.3;
     if (selectedIdx >= 0 && objects[selectedIdx]) {
       targetX = objects[selectedIdx].x;
       targetY = objects[selectedIdx].y;
@@ -319,12 +306,11 @@
 
   function deleteObj() {
     if (selectedIdx >= 0) {
-      const name = objects[selectedIdx].name;
       objects.splice(selectedIdx, 1);
       keyframes = keyframes.filter(k => k.objIdx !== selectedIdx);
       selectedIdx = objects.length - 1;
       updateUI();
-      showToast(name + " Deleted");
+      showToast("Deleted");
     }
   }
 
@@ -334,16 +320,10 @@
     let size = 5, step = 1;
 
     for (let i = -size; i <= size; i += step) {
-      let p1 = project(i, -1, -size);
-      let p2 = project(i, -1, size);
-      if (p1 && p2) {
-        ctx.beginPath(); ctx.moveTo(p1.x, p1.y); ctx.lineTo(p2.x, p2.y); ctx.stroke();
-      }
-      let p3 = project(-size, -1, i);
-      let p4 = project(size, -1, i);
-      if (p3 && p4) {
-        ctx.beginPath(); ctx.moveTo(p3.x, p3.y); ctx.lineTo(p4.x, p4.y); ctx.stroke();
-      }
+      let p1 = project(i, -1, -size), p2 = project(i, -1, size);
+      if (p1 && p2) { ctx.beginPath(); ctx.moveTo(p1.x, p1.y); ctx.lineTo(p2.x, p2.y); ctx.stroke(); }
+      let p3 = project(-size, -1, i), p4 = project(size, -1, i);
+      if (p3 && p4) { ctx.beginPath(); ctx.moveTo(p3.x, p3.y); ctx.lineTo(p4.x, p4.y); ctx.stroke(); }
     }
   }
 
@@ -365,11 +345,8 @@
     obj.vertices.forEach(v => {
       let x = v[0] * obj.sx, y = v[1] * obj.sy, z = v[2] * obj.sz;
       let cosY = Math.cos(obj.ry), sinY = Math.sin(obj.ry);
-      let x1 = cosY * x + sinY * z;
-      let z1 = -sinY * x + cosY * z;
-
-      let wx = x1 + obj.x, wy = y + obj.y, wz = z1 + obj.z;
-      renderVertices.push({ proj: project(wx, wy, wz) });
+      let x1 = cosY * x + sinY * z, z1 = -sinY * x + cosY * z;
+      renderVertices.push({ proj: project(x1 + obj.x, y + obj.y, z1 + obj.z) });
     });
 
     obj.faces.forEach((face, fIdx) => {
@@ -379,18 +356,13 @@
       let p2 = renderVertices[face[2]]?.proj;
 
       if (p0 && p1 && p2) {
-        ctx.beginPath();
-        ctx.moveTo(p0.x, p0.y); ctx.lineTo(p1.x, p1.y); ctx.lineTo(p2.x, p2.y);
-        
+        ctx.beginPath(); ctx.moveTo(p0.x, p0.y); ctx.lineTo(p1.x, p1.y); ctx.lineTo(p2.x, p2.y);
         if (face.length === 4 && renderVertices[face[3]]?.proj) {
-          let p3 = renderVertices[face[3]].proj;
-          ctx.lineTo(p3.x, p3.y);
+          ctx.lineTo(renderVertices[face[3]].proj.x, renderVertices[face[3]].proj.y);
         }
         ctx.closePath();
-
         ctx.fillStyle = isSelected ? (fIdx % 2 === 0 ? '#007aff' : '#3399ff') : obj.color;
         ctx.globalAlpha = 0.88; ctx.fill();
-
         ctx.strokeStyle = isSelected ? '#ffffff' : '#111111';
         ctx.lineWidth = isSelected ? 1.5 : 0.8;
         ctx.globalAlpha = 1.0; ctx.stroke();
@@ -404,13 +376,9 @@
 
       if (j1 && j2 && j3) {
         ctx.strokeStyle = '#34c759'; ctx.lineWidth = 3;
-        ctx.beginPath();
-        ctx.moveTo(j1.x, j1.y); ctx.lineTo(j2.x, j2.y); ctx.lineTo(j3.x, j3.y);
-        ctx.stroke();
-
+        ctx.beginPath(); ctx.moveTo(j1.x, j1.y); ctx.lineTo(j2.x, j2.y); ctx.lineTo(j3.x, j3.y); ctx.stroke();
         [j1, j2, j3].forEach(j => {
-          ctx.fillStyle = '#ffcc00';
-          ctx.beginPath(); ctx.arc(j.x, j.y, 5, 0, Math.PI * 2); ctx.fill();
+          ctx.fillStyle = '#ffcc00'; ctx.beginPath(); ctx.arc(j.x, j.y, 5, 0, Math.PI * 2); ctx.fill();
         });
       }
     }
@@ -420,43 +388,29 @@
     if (!width || !height) resize();
     ctx.fillStyle = bgDark ? '#121215' : '#e5e5ea';
     ctx.fillRect(0, 0, width, height);
-
     drawGrid();
     objects.forEach((obj, idx) => renderObject(obj, idx));
   }
 
-  canvas.addEventListener('pointerdown', (e) => {
-    isDragging = true;
-    lastX = e.clientX;
-    lastY = e.clientY;
-  });
-
+  canvas.addEventListener('pointerdown', (e) => { isDragging = true; lastX = e.clientX; lastY = e.clientY; });
   canvas.addEventListener('pointermove', (e) => {
     if (!isDragging) return;
-    let dx = e.clientX - lastX;
-    let dy = e.clientY - lastY;
-
+    let dx = e.clientX - lastX, dy = e.clientY - lastY;
     if (selectedIdx >= 0 && currentMode === 'translate') {
       let obj = objects[selectedIdx];
-      obj.x += dx * 0.005;
-      obj.y -= dy * 0.005;
+      obj.x += dx * 0.005; obj.y -= dy * 0.005;
     } else {
-      yaw += dx * 0.008;
-      pitch += dy * 0.008;
+      yaw += dx * 0.008; pitch += dy * 0.008;
       pitch = Math.max(-1.2, Math.min(1.2, pitch));
     }
-
-    lastX = e.clientX;
-    lastY = e.clientY;
+    lastX = e.clientX; lastY = e.clientY;
     drawScene();
   });
-
   canvas.addEventListener('pointerup', () => isDragging = false);
 
   function updateUI() {
     const root = document.getElementById('tree-root');
     root.innerHTML = '';
-
     if (objects.length === 0) {
       root.innerHTML = '<div style="color:#666;">No Objects</div>';
     } else {
@@ -468,32 +422,15 @@
         root.appendChild(div);
       });
     }
-
     updateTimeline();
     drawScene();
   }
-
-  function triggerImgUpload() {
-    document.getElementById('img-input').click();
-  }
-
-  document.getElementById('img-input').addEventListener('change', (e) => {
-    const file = e.target.files[0];
-    if (file && selectedIdx >= 0) {
-      objects[selectedIdx].color = '#34c759';
-      showToast("Texture Applied!");
-      drawScene();
-    }
-  });
 
   function addKeyframe() {
     if (selectedIdx < 0) return showToast("Select an object first!");
     let obj = objects[selectedIdx];
     keyframes = keyframes.filter(k => !(k.objIdx === selectedIdx && Math.abs(k.time - currentTime) < 0.1));
-    keyframes.push({
-      objIdx: selectedIdx, time: currentTime,
-      x: obj.x, y: obj.y, z: obj.z, ry: obj.ry || 0
-    });
+    keyframes.push({ objIdx: selectedIdx, time: currentTime, x: obj.x, y: obj.y, z: obj.z, ry: obj.ry || 0 });
     updateTimeline();
     showToast("Keyframe Added!");
   }
@@ -507,20 +444,16 @@
     objects.forEach((obj, idx) => {
       let objKFs = keyframes.filter(k => k.objIdx === idx).sort((a,b) => a.time - b.time);
       if (objKFs.length === 0) return;
-
       if (currentTime <= objKFs[0].time) {
-        obj.x = objKFs[0].x; obj.y = objKFs[0].y; if (obj.ry !== undefined) obj.ry = objKFs[0].ry;
+        obj.x = objKFs[0].x; obj.y = objKFs[0].y;
       } else if (currentTime >= objKFs[objKFs.length - 1].time) {
-        let last = objKFs[objKFs.length - 1];
-        obj.x = last.x; obj.y = last.y; if (obj.ry !== undefined) obj.ry = last.ry;
+        let last = objKFs[objKFs.length - 1]; obj.x = last.x; obj.y = last.y;
       } else {
         for (let i = 0; i < objKFs.length - 1; i++) {
           let k1 = objKFs[i], k2 = objKFs[i+1];
           if (currentTime >= k1.time && currentTime <= k2.time) {
             let t = (currentTime - k1.time) / (k2.time - k1.time);
-            obj.x = k1.x + (k2.x - k1.x) * t;
-            obj.y = k1.y + (k2.y - k1.y) * t;
-            if (obj.ry !== undefined) obj.ry = k1.ry + (k2.ry - k1.ry) * t;
+            obj.x = k1.x + (k2.x - k1.x) * t; obj.y = k1.y + (k2.y - k1.y) * t;
             break;
           }
         }
@@ -544,6 +477,8 @@
   function drawTimeline() {
     const tlCanvas = document.getElementById('tl-canvas');
     const container = document.getElementById('tl-canvas-container');
+    if (!tlCanvas || !container) return;
+
     const tw = tlCanvas.width = container.clientWidth;
     const th = tlCanvas.height = container.clientHeight;
     const tctx = tlCanvas.getContext('2d');
@@ -552,11 +487,35 @@
     tctx.fillRect(0, 0, tw, th);
 
     objects.forEach((o, i) => {
-      tctx.fillStyle = (i === selectedIdx) ? 'rgba(0,122,255,0.15)' : '#141417';
-      tctx.fillRect(0, i * 32, tw, 32);
+      tctx.fillStyle = (i === selectedIdx) ? 'rgba(0,122,255,0.2)' : '#141417';
+      tctx.fillRect(0, i * 28, tw, 28);
     });
 
     keyframes.forEach(k => {
       let x = (k.time / duration) * (tw - 20) + 10;
-      let y = k.objIdx * 32 + 16;
-      t
+      let y = k.objIdx * 28 + 14;
+      tctx.fillStyle = '#ffcc00';
+      tctx.beginPath(); tctx.arc(x, y, 4, 0, Math.PI*2); tctx.fill();
+    });
+
+    let px = (currentTime / duration) * (tw - 20) + 10;
+    tctx.strokeStyle = '#ff3b30'; tctx.lineWidth = 2;
+    tctx.beginPath(); tctx.moveTo(px, 0); tctx.lineTo(px, th); tctx.stroke();
+
+    let sec = currentTime.toFixed(2);
+    document.getElementById('time-val').innerText = '00:' + (sec < 10 ? '0' : '') + sec + ' / 05:00';
+  }
+
+  function loop() {
+    if (isPlaying) {
+      currentTime += 0.016;
+      if (currentTime > duration) currentTime = 0;
+      applyAnimation();
+      drawScene();
+      drawTimeline();
+    }
+    requestAnimationFrame(loop);
+  }
+
+  window.addEventListener('resize', resize);
+  window.addEventListener('DOMC
