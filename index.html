@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>Prisma 3D Editor - Image Import</title>
+  <title>Prisma 3D Editor - Full Features</title>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; -webkit-tap-highlight-color: transparent; }
     html, body { width: 100vw; height: 100dvh; overflow: hidden; background: #0f0f11; color: #fff; font-family: system-ui, -apple-system, sans-serif; }
@@ -37,15 +37,18 @@
     #bottom-toolbar { height: 55px; background: #18181a; border-top: 1px solid #28282e; display: flex; align-items: center; gap: 8px; padding: 0 10px; flex-shrink: 0; z-index: 20; overflow-x: auto; scrollbar-width: none; }
     #bottom-toolbar::-webkit-scrollbar { display: none; }
     
-    .tool-item { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; color: #aaa; font-size: 10px; cursor: pointer; flex-shrink: 0; width: 52px; height: 100%; }
+    .tool-item { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; color: #aaa; font-size: 10px; cursor: pointer; flex-shrink: 0; width: 54px; height: 100%; }
     .tool-item span { font-size: 16px; }
 
     #toast { position: absolute; top: 10px; left: 50%; transform: translateX(-50%); background: rgba(0,0,0,0.85); color: #fff; padding: 5px 14px; border-radius: 20px; font-size: 11px; display: none; z-index: 1000; border: 1px solid #444; pointer-events: none; }
     input[type="file"] { display: none !important; }
   </style>
+  <!-- Three.js Engine & Loaders -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/TransformControls.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/OBJLoader.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
 </head>
 <body>
 
@@ -79,12 +82,14 @@
     <div class="tool-item" onclick="addCube()"><span>🧊</span>Cube</div>
     <div class="tool-item" onclick="addSphere()"><span>🔮</span>Sphere</div>
     <div class="tool-item" onclick="addLight()"><span>💡</span>Light</div>
-    <div class="tool-item" onclick="triggerImgUpload()"><span>🖼️</span>Import Image</div>
+    <div class="tool-item" onclick="triggerModelUpload()"><span>📂</span>Import 3D</div>
+    <div class="tool-item" onclick="triggerImgUpload()"><span>🖼️</span>Texture</div>
     <div class="tool-item" onclick="toggleBg()"><span>🌐</span>BG Toggle</div>
   </div>
 </div>
 
 <input type="file" id="img-input" accept="image/*">
+<input type="file" id="model-input" accept=".obj,.gltf,.glb">
 
 <script>
   let scene, camera, renderer, orbit, transformControl;
@@ -182,10 +187,50 @@
     transformControl.attach(obj);
   }
 
-  /* IMAGE IMPORT LOGIC */
+  /* 3D MODEL IMPORT LOGIC */
+  function triggerModelUpload() {
+    document.getElementById('model-input').click();
+  }
+
+  document.getElementById('model-input').addEventListener('change', (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    showToast("Loading 3D Model...");
+    const filename = file.name.toLowerCase();
+    const reader = new FileReader();
+
+    if (filename.endsWith('.obj')) {
+      reader.onload = function(evt) {
+        const loader = new THREE.OBJLoader();
+        const obj = loader.parse(evt.target.result);
+        obj.position.set(0, 0, 0);
+        scene.add(obj);
+        objects.push(obj);
+        selectObject(obj);
+        showToast("OBJ Loaded!");
+      };
+      reader.readAsText(file);
+    } else if (filename.endsWith('.gltf') || filename.endsWith('.glb')) {
+      reader.onload = function(evt) {
+        const loader = new THREE.GLTFLoader();
+        loader.parse(evt.target.result, '', (gltf) => {
+          const model = gltf.scene;
+          model.position.set(0, 0, 0);
+          scene.add(model);
+          objects.push(model);
+          selectObject(model);
+          showToast("GLTF Loaded!");
+        });
+      };
+      reader.readAsArrayBuffer(file);
+    }
+  });
+
+  /* IMAGE TEXTURE LOGIC */
   function triggerImgUpload() {
     if (!selectedObject) {
-      showToast("Pehle Cube/Sphere select karein!");
+      showToast("Pehle Object select karein!");
       return;
     }
     document.getElementById('img-input').click();
@@ -199,11 +244,15 @@
     reader.onload = function(evt) {
       const loader = new THREE.TextureLoader();
       loader.load(evt.target.result, (texture) => {
-        if (selectedObject && selectedObject.material) {
-          selectedObject.material.map = texture;
-          selectedObject.material.color.setHex(0xffffff); // Clear base color so image shows properly
-          selectedObject.material.needsUpdate = true;
-          showToast("Image Applied!");
+        if (selectedObject) {
+          selectedObject.traverse((child) => {
+            if (child.isMesh) {
+              child.material.map = texture;
+              child.material.color.setHex(0xffffff);
+              child.material.needsUpdate = true;
+            }
+          });
+          showToast("Texture Applied!");
         }
       });
     };
