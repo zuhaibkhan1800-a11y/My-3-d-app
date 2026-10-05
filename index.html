@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>Prisma 3D Rig Engine Pro</title>
+  <title>Prisma 3D Auto-Rig Engine</title>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; -webkit-tap-highlight-color: transparent; }
     html, body { width: 100vw; height: 100dvh; overflow: hidden; background: #121215; color: #fff; font-family: system-ui, -apple-system, sans-serif; }
@@ -11,7 +11,7 @@
 
     /* Top Navigation Header */
     #top-bar { height: 44px; background: #18181c; display: flex; align-items: center; justify-content: space-between; padding: 0 12px; border-bottom: 1px solid #2a2a32; z-index: 10; }
-    .icon-btn { background: none; border: none; color: #eee; font-size: 16px; cursor: pointer; padding: 6px; }
+    .icon-btn { background: none; border: none; color: #eee; font-size: 14px; cursor: pointer; padding: 6px; }
 
     /* 3D Viewport View */
     #viewport { flex: 1; position: relative; background: #18181c; overflow: hidden; }
@@ -57,7 +57,7 @@
     input[type="file"] { display: none !important; }
   </style>
 
-  <!-- External High Performance Libraries -->
+  <!-- External Libraries -->
   <script src="https://unpkg.com/three@0.128.0/build/three.min.js"></script>
   <script src="https://unpkg.com/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
   <script src="https://unpkg.com/three@0.128.0/examples/js/controls/TransformControls.js"></script>
@@ -111,15 +111,13 @@
 
 <input type="file" id="file-input" accept=".obj,.gltf,.glb">
 
-
-  <script>
+<script>
   let scene, camera, renderer, orbit, transformControl;
   let activeModel = null, activeSkinnedMesh = null;
   let isPlaying = false, currentTime = 0, duration = 5.0;
   let controlHandles = [];
   let skeletonHelper = null;
 
-  // Standard T-Pose Joint Mapping Template (Matching Prisma 3D)
   const defaultJoints = [
     { id: 'head', name: 'Head', x: 50, y: 16, class: 'head' },
     { id: 'neck', name: 'Neck', x: 50, y: 24, class: '' },
@@ -168,29 +166,71 @@
     scene.add(dl);
     scene.add(new THREE.GridHelper(10, 10, 0x3d3d45, 0x222228));
 
-    loadSampleCharacter();
+    showToast("Viewport Empty. Click 'Import' to add your model");
     startRenderLoop();
   }
 
-  function loadSampleCharacter() {
-    const group = new THREE.Group();
-    const mat = new THREE.MeshStandardMaterial({ color: 0x8a8a93, roughness: 0.4 });
+  // Model File Import Engine (.obj, .gltf, .glb)
+  function triggerImport() { 
+    document.getElementById('file-input').click(); 
+  }
 
-    const body = new THREE.Mesh(new THREE.CylinderGeometry(0.24, 0.18, 1.4, 16, 16), mat);
-    body.position.y = 1.0;
-    group.add(body);
+  document.getElementById('file-input').addEventListener('change', (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    showToast("Loading 3D Model...");
 
-    const head = new THREE.Mesh(new THREE.SphereGeometry(0.22, 16, 16), mat);
-    head.position.y = 1.9;
-    group.add(head);
+    const fileName = file.name.toLowerCase();
+    const reader = new FileReader();
 
-    activeModel = group;
+    if (fileName.endsWith('.obj')) {
+      reader.onload = (evt) => {
+        loadModelToScene(new THREE.OBJLoader().parse(evt.target.result));
+      };
+      reader.readAsText(file);
+    } else if (fileName.endsWith('.gltf') || fileName.endsWith('.glb')) {
+      reader.onload = (evt) => {
+        const loader = new THREE.GLTFLoader();
+        loader.parse(evt.target.result, '', (gltf) => {
+          loadModelToScene(gltf.scene);
+        });
+      };
+      reader.readAsArrayBuffer(file);
+    } else {
+      showToast("Unsupported format! Use .obj, .gltf, or .glb");
+    }
+  });
+
+  function loadModelToScene(loadedObject) {
+    if (activeModel) scene.remove(activeModel);
+    if (activeSkinnedMesh) scene.remove(activeSkinnedMesh);
+    if (skeletonHelper) scene.remove(skeletonHelper);
+    controlHandles.forEach(h => scene.remove(h));
+    controlHandles = [];
+
+    activeModel = loadedObject;
+
+    // Auto Center & Scale imported model
+    const box = new THREE.Box3().setFromObject(activeModel);
+    const center = box.getCenter(new THREE.Vector3());
+    const size = box.getSize(new THREE.Vector3());
+
+    activeModel.position.x += (activeModel.position.x - center.x);
+    activeModel.position.y += (activeModel.position.y - center.y) + (size.y / 2);
+    activeModel.position.z += (activeModel.position.z - center.z);
+
+    const maxDim = Math.max(size.x, size.y, size.z);
+    if (maxDim > 0) {
+      const scale = 2.0 / maxDim;
+      activeModel.scale.set(scale, scale, scale);
+    }
+
     scene.add(activeModel);
-    showToast("Sample Model Ready. Click 'Auto Rig'");
+    showToast("Model Loaded! Click 'Auto Rig'");
   }
 
   function openRigOverlay() {
-    if (!activeModel) { showToast("Import 3D Model First!"); return; }
+    if (!activeModel && !activeSkinnedMesh) { showToast("Please Import a 3D Model First!"); return; }
 
     camera.position.set(0, 1.1, 2.8);
     orbit.target.set(0, 1.1, 0);
@@ -239,16 +279,17 @@
     document.getElementById('rig-overlay').style.display = 'none';
   }
 
-
-      function applyAutoRigging() {
+  function applyAutoRigging() {
     closeRigOverlay();
-    showToast("Generating Skeleton & Binding Mesh...");
+    if (!activeModel) return;
+
+    showToast("Generating Rig & Dynamic Skinning...");
 
     if (skeletonHelper) scene.remove(skeletonHelper);
     controlHandles.forEach(h => scene.remove(h));
     controlHandles = [];
 
-    // 1. Construct Skeleton Hierarchy
+    // Construct Skeleton
     const hips = new THREE.Bone(); hips.position.set(0, 1.0, 0); hips.name = "Hips";
     const spine = new THREE.Bone(); spine.position.set(0, 0.4, 0); hips.add(spine);
     const neck = new THREE.Bone(); neck.position.set(0, 0.4, 0); spine.add(neck);
@@ -268,31 +309,38 @@
     const bones = [hips, spine, neck, armR, forearmR, armL, forearmL, legR, shinR, legL, shinL];
     const skeleton = new THREE.Skeleton(bones);
 
-    // 2. Bind Model Geometry to Bones with Weights
-    scene.remove(activeModel);
+    // Apply Dynamic Skin Weights to Custom Imported Mesh
+    activeModel.traverse((child) => {
+      if (child.isMesh) {
+        const geom = child.geometry.clone();
+        const pos = geom.attributes.position;
+        const skinIndices = [], skinWeights = [];
 
-    const geom = new THREE.CylinderGeometry(0.28, 0.18, 1.8, 24, 24);
-    const pos = geom.attributes.position;
-    const skinIndices = [], skinWeights = [];
+        for (let i = 0; i < pos.count; i++) {
+          const y = pos.getY(i);
+          if (y < -0.3) { skinIndices.push(7, 8, 0, 0); skinWeights.push(0.7, 0.3, 0, 0); }
+          else if (y < 0.2) { skinIndices.push(0, 1, 0, 0); skinWeights.push(0.6, 0.4, 0, 0); }
+          else { skinIndices.push(3, 4, 1, 0); skinWeights.push(0.6, 0.3, 0.1, 0); }
+        }
 
-    for (let i = 0; i < pos.count; i++) {
-      const y = pos.getY(i);
-      if (y < -0.3) { skinIndices.push(7, 8, 0, 0); skinWeights.push(0.7, 0.3, 0, 0); }
-      else if (y < 0.2) { skinIndices.push(0, 1, 0, 0); skinWeights.push(0.6, 0.4, 0, 0); }
-      else { skinIndices.push(3, 4, 1, 0); skinWeights.push(0.6, 0.3, 0.1, 0); }
+        geom.setAttribute('skinIndex', new THREE.Uint16BufferAttribute(skinIndices, 4));
+        geom.setAttribute('skinWeight', new THREE.Float32BufferAttribute(skinWeights, 4));
+
+        child.material.skinning = true;
+        activeSkinnedMesh = new THREE.SkinnedMesh(geom, child.material);
+        activeSkinnedMesh.scale.copy(child.scale);
+        activeSkinnedMesh.position.copy(child.position);
+      }
+    });
+
+    if (activeSkinnedMesh) {
+      scene.remove(activeModel);
+      activeSkinnedMesh.add(hips);
+      activeSkinnedMesh.bind(skeleton);
+      scene.add(activeSkinnedMesh);
     }
 
-    geom.setAttribute('skinIndex', new THREE.Uint16BufferAttribute(skinIndices, 4));
-    geom.setAttribute('skinWeight', new THREE.Float32BufferAttribute(skinWeights, 4));
-
-    const mat = new THREE.MeshStandardMaterial({ color: 0x007aff, roughness: 0.3, skinning: true });
-    activeSkinnedMesh = new THREE.SkinnedMesh(geom, mat);
-
-    activeSkinnedMesh.add(hips);
-    activeSkinnedMesh.bind(skeleton);
-    scene.add(activeSkinnedMesh);
-
-    // 3. Generate White Interactive Control Points (Prisma 3D Style)
+    // Create White Interactive Control Spheres
     bones.forEach(b => {
       const dot = new THREE.Mesh(
         new THREE.SphereGeometry(0.045, 12, 12),
@@ -305,17 +353,20 @@
       controlHandles.push(dot);
     });
 
-    skeletonHelper = new THREE.SkeletonHelper(activeSkinnedMesh);
-    skeletonHelper.material.linewidth = 2;
-    scene.add(skeletonHelper);
+    if (activeSkinnedMesh) {
+      skeletonHelper = new THREE.SkeletonHelper(activeSkinnedMesh);
+      skeletonHelper.material.linewidth = 2;
+      scene.add(skeletonHelper);
+    }
 
-    transformControl.attach(controlHandles[0]);
-    showToast("Rigging Done! Move White Dots to Deform");
+    transformControl.attach(controlHandles[0].userData.targetBone);
+    showToast("Rigging Complete! Move Bones to Deform");
   }
 
-  // Handle Control Handle Direct Clicking
+  // Handle Bone Selection via White Control Spheres
   window.addEventListener('pointerdown', (e) => {
     if (document.getElementById('rig-overlay').style.display === 'block') return;
+
     const rect = renderer.domElement.getBoundingClientRect();
     const mouse = new THREE.Vector2(
       ((e.clientX - rect.left) / rect.width) * 2 - 1,
@@ -327,22 +378,22 @@
     const hits = rc.intersectObjects(controlHandles);
 
     if (hits.length > 0) {
-      transformControl.attach(hits[0].object);
+      const selectedDot = hits[0].object;
+      if (selectedDot.userData.targetBone) {
+        transformControl.attach(selectedDot.userData.targetBone);
+        showToast(`Bone Selected: ${selectedDot.userData.targetBone.name}`);
+      }
     }
   });
 
-
-
-
-      function startRenderLoop() {
+  function startRenderLoop() {
     requestAnimationFrame(startRenderLoop);
 
-    // Synchronize White Controls to Joint World Coordinates
-    controlHandles.forEach(h => {
-      if (h.userData.targetBone) {
-        const wp = new THREE.Vector3();
-        h.userData.targetBone.getWorldPosition(wp);
-        h.position.copy(wp);
+    controlHandles.forEach(dot => {
+      if (dot.userData.targetBone) {
+        const worldPos = new THREE.Vector3();
+        dot.userData.targetBone.getWorldPosition(worldPos);
+        dot.position.copy(worldPos);
       }
     });
 
@@ -358,19 +409,22 @@
   }
 
   function addKeyframe() {
-    const activeControl = transformControl.object;
-    if (!activeControl) { showToast("Select a Joint Point First!"); return; }
+    const activeBone = transformControl.object;
+    if (!activeBone || !activeBone.isBone) { showToast("Select a Joint First!"); return; }
 
     const t = parseFloat(currentTime.toFixed(2));
-    if (!activeControl.userData.keyframes) activeControl.userData.keyframes = [];
-
-    activeControl.userData.keyframes.push({
-      time: t,
-      rot: activeControl.userData.targetBone.rotation.clone(),
-      pos: activeControl.userData.targetBone.position.clone()
-    });
-
-    showToast(`Keyframe Saved at ${t}s`);
+    
+    // Find handle corresponding to bone
+    const handle = controlHandles.find(h => h.userData.targetBone === activeBone);
+    if (handle) {
+      if (!handle.userData.keyframes) handle.userData.keyframes = [];
+      handle.userData.keyframes.push({
+        time: t,
+        rot: activeBone.rotation.clone(),
+        pos: activeBone.position.clone()
+      });
+      showToast(`Keyframe Saved at ${t}s`);
+    }
   }
 
   function applyPlaybackAnimation(t) {
@@ -407,24 +461,6 @@
     document.getElementById('time-display').innerText = `00:${currentTime < 10 ? '0' : ''}${currentTime.toFixed(2)} / 05:00`;
   }
 
-  function triggerImport() { document.getElementById('file-input').click(); }
-  document.getElementById('file-input').addEventListener('change', (e) => {
-    const file = e.target.files[0];
-    if (!file) return;
-    showToast("Loading 3D File...");
-    const reader = new FileReader();
-
-    if (file.name.endsWith('.obj')) {
-      reader.onload = (evt) => {
-        if (activeModel) scene.remove(activeModel);
-        activeModel = new THREE.OBJLoader().parse(evt.target.result);
-        scene.add(activeModel);
-        showToast("Model Loaded! Press 'Auto Rig'");
-      };
-      reader.readAsText(file);
-    }
-  });
-
   function setMode(m) { transformControl.setMode(m); }
   function resetCamera() { camera.position.set(0, 1.2, 3.0); orbit.target.set(0, 1.0, 0); }
   function togglePlay() { isPlaying = !isPlaying; }
@@ -443,5 +479,3 @@
 </script>
 </body>
 </html>
-
-    
