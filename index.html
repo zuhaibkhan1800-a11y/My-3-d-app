@@ -9,15 +9,12 @@
     html, body { width: 100vw; height: 100dvh; overflow: hidden; background: #121215; color: #fff; font-family: system-ui, -apple-system, sans-serif; }
     #app { display: flex; flex-direction: column; width: 100%; height: 100dvh; position: relative; }
 
-    /* Top Navigation Header */
     #top-bar { height: 44px; background: #18181c; display: flex; align-items: center; justify-content: space-between; padding: 0 12px; border-bottom: 1px solid #2a2a32; z-index: 10; }
     .icon-btn { background: none; border: none; color: #eee; font-size: 14px; cursor: pointer; padding: 6px; }
 
-    /* 3D Viewport View */
     #viewport { flex: 1; position: relative; background: #18181c; overflow: hidden; }
     #canvas3d { width: 100%; height: 100%; display: block; touch-action: none; }
 
-    /* Prisma 3D Style Interactive Auto-Rig Overlay */
     #rig-overlay {
       position: absolute; top: 0; left: 0; width: 100%; height: 100%;
       background: rgba(0,0,0,0.45); display: none; z-index: 100; touch-action: none;
@@ -41,14 +38,12 @@
     .rig-btn { background: #2c2c35; border: none; color: #fff; padding: 8px 18px; border-radius: 20px; font-size: 11px; font-weight: bold; cursor: pointer; }
     .rig-btn.apply { background: #30d158; color: #000; }
 
-    /* Animation Timeline Bar */
     #timeline-panel { height: 85px; background: #141417; border-top: 1px solid #28282e; display: flex; flex-direction: column; flex-shrink: 0; z-index: 10; }
     #tl-header { height: 24px; background: #1c1c20; display: flex; align-items: center; justify-content: space-between; padding: 0 12px; font-size: 10px; color: #aaa; }
     #tl-canvas-wrap { flex: 1; position: relative; background: #0c0c0e; overflow: hidden; }
     #tl-canvas { width: 100%; height: 100%; display: block; }
 
-    /* Bottom Action Dock */
-    #bottom-bar { height: 54px; background: #18181a; border-top: 1px solid #28282e; display: flex; align-items: center; justify-content: space-around; padding: 0 4px; z-index: 20; }
+    #bottom-bar { height: 54px; background: #18181a; border-top: 1px solid #28282e; display: flex; align-items: center; justify-around: space-around; padding: 0 4px; z-index: 20; }
     .dock-btn { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; color: #aaa; font-size: 10px; cursor: pointer; background: none; border: none; width: 20%; height: 100%; }
     .dock-btn.active, .dock-btn:active { color: #007aff; }
     .dock-btn span { font-size: 18px; }
@@ -57,7 +52,6 @@
     input[type="file"] { display: none !important; }
   </style>
 
-  <!-- External Libraries -->
   <script src="https://unpkg.com/three@0.128.0/build/three.min.js"></script>
   <script src="https://unpkg.com/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
   <script src="https://unpkg.com/three@0.128.0/examples/js/controls/TransformControls.js"></script>
@@ -75,8 +69,7 @@
 
   <div id="viewport">
     <canvas id="canvas3d"></canvas>
-    
-    <!-- T-Pose Rig Overlay Screen -->
+
     <div id="rig-overlay">
       <div id="center-guide"></div>
       <div id="joints-container"></div>
@@ -111,7 +104,9 @@
 
 <input type="file" id="file-input" accept=".obj,.gltf,.glb">
 
-<script>
+
+
+  <script>
   let scene, camera, renderer, orbit, transformControl;
   let activeModel = null, activeSkinnedMesh = null;
   let isPlaying = false, currentTime = 0, duration = 5.0;
@@ -166,11 +161,10 @@
     scene.add(dl);
     scene.add(new THREE.GridHelper(10, 10, 0x3d3d45, 0x222228));
 
-    showToast("Viewport Empty. Click 'Import' to add your model");
+    showToast("Viewport Ready. Import your model");
     startRenderLoop();
   }
 
-  // Model File Import Engine (.obj, .gltf, .glb)
   function triggerImport() { 
     document.getElementById('file-input').click(); 
   }
@@ -210,7 +204,6 @@
 
     activeModel = loadedObject;
 
-    // Auto Center & Scale imported model
     const box = new THREE.Box3().setFromObject(activeModel);
     const center = box.getCenter(new THREE.Vector3());
     const size = box.getSize(new THREE.Vector3());
@@ -279,71 +272,96 @@
     document.getElementById('rig-overlay').style.display = 'none';
   }
 
-  function applyAutoRigging() {
-    closeRigOverlay();
-    if (!activeModel) return;
 
-    showToast("Generating Rig & Dynamic Skinning...");
+      function applyAutoRigging() {
+    closeRigOverlay();
+    if (!activeModel) { showToast("Model load karein pehle!"); return; }
+
+    showToast("Rigging full body mesh...");
 
     if (skeletonHelper) scene.remove(skeletonHelper);
     controlHandles.forEach(h => scene.remove(h));
     controlHandles = [];
 
-    // Construct Skeleton
-    const hips = new THREE.Bone(); hips.position.set(0, 1.0, 0); hips.name = "Hips";
-    const spine = new THREE.Bone(); spine.position.set(0, 0.4, 0); hips.add(spine);
-    const neck = new THREE.Bone(); neck.position.set(0, 0.4, 0); spine.add(neck);
+    const box = new THREE.Box3().setFromObject(activeModel);
+    const size = box.getSize(new THREE.Vector3());
+    const min = box.min;
 
-    const armR = new THREE.Bone(); armR.position.set(-0.3, 0.3, 0); spine.add(armR);
-    const forearmR = new THREE.Bone(); forearmR.position.set(-0.35, 0, 0); armR.add(forearmR);
+    const minY = min.y;
+    const height = size.y > 0 ? size.y : 2.0;
 
-    const armL = new THREE.Bone(); armL.position.set(0.3, 0.3, 0); spine.add(armL);
-    const forearmL = new THREE.Bone(); forearmL.position.set(0.35, 0, 0); armL.add(forearmL);
+    const hips = new THREE.Bone(); hips.position.set(0, minY + height * 0.5, 0); hips.name = "Hips";
+    const spine = new THREE.Bone(); spine.position.set(0, height * 0.25, 0); hips.add(spine);
+    const neck = new THREE.Bone(); neck.position.set(0, height * 0.2, 0); spine.add(neck);
 
-    const legR = new THREE.Bone(); legR.position.set(-0.18, -0.1, 0); hips.add(legR);
-    const shinR = new THREE.Bone(); shinR.position.set(0, -0.45, 0); legR.add(shinR);
+    const armR = new THREE.Bone(); armR.position.set(-size.x * 0.35, height * 0.15, 0); spine.add(armR);
+    const forearmR = new THREE.Bone(); forearmR.position.set(-size.x * 0.3, 0, 0); armR.add(forearmR);
 
-    const legL = new THREE.Bone(); legL.position.set(0.18, -0.1, 0); hips.add(legL);
-    const shinL = new THREE.Bone(); shinL.position.set(0, -0.45, 0); legL.add(shinL);
+    const armL = new THREE.Bone(); armL.position.set(size.x * 0.35, height * 0.15, 0); spine.add(armL);
+    const forearmL = new THREE.Bone(); forearmL.position.set(size.x * 0.3, 0, 0); armL.add(forearmL);
+
+    const legR = new THREE.Bone(); legR.position.set(-size.x * 0.2, -height * 0.05, 0); hips.add(legR);
+    const shinR = new THREE.Bone(); shinR.position.set(0, -height * 0.22, 0); legR.add(shinR);
+
+    const legL = new THREE.Bone(); legL.position.set(size.x * 0.2, -height * 0.05, 0); hips.add(legL);
+    const shinL = new THREE.Bone(); shinL.position.set(0, -height * 0.22, 0); legL.add(shinL);
 
     const bones = [hips, spine, neck, armR, forearmR, armL, forearmL, legR, shinR, legL, shinL];
     const skeleton = new THREE.Skeleton(bones);
 
-    // Apply Dynamic Skin Weights to Custom Imported Mesh
+    activeModel.add(hips);
+
     activeModel.traverse((child) => {
       if (child.isMesh) {
-        const geom = child.geometry.clone();
-        const pos = geom.attributes.position;
-        const skinIndices = [], skinWeights = [];
+        child.visible = true;
+        child.frustumCulled = false;
 
-        for (let i = 0; i < pos.count; i++) {
-          const y = pos.getY(i);
-          if (y < -0.3) { skinIndices.push(7, 8, 0, 0); skinWeights.push(0.7, 0.3, 0, 0); }
-          else if (y < 0.2) { skinIndices.push(0, 1, 0, 0); skinWeights.push(0.6, 0.4, 0, 0); }
-          else { skinIndices.push(3, 4, 1, 0); skinWeights.push(0.6, 0.3, 0.1, 0); }
+        const geom = child.geometry;
+        if (!geom.attributes.skinIndex) {
+          const pos = geom.attributes.position;
+          const skinIndices = [];
+          const skinWeights = [];
+
+          for (let i = 0; i < pos.count; i++) {
+            const worldY = pos.getY(i);
+            const normY = (worldY - minY) / height;
+
+            if (normY < 0.45) {
+              skinIndices.push(7, 8, 0, 0);
+              skinWeights.push(0.7, 0.3, 0, 0);
+            } else if (normY < 0.75) {
+              skinIndices.push(0, 1, 0, 0);
+              skinWeights.push(0.6, 0.4, 0, 0);
+            } else {
+              skinIndices.push(2, 3, 5, 0);
+              skinWeights.push(0.5, 0.3, 0.2, 0);
+            }
+          }
+
+          geom.setAttribute('skinIndex', new THREE.Uint16BufferAttribute(skinIndices, 4));
+          geom.setAttribute('skinWeight', new THREE.Float32BufferAttribute(skinWeights, 4));
         }
 
-        geom.setAttribute('skinIndex', new THREE.Uint16BufferAttribute(skinIndices, 4));
-        geom.setAttribute('skinWeight', new THREE.Float32BufferAttribute(skinWeights, 4));
+        if (!child.isSkinnedMesh) {
+          const skinned = new THREE.SkinnedMesh(geom, child.material);
+          skinned.position.copy(child.position);
+          skinned.rotation.copy(child.rotation);
+          skinned.scale.copy(child.scale);
+          skinned.bind(skeleton, child.matrixWorld);
 
-        child.material.skinning = true;
-        activeSkinnedMesh = new THREE.SkinnedMesh(geom, child.material);
-        activeSkinnedMesh.scale.copy(child.scale);
-        activeSkinnedMesh.position.copy(child.position);
+          if (child.parent) {
+            child.parent.add(skinned);
+            child.parent.remove(child);
+          }
+        } else {
+          child.bind(skeleton, child.matrixWorld);
+        }
       }
     });
 
-    if (activeSkinnedMesh) {
-      scene.remove(activeModel);
-      activeSkinnedMesh.add(hips);
-      activeSkinnedMesh.bind(skeleton);
-      scene.add(activeSkinnedMesh);
-    }
-
-    // Create White Interactive Control Spheres
     bones.forEach(b => {
       const dot = new THREE.Mesh(
-        new THREE.SphereGeometry(0.045, 12, 12),
+        new THREE.SphereGeometry(height * 0.025, 12, 12),
         new THREE.MeshBasicMaterial({ color: 0xffffff, depthTest: false })
       );
       dot.renderOrder = 999;
@@ -353,17 +371,14 @@
       controlHandles.push(dot);
     });
 
-    if (activeSkinnedMesh) {
-      skeletonHelper = new THREE.SkeletonHelper(activeSkinnedMesh);
-      skeletonHelper.material.linewidth = 2;
-      scene.add(skeletonHelper);
-    }
+    skeletonHelper = new THREE.SkeletonHelper(activeModel);
+    skeletonHelper.material.linewidth = 2;
+    scene.add(skeletonHelper);
 
-    transformControl.attach(controlHandles[0].userData.targetBone);
-    showToast("Rigging Complete! Move Bones to Deform");
+    transformControl.attach(hips);
+    showToast("Full Body Rig Applied Successfully!");
   }
 
-  // Handle Bone Selection via White Control Spheres
   window.addEventListener('pointerdown', (e) => {
     if (document.getElementById('rig-overlay').style.display === 'block') return;
 
@@ -413,8 +428,6 @@
     if (!activeBone || !activeBone.isBone) { showToast("Select a Joint First!"); return; }
 
     const t = parseFloat(currentTime.toFixed(2));
-    
-    // Find handle corresponding to bone
     const handle = controlHandles.find(h => h.userData.targetBone === activeBone);
     if (handle) {
       if (!handle.userData.keyframes) handle.userData.keyframes = [];
@@ -479,3 +492,5 @@
 </script>
 </body>
 </html>
+
+    
