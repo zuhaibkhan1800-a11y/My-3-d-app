@@ -44,7 +44,7 @@
     #tl-canvas-wrap { flex: 1; position: relative; background: #0c0c0e; overflow: hidden; }
     #tl-canvas { width: 100%; height: 100%; display: block; }
 
-    #bottom-bar { height: 54px; background: #18181a; border-top: 1px solid #28282e; display: flex; align-items: center; justify-around; padding: 0 4px; z-index: 20; }
+    #bottom-bar { height: 54px; background: #18181a; border-top: 1px solid #28282e; display: flex; align-items: center; justify-content: space-between; padding: 0 4px; z-index: 20; }
     .dock-btn { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; color: #aaa; font-size: 10px; cursor: pointer; background: none; border: none; width: 20%; height: 100%; }
     .dock-btn.active, .dock-btn:active { color: #007aff; }
     .dock-btn span { font-size: 18px; }
@@ -105,8 +105,6 @@
 
 <input type="file" id="file-input" accept=".obj,.gltf,.glb">
 
-
-
 <script>
   let scene, camera, renderer, orbit, transformControl;
   let activeModel = null;
@@ -132,289 +130,6 @@
 
   function showToast(msg) {
     const t = document.getElementById('toast');
-
-
-
-      function applyAutoRigging() {
-    if (!activeModel) { showToast("Model load karein pehle!"); closeRigOverlay(); return; }
-
-    showToast("Binding Bones to Model Mesh...");
-
-    const box = new THREE.Box3().setFromObject(activeModel);
-    const size = box.getSize(new THREE.Vector3());
-    const min = box.min;
-    const center = box.getCenter(new THREE.Vector3());
-
-    const container = document.getElementById('joints-container');
-    const rect = container.getBoundingClientRect();
-    const nodes = container.querySelectorAll('.joint-node');
-    const nodeCoords = {};
-
-    nodes.forEach(node => {
-      const nRect = node.getBoundingClientRect();
-      const relativeX = (nRect.left + nRect.width / 2 - rect.left) / rect.width;
-      const relativeY = (nRect.top + nRect.height / 2 - rect.top) / rect.height;
-
-      const worldY = box.max.y - (relativeY * size.y);
-      const worldX = center.x + (relativeX - 0.5) * size.x;
-      // Z-axis positioning fixed to align directly inside the model mesh center
-      nodeCoords[node.dataset.id] = new THREE.Vector3(worldX, worldY, center.z);
-    });
-
-    closeRigOverlay();
-
-    if (skeletonHelper) scene.remove(skeletonHelper);
-    controlHandles.forEach(h => scene.remove(h));
-    controlHandles = [];
-
-    // Root Bone
-    const rootBone = new THREE.Bone();
-    rootBone.name = "Root";
-    rootBone.position.copy(center);
-
-    const hipsPos = nodeCoords['hips'] || new THREE.Vector3(center.x, min.y + size.y * 0.5, center.z);
-    const spinePos = nodeCoords['neck'] || new THREE.Vector3(center.x, min.y + size.y * 0.7, center.z);
-    const headPos = nodeCoords['head'] || new THREE.Vector3(center.x, min.y + size.y * 0.9, center.z);
-
-    const hips = new THREE.Bone(); hips.position.subVectors(hipsPos, center); hips.name = "Hips";
-    rootBone.add(hips);
-
-    const spine = new THREE.Bone(); spine.position.subVectors(spinePos, hipsPos); spine.name = "Spine"; hips.add(spine);
-    const head = new THREE.Bone(); head.position.subVectors(headPos, spinePos); head.name = "Head"; spine.add(head);
-
-    // Arms
-    const shoulderR_Pos = nodeCoords['shoulder_r'] || new THREE.Vector3(center.x - size.x * 0.2, spinePos.y, center.z);
-    const elbowR_Pos = nodeCoords['elbow_r'] || new THREE.Vector3(center.x - size.x * 0.35, spinePos.y, center.z);
-    const wristR_Pos = nodeCoords['wrist_r'] || new THREE.Vector3(center.x - size.x * 0.5, spinePos.y, center.z);
-
-    const armR = new THREE.Bone(); armR.position.subVectors(shoulderR_Pos, spinePos); armR.name = "Arm_R"; spine.add(armR);
-    const forearmR = new THREE.Bone(); forearmR.position.subVectors(elbowR_Pos, shoulderR_Pos); forearmR.name = "Forearm_R"; armR.add(forearmR);
-    const handR = new THREE.Bone(); handR.position.subVectors(wristR_Pos, elbowR_Pos); handR.name = "Hand_R"; forearmR.add(handR);
-
-    const shoulderL_Pos = nodeCoords['shoulder_l'] || new THREE.Vector3(center.x + size.x * 0.2, spinePos.y, center.z);
-    const elbowL_Pos = nodeCoords['elbow_l'] || new THREE.Vector3(center.x + size.x * 0.35, spinePos.y, center.z);
-    const wristL_Pos = nodeCoords['wrist_l'] || new THREE.Vector3(center.x + size.x * 0.5, spinePos.y, center.z);
-
-    const armL = new THREE.Bone(); armL.position.subVectors(shoulderL_Pos, spinePos); armL.name = "Arm_L"; spine.add(armL);
-    const forearmL = new THREE.Bone(); forearmL.position.subVectors(elbowL_Pos, shoulderL_Pos); forearmL.name = "Forearm_L"; armL.add(forearmL);
-    const handL = new THREE.Bone(); handL.position.subVectors(wristL_Pos, elbowL_Pos); handL.name = "Hand_L"; forearmL.add(handL);
-
-    // Legs
-    const kneeR_Pos = nodeCoords['knee_r'] || new THREE.Vector3(center.x - size.x * 0.15, min.y + size.y * 0.25, center.z);
-    const ankleR_Pos = nodeCoords['ankle_r'] || new THREE.Vector3(center.x - size.x * 0.15, min.y, center.z);
-
-    const legR = new THREE.Bone(); legR.position.set(-size.x * 0.15, -size.y * 0.1, 0); legR.name = "Leg_R"; hips.add(legR);
-    const shinR = new THREE.Bone(); shinR.position.subVectors(kneeR_Pos, hipsPos); shinR.name = "Shin_R"; legR.add(shinR);
-    const footR = new THREE.Bone(); footR.position.subVectors(ankleR_Pos, kneeR_Pos); footR.name = "Foot_R"; shinR.add(footR);
-
-    const kneeL_Pos = nodeCoords['knee_l'] || new THREE.Vector3(center.x + size.x * 0.15, min.y + size.y * 0.25, center.z);
-    const ankleL_Pos = nodeCoords['ankle_l'] || new THREE.Vector3(center.x + size.x * 0.15, min.y, center.z);
-
-    const legL = new THREE.Bone(); legL.position.set(size.x * 0.15, -size.y * 0.1, 0); legL.name = "Leg_L"; hips.add(legL);
-    const shinL = new THREE.Bone(); shinL.position.subVectors(kneeL_Pos, hipsPos); shinL.name = "Shin_L"; legL.add(shinL);
-    const footL = new THREE.Bone(); footL.position.subVectors(ankleL_Pos, kneeL_Pos); footL.name = "Foot_L"; shinL.add(footL);
-
-    const bones = [rootBone, hips, spine, head, armR, forearmR, handR, armL, forearmL, handL, legR, shinR, footR, legL, shinL, footL];
-    const skeleton = new THREE.Skeleton(bones);
-
-    scene.add(rootBone);
-    rootBone.updateMatrixWorld(true);
-
-    const meshesToConvert = [];
-    activeModel.traverse((child) => {
-      if (child.isMesh) meshesToConvert.push(child);
-    });
-
-    meshesToConvert.forEach((child) => {
-      child.visible = true;
-      child.frustumCulled = false;
-
-      const geom = child.geometry.clone();
-      const posAttr = geom.attributes.position;
-      const skinIndices = [];
-      const skinWeights = [];
-
-      const vertexWorld = new THREE.Vector3();
-      const boneWorld = new THREE.Vector3();
-
-      for (let i = 0; i < posAttr.count; i++) {
-        vertexWorld.fromBufferAttribute(posAttr, i);
-        child.localToWorld(vertexWorld);
-
-        let minDist1 = Infinity, boneIdx1 = 0;
-        let minDist2 = Infinity, boneIdx2 = 0;
-
-        bones.forEach((b, bIdx) => {
-          b.getWorldPosition(boneWorld);
-          const dist = vertexWorld.distanceTo(boneWorld);
-          if (dist < minDist1) {
-            minDist2 = minDist1; boneIdx2 = boneIdx1;
-            minDist1 = dist; boneIdx1 = bIdx;
-          } else if (dist < minDist2) {
-            minDist2 = dist; boneIdx2 = bIdx;
-          }
-        });
-
-        const w1 = 1 / (minDist1 + 0.0001);
-        const w2 = 1 / (minDist2 + 0.0001);
-        const totalW = w1 + w2;
-
-        skinIndices.push(boneIdx1, boneIdx2, 0, 0);
-        skinWeights.push(w1 / totalW, w2 / totalW, 0, 0);
-      }
-
-      geom.setAttribute('skinIndex', new THREE.Uint16BufferAttribute(skinIndices, 4));
-      geom.setAttribute('skinWeight', new THREE.Float32BufferAttribute(skinWeights, 4));
-
-      const skinnedMesh = new THREE.SkinnedMesh(geom, child.material);
-      skinnedMesh.position.copy(child.position);
-      skinnedMesh.rotation.copy(child.rotation);
-      skinnedMesh.scale.copy(child.scale);
-
-      // Attach skeleton bind correctly
-      skinnedMesh.bind(skeleton, child.matrixWorld);
-
-      if (child.parent) {
-        child.parent.add(skinnedMesh);
-        child.parent.remove(child);
-      }
-    });
-
-    // Control spheres for handles
-    bones.forEach(b => {
-      if (b.name === "Root") return;
-      const dot = new THREE.Mesh(
-        new THREE.SphereGeometry(size.y * 0.025, 12, 12),
-        new THREE.MeshBasicMaterial({ color: 0x007aff, depthTest: false })
-      );
-      dot.renderOrder = 999;
-      dot.userData.targetBone = b;
-      dot.userData.keyframes = [];
-      scene.add(dot);
-      controlHandles.push(dot);
-    });
-
-    skeletonHelper = new THREE.SkeletonHelper(rootBone);
-    scene.add(skeletonHelper);
-
-    transformControl.attach(hips);
-    showToast("Rigging Complete! Bones aligned & bound.");
-  }
-
-  window.addEventListener('pointerdown', (e) => {
-    if (document.getElementById('rig-overlay').style.display === 'block') return;
-
-    const rect = renderer.domElement.getBoundingClientRect();
-    const mouse = new THREE.Vector2(
-      ((e.clientX - rect.left) / rect.width) * 2 - 1,
-      -((e.clientY - rect.top) / rect.height) * 2 + 1
-    );
-
-    const rc = new THREE.Raycaster();
-    rc.setFromCamera(mouse, camera);
-    const hits = rc.intersectObjects(controlHandles);
-
-    if (hits.length > 0) {
-      const selectedDot = hits[0].object;
-      if (selectedDot.userData.targetBone) {
-        transformControl.attach(selectedDot.userData.targetBone);
-        showToast(`Bone Selected: ${selectedDot.userData.targetBone.name}`);
-      }
-    }
-  });
-
-  function startRenderLoop() {
-    requestAnimationFrame(startRenderLoop);
-
-    controlHandles.forEach(dot => {
-      if (dot.userData.targetBone) {
-        const worldPos = new THREE.Vector3();
-        dot.userData.targetBone.getWorldPosition(worldPos);
-        dot.position.copy(worldPos);
-      }
-    });
-
-    if (isPlaying) {
-      currentTime += 0.016;
-      if (currentTime > duration) currentTime = 0;
-      applyPlaybackAnimation(currentTime);
-    }
-
-    orbit.update();
-    renderer.render(scene, camera);
-    drawTimelineCanvas();
-  }
-
-  function addKeyframe() {
-    const activeBone = transformControl.object;
-    if (!activeBone || !activeBone.isBone) { showToast("Select a Bone Handle First!"); return; }
-
-    const t = parseFloat(currentTime.toFixed(2));
-    const handle = controlHandles.find(h => h.userData.targetBone === activeBone);
-    if (handle) {
-      if (!handle.userData.keyframes) handle.userData.keyframes = [];
-      handle.userData.keyframes.push({
-        time: t,
-        rot: activeBone.rotation.clone(),
-        pos: activeBone.position.clone()
-      });
-      showToast(`Keyframe Saved at ${t}s`);
-    }
-  }
-
-  function applyPlaybackAnimation(t) {
-    controlHandles.forEach(h => {
-      const kfs = h.userData.keyframes;
-      if (!kfs || kfs.length === 0) return;
-
-      const bone = h.userData.targetBone;
-      for (let i = 0; i < kfs.length - 1; i++) {
-        if (t >= kfs[i].time && t <= kfs[i + 1].time) {
-          const factor = (t - kfs[i].time) / (kfs[i + 1].time - kfs[i].time);
-          bone.rotation.x = THREE.MathUtils.lerp(kfs[i].rot.x, kfs[i + 1].rot.x, factor);
-          bone.rotation.y = THREE.MathUtils.lerp(kfs[i].rot.y, kfs[i + 1].rot.y, factor);
-          bone.rotation.z = THREE.MathUtils.lerp(kfs[i].rot.z, kfs[i + 1].rot.z, factor);
-          break;
-        }
-      }
-    });
-  }
-
-  function drawTimelineCanvas() {
-    const cvs = document.getElementById('tl-canvas');
-    const wrap = document.getElementById('tl-canvas-wrap');
-    if (!cvs || !wrap) return;
-
-    cvs.width = wrap.clientWidth; cvs.height = wrap.clientHeight;
-    const ctx = cvs.getContext('2d');
-    ctx.fillStyle = '#0c0c0e'; ctx.fillRect(0, 0, cvs.width, cvs.height);
-
-    const px = (currentTime / duration) * cvs.width;
-    ctx.strokeStyle = '#007aff'; ctx.lineWidth = 2;
-    ctx.beginPath(); ctx.moveTo(px, 0); ctx.lineTo(px, cvs.height); ctx.stroke();
-
-    document.getElementById('time-display').innerText = `00:${currentTime < 10 ? '0' : ''}${currentTime.toFixed(2)} / 05:00`;
-  }
-
-  function setMode(m) { transformControl.setMode(m); }
-  function resetCamera() { camera.position.set(0, 1.2, 3.0); orbit.target.set(0, 1.0, 0); }
-  function togglePlay() { isPlaying = !isPlaying; }
-  function seekTimeline(e) {
-    const rect = e.currentTarget.getBoundingClientRect();
-    currentTime = ((e.clientX - rect.left) / rect.width) * duration;
-  }
-  function deleteSelected() {
-    if (transformControl.object) {
-      scene.remove(transformControl.object);
-      transformControl.detach();
-    }
-  }
-
-  window.addEventListener('load', init3DEngine);
-</script>
-</body>
-</html>
-
     t.innerText = msg; t.style.display = 'block';
     setTimeout(() => { t.style.display = 'none'; }, 1800);
   }
@@ -554,5 +269,190 @@
   function closeRigOverlay() {
     document.getElementById('rig-overlay').style.display = 'none';
   }
-      
-  
+
+  function applyAutoRigging() {
+    if (!activeModel) { showToast("Model load karein pehle!"); closeRigOverlay(); return; }
+
+    showToast("Binding Bones to Model Mesh...");
+
+    const box = new THREE.Box3().setFromObject(activeModel);
+    const size = box.getSize(new THREE.Vector3());
+    const min = box.min;
+    const center = box.getCenter(new THREE.Vector3());
+
+    const container = document.getElementById('joints-container');
+    const rect = container.getBoundingClientRect();
+    const nodes = container.querySelectorAll('.joint-node');
+    const nodeCoords = {};
+
+    nodes.forEach(node => {
+      const nRect = node.getBoundingClientRect();
+      const relativeX = (nRect.left + nRect.width / 2 - rect.left) / rect.width;
+      const relativeY = (nRect.top + nRect.height / 2 - rect.top) / rect.height;
+
+      const worldY = box.max.y - (relativeY * size.y);
+      const worldX = center.x + (relativeX - 0.5) * size.x;
+      nodeCoords[node.dataset.id] = new THREE.Vector3(worldX, worldY, center.z);
+    });
+
+    closeRigOverlay();
+
+    if (skeletonHelper) scene.remove(skeletonHelper);
+    controlHandles.forEach(h => scene.remove(h));
+    controlHandles = [];
+
+    const rootBone = new THREE.Bone();
+    rootBone.name = "Root";
+    rootBone.position.copy(center);
+
+    const hipsPos = nodeCoords['hips'] || new THREE.Vector3(center.x, min.y + size.y * 0.5, center.z);
+    const spinePos = nodeCoords['neck'] || new THREE.Vector3(center.x, min.y + size.y * 0.7, center.z);
+    const headPos = nodeCoords['head'] || new THREE.Vector3(center.x, min.y + size.y * 0.9, center.z);
+
+    const hips = new THREE.Bone(); hips.position.subVectors(hipsPos, center); hips.name = "Hips";
+    rootBone.add(hips);
+
+    const spine = new THREE.Bone(); spine.position.subVectors(spinePos, hipsPos); spine.name = "Spine"; hips.add(spine);
+    const head = new THREE.Bone(); head.position.subVectors(headPos, spinePos); head.name = "Head"; spine.add(head);
+
+    const shoulderR_Pos = nodeCoords['shoulder_r'] || new THREE.Vector3(center.x - size.x * 0.2, spinePos.y, center.z);
+    const elbowR_Pos = nodeCoords['elbow_r'] || new THREE.Vector3(center.x - size.x * 0.35, spinePos.y, center.z);
+    const wristR_Pos = nodeCoords['wrist_r'] || new THREE.Vector3(center.x - size.x * 0.5, spinePos.y, center.z);
+
+    const armR = new THREE.Bone(); armR.position.subVectors(shoulderR_Pos, spinePos); armR.name = "Arm_R"; spine.add(armR);
+    const forearmR = new THREE.Bone(); forearmR.position.subVectors(elbowR_Pos, shoulderR_Pos); forearmR.name = "Forearm_R"; armR.add(forearmR);
+    const handR = new THREE.Bone(); handR.position.subVectors(wristR_Pos, elbowR_Pos); handR.name = "Hand_R"; forearmR.add(handR);
+
+    const shoulderL_Pos = nodeCoords['shoulder_l'] || new THREE.Vector3(center.x + size.x * 0.2, spinePos.y, center.z);
+    const elbowL_Pos = nodeCoords['elbow_l'] || new THREE.Vector3(center.x + size.x * 0.35, spinePos.y, center.z);
+    const wristL_Pos = nodeCoords['wrist_l'] || new THREE.Vector3(center.x + size.x * 0.5, spinePos.y, center.z);
+
+    const armL = new THREE.Bone(); armL.position.subVectors(shoulderL_Pos, spinePos); armL.name = "Arm_L"; spine.add(armL);
+    const forearmL = new THREE.Bone(); forearmL.position.subVectors(elbowL_Pos, shoulderL_Pos); forearmL.name = "Forearm_L"; armL.add(forearmL);
+    const handL = new THREE.Bone(); handL.position.subVectors(wristL_Pos, elbowL_Pos); handL.name = "Hand_L"; forearmL.add(handL);
+
+    const kneeR_Pos = nodeCoords['knee_r'] || new THREE.Vector3(center.x - size.x * 0.15, min.y + size.y * 0.25, center.z);
+    const ankleR_Pos = nodeCoords['ankle_r'] || new THREE.Vector3(center.x - size.x * 0.15, min.y, center.z);
+
+    const legR = new THREE.Bone(); legR.position.set(-size.x * 0.15, -size.y * 0.1, 0); legR.name = "Leg_R"; hips.add(legR);
+    const shinR = new THREE.Bone(); shinR.position.subVectors(kneeR_Pos, hipsPos); shinR.name = "Shin_R"; legR.add(shinR);
+    const footR = new THREE.Bone(); footR.position.subVectors(ankleR_Pos, kneeR_Pos); footR.name = "Foot_R"; shinR.add(footR);
+
+    const kneeL_Pos = nodeCoords['knee_l'] || new THREE.Vector3(center.x + size.x * 0.15, min.y + size.y * 0.25, center.z);
+    const ankleL_Pos = nodeCoords['ankle_l'] || new THREE.Vector3(center.x + size.x * 0.15, min.y, center.z);
+
+    const legL = new THREE.Bone(); legL.position.set(size.x * 0.15, -size.y * 0.1, 0); legL.name = "Leg_L"; hips.add(legL);
+    const shinL = new THREE.Bone(); shinL.position.subVectors(kneeL_Pos, hipsPos); shinL.name = "Shin_L"; legL.add(shinL);
+    const footL = new THREE.Bone(); footL.position.subVectors(ankleL_Pos, kneeL_Pos); footL.name = "Foot_L"; shinL.add(footL);
+
+    const bones = [rootBone, hips, spine, head, armR, forearmR, handR, armL, forearmL, handL, legR, shinR, footR, legL, shinL, footL];
+    const skeleton = new THREE.Skeleton(bones);
+
+    scene.add(rootBone);
+    rootBone.updateMatrixWorld(true);
+
+    const meshesToConvert = [];
+    activeModel.traverse((child) => {
+      if (child.isMesh) meshesToConvert.push(child);
+    });
+
+    meshesToConvert.forEach((child) => {
+      child.visible = true;
+      child.frustumCulled = false;
+
+      const geom = child.geometry.clone();
+      const posAttr = geom.attributes.position;
+      const skinIndices = [];
+      const skinWeights = [];
+
+      const vertexWorld = new THREE.Vector3();
+      const boneWorld = new THREE.Vector3();
+
+      for (let i = 0; i < posAttr.count; i++) {
+        vertexWorld.fromBufferAttribute(posAttr, i);
+        child.localToWorld(vertexWorld);
+
+        let minDist1 = Infinity, boneIdx1 = 0;
+        let minDist2 = Infinity, boneIdx2 = 0;
+
+        bones.forEach((b, bIdx) => {
+          b.getWorldPosition(boneWorld);
+          const dist = vertexWorld.distanceTo(boneWorld);
+          if (dist < minDist1) {
+            minDist2 = minDist1; boneIdx2 = boneIdx1;
+            minDist1 = dist; boneIdx1 = bIdx;
+          } else if (dist < minDist2) {
+            minDist2 = dist; boneIdx2 = bIdx;
+          }
+        });
+
+        const w1 = 1 / (minDist1 + 0.0001);
+        const w2 = 1 / (minDist2 + 0.0001);
+        const totalW = w1 + w2;
+
+        skinIndices.push(boneIdx1, boneIdx2, 0, 0);
+        skinWeights.push(w1 / totalW, w2 / totalW, 0, 0);
+      }
+
+      geom.setAttribute('skinIndex', new THREE.Uint16BufferAttribute(skinIndices, 4));
+      geom.setAttribute('skinWeight', new THREE.Float32BufferAttribute(skinWeights, 4));
+
+      const skinnedMesh = new THREE.SkinnedMesh(geom, child.material);
+      skinnedMesh.position.copy(child.position);
+      skinnedMesh.rotation.copy(child.rotation);
+      skinnedMesh.scale.copy(child.scale);
+
+      skinnedMesh.bind(skeleton, child.matrixWorld);
+
+      if (child.parent) {
+        child.parent.add(skinnedMesh);
+        child.parent.remove(child);
+      }
+    });
+
+    bones.forEach(b => {
+      if (b.name === "Root") return;
+      const dot = new THREE.Mesh(
+        new THREE.SphereGeometry(size.y * 0.025, 12, 12),
+        new THREE.MeshBasicMaterial({ color: 0x007aff, depthTest: false })
+      );
+      dot.renderOrder = 999;
+      dot.userData.targetBone = b;
+      dot.userData.keyframes = [];
+      scene.add(dot);
+      controlHandles.push(dot);
+    });
+
+    skeletonHelper = new THREE.SkeletonHelper(rootBone);
+    scene.add(skeletonHelper);
+
+    transformControl.attach(hips);
+    showToast("Rigging Complete! Bones aligned & bound.");
+  }
+
+  window.addEventListener('pointerdown', (e) => {
+    if (document.getElementById('rig-overlay').style.display === 'block') return;
+
+    const rect = renderer.domElement.getBoundingClientRect();
+    const mouse = new THREE.Vector2(
+      ((e.clientX - rect.left) / rect.width) * 2 - 1,
+      -((e.clientY - rect.top) / rect.height) * 2 + 1
+    );
+
+    const rc = new THREE.Raycaster();
+    rc.setFromCamera(mouse, camera);
+    const hits = rc.intersectObjects(controlHandles);
+
+    if (hits.length > 0) {
+      const selectedDot = hits[0].object;
+      if (selectedDot.userData.targetBone) {
+        transformControl.attach(selectedDot.userData.targetBone);
+        showToast(`Bone Selected: ${selectedDot.userData.targetBone.name}`);
+      }
+    }
+  });
+
+  function startRenderLoop() {
+    requestAnimationFrame(startRenderLoop);
+
+    controlHandles.f
