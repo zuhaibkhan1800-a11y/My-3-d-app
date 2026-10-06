@@ -1,353 +1,103 @@
-<!DOCTYPE html>
-<html lang="hi">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>Prisma 3D Auto-Rig Engine</title>
-  <style>
-    * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; -webkit-tap-highlight-color: transparent; }
-    html, body { width: 100vw; height: 100dvh; overflow: hidden; background: #121215; color: #fff; font-family: system-ui, -apple-system, sans-serif; }
-    #app { display: flex; flex-direction: column; width: 100%; height: 100dvh; position: relative; }
+function applyAutoRigging() {
+  if (!activeModel) { showToast("Model Load Karein!"); closeRigOverlay(); return; }
 
-    #top-bar { height: 44px; background: #18181c; display: flex; align-items: center; justify-content: space-between; padding: 0 12px; border-bottom: 1px solid #2a2a32; z-index: 10; }
-    .brand-title { font-size: 12px; font-weight: bold; color: #007aff; }
-    .icon-btn { background: none; border: none; color: #eee; font-size: 14px; cursor: pointer; padding: 6px; }
+  showToast("Binding Full Skeleton to Model...");
 
-    #viewport { flex: 1; position: relative; background: #18181c; overflow: hidden; }
-    #canvas3d { width: 100%; height: 100%; display: block; touch-action: none; }
+  // Existing helpers aur handles clear karein
+  if (skeletonHelper) scene.remove(skeletonHelper);
+  controlHandles.forEach(h => scene.remove(h));
+  controlHandles = [];
 
-    #rig-overlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.45); display: none; z-index: 100; touch-action: none; }
-    #center-guide { position: absolute; left: 50%; top: 0; bottom: 0; width: 1px; background: rgba(255,255,255,0.7); transform: translateX(-50%); pointer-events: none; }
+  const container = document.getElementById('joints-container');
+  const nodes = container.querySelectorAll('.joint-node');
+  const rect = container.getBoundingClientRect();
 
-    #joints-container { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: auto; }
-    .joint-node { position: absolute; width: 22px; height: 22px; border-radius: 50%; border: 2px solid #ffffff; background: #ff9500; transform: translate(-50%, -50%); cursor: pointer; touch-action: none; z-index: 101; box-shadow: 0 0 10px rgba(0,0,0,0.8); }
-    .joint-node.head { background: #30d158; }
-    .joint-node.hip { background: #ff3b30; }
+  // Screen coordinates to 3D positions calculate karne ke liye Raycaster
+  const raycaster = new THREE.Raycaster();
+  const mouse = new THREE.Vector2();
+  const jointWorldPositions = {};
 
-    #rig-tools-bar { position: absolute; bottom: 18px; left: 50%; transform: translateX(-50%); display: flex; gap: 10px; background: rgba(24, 24, 28, 0.95); padding: 8px 16px; border-radius: 30px; border: 1px solid #3d3d45; backdrop-filter: blur(8px); z-index: 102; }
-    .rig-btn { background: #2c2c35; border: none; color: #fff; padding: 8px 18px; border-radius: 20px; font-size: 11px; font-weight: bold; cursor: pointer; }
-    .rig-btn.apply { background: #30d158; color: #000; }
+  nodes.forEach(node => {
+    const id = node.dataset.id;
+    const nodeRect = node.getBoundingClientRect();
+    const x = nodeRect.left + nodeRect.width / 2;
+    const y = nodeRect.top + nodeRect.height / 2;
 
-    #timeline-panel { height: 85px; background: #141417; border-top: 1px solid #28282e; display: flex; flex-direction: column; flex-shrink: 0; z-index: 10; }
-    #tl-header { height: 24px; background: #1c1c20; display: flex; align-items: center; justify-content: space-between; padding: 0 12px; font-size: 10px; color: #aaa; }
-    .tl-btn.play { background: #007aff; border: none; color: #fff; font-size: 10px; padding: 2px 8px; border-radius: 3px; cursor: pointer; }
-    .tl-btn.keyframe { background: #ffcc00; border: none; color: #000; font-size: 10px; padding: 2px 8px; border-radius: 3px; font-weight: bold; cursor: pointer; }
+    mouse.x = ((x - rect.left) / rect.width) * 2 - 1;
+    mouse.y = -((y - rect.top) / rect.height) * 2 + 1;
 
-    #tl-canvas-wrap { flex: 1; position: relative; background: #0c0c0e; overflow: hidden; }
-    #tl-canvas { width: 100%; height: 100%; display: block; }
+    raycaster.setFromCamera(mouse, camera);
 
-    #bottom-bar { height: 54px; background: #18181a; border-top: 1px solid #28282e; display: flex; align-items: center; justify-content: space-between; padding: 0 4px; z-index: 20; }
-    .dock-btn { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; color: #aaa; font-size: 10px; cursor: pointer; background: none; border: none; width: 20%; height: 100%; }
-    .dock-btn.active, .dock-btn:active { color: #007aff; }
-    .dock-btn span { font-size: 18px; }
-
-    #toast { position: absolute; top: 12px; left: 50%; transform: translateX(-50%); background: rgba(0,0,0,0.85); color: #fff; padding: 6px 16px; border-radius: 20px; font-size: 11px; display: none; z-index: 1000; border: 1px solid #444; pointer-events: none; }
-    input[type="file"] { display: none !important; }
-  </style>
-
-  <!-- Libraries -->
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/OBJLoader.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/TransformControls.js"></script>
-</head>
-
-
-
-  <body>
-
-<div id="app">
-  <div id="top-bar">
-    <button class="icon-btn" onclick="resetCamera()">🏠 Center</button>
-    <div class="brand-title">PRISMA 3D AUTO-RIG ENGINE</div>
-    <button class="icon-btn" onclick="triggerImport()">📂 Import</button>
-  </div>
-
-  <div id="viewport">
-    <canvas id="canvas3d"></canvas>
-
-    <div id="rig-overlay">
-      <div id="center-guide"></div>
-      <div id="joints-container"></div>
-      <div id="rig-tools-bar">
-        <button class="rig-btn" onclick="closeRigOverlay()">Cancel</button>
-        <button class="rig-btn apply" onclick="applyAutoRigging()">✓ Apply Rig</button>
-      </div>
-    </div>
-
-    <div id="toast">Ready</div>
-  </div>
-
-  <div id="timeline-panel">
-    <div id="tl-header">
-      <button class="tl-btn play" onclick="togglePlay()">▶ Play</button>
-      <span id="time-display">00:00.00 / 05:00</span>
-      <button class="tl-btn keyframe" onclick="addKeyframe()">🔑 Keyframe</button>
-    </div>
-    <div id="tl-canvas-wrap" onclick="seekTimeline(event)">
-      <canvas id="tl-canvas"></canvas>
-    </div>
-  </div>
-
-  <div id="bottom-bar">
-    <button class="dock-btn" onclick="setMode('translate')"><span>✢</span>Move</button>
-    <button class="dock-btn" onclick="setMode('rotate')"><span>🔄</span>Rotate</button>
-    <button class="dock-btn active" onclick="openRigOverlay()"><span>🦴</span>Auto Rig</button>
-    <button class="dock-btn" onclick="triggerImport()"><span>📂</span>Import</button>
-    <button class="dock-btn" onclick="deleteSelected()"><span>🗑</span>Delete</button>
-  </div>
-</div>
-
-<input type="file" id="file-input" accept=".obj,.gltf,.glb">
-
-
-    <script>
-  let scene, camera, renderer, orbitControls, transformControls;
-  let activeModel = null;
-  let isPlaying = false, currentTime = 0, duration = 5.0;
-  let controlHandles = [];
-  let skeletonHelper = null;
-
-  const defaultJoints = [
-    { id: 'head', name: 'Head', x: 50, y: 16, class: 'head' },
-    { id: 'neck', name: 'Neck', x: 50, y: 24, class: '' },
-    { id: 'shoulder_r', name: 'R Shoulder', x: 38, y: 28, class: '' },
-    { id: 'elbow_r', name: 'R Elbow', x: 25, y: 28, class: '' },
-    { id: 'wrist_r', name: 'R Wrist', x: 12, y: 28, class: '' },
-    { id: 'shoulder_l', name: 'L Shoulder', x: 62, y: 28, class: '' },
-    { id: 'elbow_l', name: 'L Elbow', x: 75, y: 28, class: '' },
-    { id: 'wrist_l', name: 'L Wrist', x: 88, y: 28, class: '' },
-    { id: 'hips', name: 'Hips', x: 50, y: 52, class: 'hip' },
-    { id: 'knee_r', name: 'R Knee', x: 42, y: 72, class: '' },
-    { id: 'ankle_r', name: 'R Ankle', x: 42, y: 90, class: '' },
-    { id: 'knee_l', name: 'L Knee', x: 58, y: 72, class: '' },
-    { id: 'ankle_l', name: 'L Ankle', x: 58, y: 90, class: '' }
-  ];
-
-  function showToast(msg) {
-    const t = document.getElementById('toast');
-    if (!t) return;
-    t.innerText = msg;
-    t.style.display = 'block';
-    setTimeout(() => { t.style.display = 'none'; }, 2000);
-  }
-
-  function init3DEngine() {
-    const container = document.getElementById('viewport');
-    scene = new THREE.Scene();
-    scene.background = new THREE.Color(0x18181c);
-
-    camera = new THREE.PerspectiveCamera(50, container.clientWidth / container.clientHeight, 0.1, 1000);
-    camera.position.set(0, 1.2, 3.0);
-
-    renderer = new THREE.WebGLRenderer({ canvas: document.getElementById('canvas3d'), antialias: true });
-    renderer.setSize(container.clientWidth, container.clientHeight);
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-
-    orbitControls = new THREE.OrbitControls(camera, renderer.domElement);
-    orbitControls.enableDamping = true;
-    orbitControls.target.set(0, 1.0, 0);
-
-    transformControls = new THREE.TransformControls(camera, renderer.domElement);
-    transformControls.addEventListener('dragging-changed', (e) => { orbitControls.enabled = !e.value; });
-    scene.add(transformControls);
-
-    scene.add(new THREE.AmbientLight(0xffffff, 0.85));
-    const dl = new THREE.DirectionalLight(0xffffff, 1.0);
-    dl.position.set(3, 8, 5);
-    scene.add(dl);
-    scene.add(new THREE.GridHelper(10, 10, 0x3d3d45, 0x222228));
-
-    showToast("Engine Ready. Click 'Import' to load 3D Model");
-    startRenderLoop();
-  }
-
-  function triggerImport() { 
-    document.getElementById('file-input').click(); 
-  }
-
-  document.getElementById('file-input').addEventListener('change', (e) => {
-    const file = e.target.files[0];
-    if (!file) return;
-    showToast("Loading 3D Model...");
-
-    const fileName = file.name.toLowerCase();
-    const reader = new FileReader();
-
-    if (fileName.endsWith('.obj')) {
-      reader.onload = (evt) => {
-        try {
-          const loader = new THREE.OBJLoader();
-          const obj = loader.parse(evt.target.result);
-          loadModelToScene(obj);
-        } catch (err) {
-          showToast("OBJ Load Error!");
-        }
-      };
-      reader.readAsText(file);
-    } else if (fileName.endsWith('.gltf') || fileName.endsWith('.glb')) {
-      reader.onload = (evt) => {
-        try {
-          const loader = new THREE.GLTFLoader();
-          loader.parse(evt.target.result, '', (gltf) => {
-            loadModelToScene(gltf.scene);
-          }, (err) => { showToast("GLTF Parse Error!"); });
-        } catch (err) {
-          showToast("GLTF Load Error!");
-        }
-      };
-      reader.readAsArrayBuffer(file);
+    // Model mesh par intersect check karein
+    const intersects = raycaster.intersectObject(activeModel, true);
+    if (intersects.length > 0) {
+      jointWorldPositions[id] = intersects[0].point.clone();
     } else {
-      showToast("Format Not Supported! Use .obj, .gltf, .glb");
+      // Agar direct model par raycast fail ho to camera plane me project karein
+      const targetVec = new THREE.Vector3();
+      raycaster.ray.at(1.5, targetVec);
+      jointWorldPositions[id] = targetVec;
     }
   });
 
-  function loadModelToScene(loadedObject) {
-    if (activeModel) scene.remove(activeModel);
-    if (skeletonHelper) scene.remove(skeletonHelper);
-    controlHandles.forEach(h => scene.remove(h));
-    controlHandles = [];
+  closeRigOverlay();
 
-    activeModel = loadedObject;
-
-    const box = new THREE.Box3().setFromObject(activeModel);
-    const center = box.getCenter(new THREE.Vector3());
-    const size = box.getSize(new THREE.Vector3());
-
-    activeModel.position.x += (activeModel.position.x - center.x);
-    activeModel.position.y += (activeModel.position.y - center.y) + (size.y / 2);
-    activeModel.position.z += (activeModel.position.z - center.z);
-
-    const maxDim = Math.max(size.x, size.y, size.z);
-    if (maxDim > 0) {
-      const scale = 2.0 / maxDim;
-      activeModel.scale.set(scale, scale, scale);
+  // Sabhi 13 Joints ke liye Bones Create Karein
+  const boneMap = {};
+  defaultJoints.forEach(j => {
+    const bone = new THREE.Bone();
+    bone.name = j.id;
+    if (jointWorldPositions[j.id]) {
+      bone.position.copy(jointWorldPositions[j.id]);
     }
+    boneMap[j.id] = bone;
+  });
 
-    scene.add(activeModel);
-    showToast("Model Loaded! Tap 'Auto Rig'");
-  }
+  // Skeleton Hierarchy Structure Bind Karein
+  const rootBone = boneMap['hips'] || new THREE.Bone();
+  
+  if (boneMap['hips'] && boneMap['spine']) boneMap['hips'].add(boneMap['spine']);
+  if (boneMap['spine'] && boneMap['neck']) boneMap['spine'].add(boneMap['neck']);
+  if (boneMap['neck'] && boneMap['head']) boneMap['neck'].add(boneMap['head']);
 
-  function openRigOverlay() {
-    if (!activeModel) { showToast("Import a 3D Model First!"); return; }
+  // Right Arm
+  if (boneMap['spine'] && boneMap['shoulder_r']) boneMap['spine'].add(boneMap['shoulder_r']);
+  if (boneMap['shoulder_r'] && boneMap['elbow_r']) boneMap['shoulder_r'].add(boneMap['elbow_r']);
+  if (boneMap['elbow_r'] && boneMap['wrist_r']) boneMap['elbow_r'].add(boneMap['wrist_r']);
 
-    const overlay = document.getElementById('rig-overlay');
-    const container = document.getElementById('joints-container');
-    container.innerHTML = '';
-    overlay.style.display = 'block';
+  // Left Arm
+  if (boneMap['spine'] && boneMap['shoulder_l']) boneMap['spine'].add(boneMap['shoulder_l']);
+  if (boneMap['shoulder_l'] && boneMap['elbow_l']) boneMap['shoulder_l'].add(boneMap['elbow_l']);
+  if (boneMap['elbow_l'] && boneMap['wrist_l']) boneMap['elbow_l'].add(boneMap['wrist_l']);
 
-    defaultJoints.forEach(j => {
-      const node = document.createElement('div');
-      node.className = `joint-node ${j.class}`;
-      node.style.left = `${j.x}%`;
-      node.style.top = `${j.y}%`;
-      node.dataset.id = j.id;
+  // Right Leg
+  if (boneMap['hips'] && boneMap['knee_r']) boneMap['hips'].add(boneMap['knee_r']);
+  if (boneMap['knee_r'] && boneMap['ankle_r']) boneMap['knee_r'].add(boneMap['ankle_r']);
 
-      makeNodeDraggable(node);
-      container.appendChild(node);
-    });
+  // Left Leg
+  if (boneMap['hips'] && boneMap['knee_l']) boneMap['hips'].add(boneMap['knee_l']);
+  if (boneMap['knee_l'] && boneMap['ankle_l']) boneMap['knee_l'].add(boneMap['ankle_l']);
 
-    showToast("Adjust Joint Points on Body");
-  }
+  scene.add(rootBone);
 
-  function makeNodeDraggable(elm) {
-    let active = false, initialX, initialY;
+  // Har Bone joint par 3D Interactive Handles banao
+  Object.keys(boneMap).forEach(key => {
+    const b = boneMap[key];
+    const dot = new THREE.Mesh(
+      new THREE.SphereGeometry(0.04, 12, 12),
+      new THREE.MeshBasicMaterial({ color: 0x007aff, depthTest: false })
+    );
+    dot.userData.targetBone = b;
+    scene.add(dot);
+    controlHandles.push(dot);
+  });
 
-    elm.addEventListener('pointerdown', (e) => {
-      active = true;
-      initialX = e.clientX - elm.offsetLeft;
-      initialY = e.clientY - elm.offsetTop;
-    });
+  // Skeleton Connections Line Helper
+  skeletonHelper = new THREE.SkeletonHelper(rootBone);
+  skeletonHelper.material.linewidth = 2;
+  scene.add(skeletonHelper);
 
-    window.addEventListener('pointermove', (e) => {
-      if (active) {
-        e.preventDefault();
-        elm.style.left = (e.clientX - initialX) + 'px';
-        elm.style.top = (e.clientY - initialY) + 'px';
-      }
-    });
-
-    window.addEventListener('pointerup', () => { active = false; });
-  }
-
-  function closeRigOverlay() {
-    document.getElementById('rig-overlay').style.display = 'none';
-  }
-
-  function applyAutoRigging() {
-    if (!activeModel) { showToast("Model Load Karein!"); closeRigOverlay(); return; }
-
-    closeRigOverlay();
-    showToast("Binding Rig to Model...");
-
-    if (skeletonHelper) scene.remove(skeletonHelper);
-    controlHandles.forEach(h => scene.remove(h));
-    controlHandles = [];
-
-    const rootBone = new THREE.Bone(); rootBone.position.set(0, 0, 0);
-    const spine = new THREE.Bone(); spine.position.set(0, 0.8, 0); rootBone.add(spine);
-    const head = new THREE.Bone(); head.position.set(0, 0.6, 0); spine.add(head);
-
-    const bones = [rootBone, spine, head];
-
-    scene.add(rootBone);
-
-    bones.forEach(b => {
-      const dot = new THREE.Mesh(
-        new THREE.SphereGeometry(0.06, 12, 12),
-        new THREE.MeshBasicMaterial({ color: 0x007aff })
-      );
-      dot.userData.targetBone = b;
-      scene.add(dot);
-      controlHandles.push(dot);
-    });
-
-    skeletonHelper = new THREE.SkeletonHelper(rootBone);
-    scene.add(skeletonHelper);
-
-    transformControls.attach(spine);
-    showToast("Rig Applied Successfully!");
-  }
-
-  function startRenderLoop() {
-    requestAnimationFrame(startRenderLoop);
-
-    controlHandles.forEach(dot => {
-      if (dot.userData.targetBone) {
-        const worldPos = new THREE.Vector3();
-        dot.userData.targetBone.getWorldPosition(worldPos);
-        dot.position.copy(worldPos);
-      }
-    });
-
-    orbitControls.update();
-    renderer.render(scene, camera);
-    drawTimelineCanvas();
-  }
-
-  function drawTimelineCanvas() {
-    const cvs = document.getElementById('tl-canvas');
-    const wrap = document.getElementById('tl-canvas-wrap');
-    if (!cvs || !wrap) return;
-
-    cvs.width = wrap.clientWidth; cvs.height = wrap.clientHeight;
-    const ctx = cvs.getContext('2d');
-    ctx.fillStyle = '#0c0c0e'; ctx.fillRect(0, 0, cvs.width, cvs.height);
-
-    const px = (currentTime / duration) * cvs.width;
-    ctx.strokeStyle = '#007aff'; ctx.lineWidth = 2;
-    ctx.beginPath(); ctx.moveTo(px, 0); ctx.lineTo(px, cvs.height); ctx.stroke();
-  }
-
-  function resetCamera() { camera.position.set(0, 1.2, 3.0); orbitControls.target.set(0, 1.0, 0); }
-  function togglePlay() { isPlaying = !isPlaying; }
-  function setMode(m) { if(transformControls) transformControls.setMode(m); }
-  function deleteSelected() { if(activeModel) { scene.remove(activeModel); activeModel = null; } }
-  function addKeyframe() { showToast("Keyframe Added!"); }
-  function seekTimeline(e) { showToast("Timeline Seeked"); }
-
-  window.addEventListener('load', init3DEngine);
-</script>
-</body>
-</html>
+  // Transform Gizmo ko Hips/Spine par attach karein
+  transformControls.attach(rootBone);
+  showToast("Full Rigging Successfully Applied!");
+}
