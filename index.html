@@ -45,7 +45,6 @@
     input[type="file"] { display: none !important; }
   </style>
 
-  <!-- External Libraries -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/OBJLoader.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
@@ -102,8 +101,7 @@
   let scene, camera, renderer, orbitControls, transformControls;
   let activeModel = null;
   let isPlaying = false, currentTime = 0, duration = 5.0;
-  let controlHandles = [];
-  let skeletonHelper = null;
+  let rigGroup = null;
 
   const defaultJoints = [
     { id: 'head', name: 'Head', x: 50, y: 16, class: 'head' },
@@ -155,7 +153,7 @@
     scene.add(dl);
     scene.add(new THREE.GridHelper(10, 10, 0x3d3d45, 0x222228));
 
-    showToast("Engine Ready. Tap 'Import' to load 3D Model");
+    showToast("Engine Ready. Tap 'Import'");
     startRenderLoop();
   }
 
@@ -175,35 +173,24 @@
       reader.onload = (evt) => {
         try {
           const loader = new THREE.OBJLoader();
-          const obj = loader.parse(evt.target.result);
-          loadModelToScene(obj);
-        } catch (err) {
-          showToast("OBJ Load Error!");
-        }
+          loadModelToScene(loader.parse(evt.target.result));
+        } catch (err) { showToast("OBJ Load Error!"); }
       };
       reader.readAsText(file);
     } else if (fileName.endsWith('.gltf') || fileName.endsWith('.glb')) {
       reader.onload = (evt) => {
         try {
           const loader = new THREE.GLTFLoader();
-          loader.parse(evt.target.result, '', (gltf) => {
-            loadModelToScene(gltf.scene);
-          }, (err) => { showToast("GLTF Parse Error!"); });
-        } catch (err) {
-          showToast("GLTF Load Error!");
-        }
+          loader.parse(evt.target.result, '', (gltf) => loadModelToScene(gltf.scene), () => showToast("GLTF Error!"));
+        } catch (err) { showToast("GLTF Load Error!"); }
       };
       reader.readAsArrayBuffer(file);
-    } else {
-      showToast("Format Not Supported! Use .obj, .gltf, .glb");
     }
   });
 
   function loadModelToScene(loadedObject) {
     if (activeModel) scene.remove(activeModel);
-    if (skeletonHelper) scene.remove(skeletonHelper);
-    controlHandles.forEach(h => scene.remove(h));
-    controlHandles = [];
+    if (rigGroup) scene.remove(rigGroup);
 
     activeModel = loadedObject;
 
@@ -274,11 +261,8 @@
   function applyAutoRigging() {
     if (!activeModel) { showToast("Model Load Karein!"); closeRigOverlay(); return; }
 
-    showToast("Binding Rig directly to Model...");
-
-    if (skeletonHelper) scene.remove(skeletonHelper);
-    controlHandles.forEach(h => scene.remove(h));
-    controlHandles = [];
+    if (rigGroup) scene.remove(rigGroup);
+    rigGroup = new THREE.Group();
 
     const container = document.getElementById('joints-container');
     const nodes = container.querySelectorAll('.joint-node');
@@ -286,10 +270,11 @@
 
     const raycaster = new THREE.Raycaster();
     const mouse = new THREE.Vector2();
-    const jointWorldPositions = {};
+
+    const lineGeo = new THREE.BufferGeometry();
+    const linePositions = [];
 
     nodes.forEach(node => {
-      const id = node.dataset.id;
       const nodeRect = node.getBoundingClientRect();
       const x = nodeRect.left + nodeRect.width / 2;
       const y = nodeRect.top + nodeRect.height / 2;
@@ -300,101 +285,41 @@
       raycaster.setFromCamera(mouse, camera);
       const intersects = raycaster.intersectObject(activeModel, true);
 
+      let targetPos = new THREE.Vector3();
       if (intersects.length > 0) {
-        jointWorldPositions[id] = intersects[0].point.clone();
+        targetPos = intersects[0].point.clone();
       } else {
-        const targetVec = new THREE.Vector3();
-        raycaster.ray.at(2.0, targetVec);
-        jointWorldPositions[id] = targetVec;
+        raycaster.ray.at(2.0, targetPos);
       }
+
+      // Create Visible Always-On-Top Joint Sphere
+      const dot = new THREE.Mesh(
+        new THREE.SphereGeometry(0.04, 16, 16),
+        new THREE.MeshBasicMaterial({ color: 0x007aff, depthTest: false, depthWrite: false })
+      );
+      dot.position.copy(targetPos);
+      dot.renderOrder = 999;
+      rigGroup.add(dot);
+
+      linePositions.push(targetPos.x, targetPos.y, targetPos.z);
     });
+
+    // Create Connection Lines
+    lineGeo.setAttribute('position', new THREE.Float32BufferAttribute(linePositions, 3));
+    const lineMat = new THREE.LineBasicMaterial({ color: 0x00ffcc, linewidth: 2, depthTest: false, depthWrite: false });
+    const lineMesh = new THREE.Line(lineGeo, lineMat);
+    lineMesh.renderOrder = 998;
+    rigGroup.add(lineMesh);
+
+    scene.add(rigGroup);
+    transformControls.attach(rigGroup);
 
     closeRigOverlay();
-
-    const hierarchy = {
-      'hips': null,
-      'spine': 'hips',
-      'neck': 'spine',
-      'head': 'neck',
-      'shoulder_r': 'spine',
-      'elbow_r': 'shoulder_r',
-      'wrist_r': 'elbow_r',
-      'shoulder_l': 'spine',
-      'elbow_l': 'shoulder_l',
-      'wrist_l': 'elbow_l',
-      'knee_r': 'hips',
-      'ankle_r': 'knee_r',
-      'knee_l': 'hips',
-      'ankle_l': 'knee_l'
-    };
-
-    const bones = {};
-
-    defaultJoints.forEach(j => {
-      const b = new THREE.Bone();
-      b.name = j.id;
-      bones[j.id] = b;
-    });
-
-    Object.keys(hierarchy).forEach(id => {
-      const parentId = hierarchy[id];
-      const bone = bones[id];
-      const worldPos = jointWorldPositions[id] || new THREE.Vector3(0, 1, 0);
-
-      if (parentId && bones[parentId]) {
-        const parentBone = bones[parentId];
-        parentBone.add(bone);
-
-        const parentWorldPos = jointWorldPositions[parentId] || new THREE.Vector3(0, 1, 0);
-        bone.position.subVectors(worldPos, parentWorldPos);
-      } else {
-        bone.position.copy(worldPos);
-      }
-    });
-
-    const rootBone = bones['hips'];
-    scene.add(rootBone);
-    rootBone.updateMatrixWorld(true);
-
-    // Visible Joint Handles
-    Object.keys(bones).forEach(key => {
-      const b = bones[key];
-      const dotGeom = new THREE.SphereGeometry(0.04, 16, 16);
-      const dotMat = new THREE.MeshBasicMaterial({ 
-        color: 0x007aff, 
-        depthTest: false, 
-        depthWrite: false 
-      });
-      const dot = new THREE.Mesh(dotGeom, dotMat);
-      dot.renderOrder = 999;
-      dot.userData.targetBone = b;
-      scene.add(dot);
-      controlHandles.push(dot);
-    });
-
-    // Visible Skeleton Lines
-    skeletonHelper = new THREE.SkeletonHelper(rootBone);
-    skeletonHelper.material.linewidth = 3;
-    skeletonHelper.material.depthTest = false;
-    skeletonHelper.material.depthWrite = false;
-    skeletonHelper.renderOrder = 998;
-    scene.add(skeletonHelper);
-
-    transformControls.attach(rootBone);
-    showToast("Rig Fitted & Visible!");
+    showToast("Rig Attached Successfully!");
   }
 
   function startRenderLoop() {
     requestAnimationFrame(startRenderLoop);
-
-    controlHandles.forEach(dot => {
-      if (dot.userData.targetBone) {
-        const worldPos = new THREE.Vector3();
-        dot.userData.targetBone.getWorldPosition(worldPos);
-        dot.position.copy(worldPos);
-      }
-    });
-
     orbitControls.update();
     renderer.render(scene, camera);
     drawTimelineCanvas();
@@ -417,7 +342,10 @@
   function resetCamera() { camera.position.set(0, 1.2, 3.0); orbitControls.target.set(0, 1.0, 0); }
   function togglePlay() { isPlaying = !isPlaying; }
   function setMode(m) { if(transformControls) transformControls.setMode(m); }
-  function deleteSelected() { if(activeModel) { scene.remove(activeModel); activeModel = null; } }
+  function deleteSelected() { 
+    if(activeModel) { scene.remove(activeModel); activeModel = null; }
+    if(rigGroup) { scene.remove(rigGroup); rigGroup = null; }
+  }
   function addKeyframe() { showToast("Keyframe Added!"); }
   function seekTimeline(e) { showToast("Timeline Seeked"); }
 
