@@ -106,6 +106,8 @@
   let jointDots = [];
   let boneLines = [];
   let selectedJoint = null;
+  let bonesMap = {};
+  let skeleton = null;
 
   const defaultJoints = [
     { id: 'head', name: 'Head', x: 50, y: 16, class: 'head' },
@@ -164,12 +166,16 @@
 
     transformControls = new THREE.TransformControls(camera, renderer.domElement);
     transformControls.size = 0.75;
-    
-    // Joint dragging listener - Update bone lines when dot moves
+
     transformControls.addEventListener('dragging-changed', (e) => { 
       orbitControls.enabled = !e.value; 
     });
+
+    // Jab dot drag ho, to associated Bone/Skin aur connection lines update ho
     transformControls.addEventListener('change', () => {
+      if (selectedJoint && selectedJoint.userData.bone) {
+        selectedJoint.userData.bone.position.copy(selectedJoint.position);
+      }
       updateBoneLines();
     });
 
@@ -184,7 +190,6 @@
     characterGroup = new THREE.Group();
     scene.add(characterGroup);
 
-    // Click Raycaster for selecting individual dots
     renderer.domElement.addEventListener('pointerdown', onSceneClick);
 
     showToast("Engine Ready. Tap 'Import'");
@@ -192,7 +197,6 @@
   }
 
   function onSceneClick(event) {
-    // Prevent selection if interaction is on TransformControls gizmo
     if (transformControls.dragging || transformControls.hovered) return;
     if (jointDots.length === 0) return;
 
@@ -208,21 +212,19 @@
     const intersects = raycaster.intersectObjects(jointDots, false);
 
     if (intersects.length > 0) {
-      const hitDot = intersects[0].object;
-      selectJoint(hitDot);
+      selectJoint(intersects[0].object);
     }
   }
 
   function selectJoint(dot) {
-    // Reset former selected dot appearance
     jointDots.forEach(d => d.material.color.setHex(0x007aff));
 
     selectedJoint = dot;
-    selectedJoint.material.color.setHex(0xff9500); // Highlight selected dot in Orange
+    selectedJoint.material.color.setHex(0xff9500);
 
     transformControls.detach();
     transformControls.attach(selectedJoint);
-    showToast(`Selected Joint: ${selectedJoint.userData.id}`);
+    showToast(`Selected: ${selectedJoint.userData.id}`);
   }
 
   function triggerImport() { 
@@ -291,6 +293,8 @@
     jointDots = [];
     boneLines = [];
     selectedJoint = null;
+    bonesMap = {};
+    skeleton = null;
   }
 
   function openRigOverlay() {
@@ -354,7 +358,10 @@
     const raycaster = new THREE.Raycaster();
     const mouse = new THREE.Vector2();
     const jointMap = {};
+    const bonesArray = [];
+    const boneKeys = [];
 
+    // 1. Position calculation for joints
     nodes.forEach(node => {
       const id = node.dataset.id;
       const nodeRect = node.getBoundingClientRect();
@@ -377,21 +384,29 @@
 
       const localPos = characterGroup.worldToLocal(targetWorldPos.clone());
 
-      // Create Interactive 3D Dot Sphere Mesh
+      // Create Three.js Bone for Mesh Deformation
+      const bone = new THREE.Bone();
+      bone.name = id;
+      bone.position.copy(localPos);
+      bonesArray.push(bone);
+      boneKeys.push(id);
+
+      // Create Interactive 3D Dot Mesh
       const dotGeo = new THREE.SphereGeometry(0.045, 16, 16);
       const dotMat = new THREE.MeshBasicMaterial({ color: 0x007aff, depthTest: false, depthWrite: false });
       const dotMesh = new THREE.Mesh(dotGeo, dotMat);
       
       dotMesh.position.copy(localPos);
       dotMesh.renderOrder = 999;
-      dotMesh.userData = { id: id };
+      dotMesh.userData = { id: id, bone: bone };
 
       rigGroup.add(dotMesh);
       jointDots.push(dotMesh);
       jointMap[id] = dotMesh;
+      bonesMap[id] = bone;
     });
 
-    // Create Lines connecting joints
+    // 2. Bone connections lines
     boneConnections.forEach(([fromId, toId]) => {
       const dot1 = jointMap[fromId];
       const dot2 = jointMap[toId];
@@ -408,13 +423,58 @@
       }
     });
 
+    // 3. AUTOMATIC MESH SKINNING (Binds 3D Model Mesh to Bones)
+    skeleton = new THREE.Skeleton(bonesArray);
+
+    activeModel.traverse((child) => {
+      if (child.isMesh) {
+        const geometry = child.geometry.clone();
+        const posAttr = geometry.attributes.position;
+        const vertexCount = posAttr.count;
+
+        const skinIndices = [];
+        const skinWeights = [];
+
+        for (let i = 0; i < vertexCount; i++) {
+          const v = new THREE.Vector3().fromBufferAttribute(posAttr, i);
+          v.applyMatrix4(child.matrixWorld);
+
+          let minDist = Infinity;
+          let bestBoneIndex = 0;
+
+          bonesArray.forEach((b, bIdx) => {
+            const dist = v.distanceTo(b.position);
+            if (dist < minDist) {
+              minDist = dist;
+              bestBoneIndex = bIdx;
+            }
+          });
+
+          skinIndices.push(bestBoneIndex, 0, 0, 0);
+          skinWeights.push(1.0, 0, 0, 0);
+        }
+
+        geometry.setAttribute('skinIndex', new THREE.Uint16BufferAttribute(skinIndices, 4));
+        geometry.setAttribute('skinWeight', new THREE.Float32BufferAttribute(skinWeights, 4));
+
+        const skinnedMesh = new THREE.SkinnedMesh(geometry, child.material);
+        skinnedMesh.add(bonesArray[0]); // Root Bone
+        skinnedMesh.bind(skeleton);
+
+        // Replace regular static mesh with Skinned Mesh
+        if (child.parent) {
+          child.parent.add(skinnedMesh);
+          child.parent.remove(child);
+        }
+      }
+    });
+
     characterGroup.add(rigGroup);
     closeRigOverlay();
 
-    // Auto-select first joint (Head) so gizmo appears
     if(jointDots.length > 0) selectJoint(jointDots[0]);
 
-    showToast("Tap any Dot to Select & Move it!");
+    showToast("Rig Applied! Model skin bound to dots!");
   }
 
   function updateBoneLines() {
