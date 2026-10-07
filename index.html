@@ -106,8 +106,7 @@
   let jointDots = [];
   let boneLines = [];
   let selectedJoint = null;
-  let bonesMap = {};
-  let skeleton = null;
+  let meshDataList = [];
 
   const defaultJoints = [
     { id: 'head', name: 'Head', x: 50, y: 16, class: 'head' },
@@ -171,10 +170,9 @@
       orbitControls.enabled = !e.value; 
     });
 
-    // Jab dot drag ho, to associated Bone/Skin aur connection lines update ho
     transformControls.addEventListener('change', () => {
-      if (selectedJoint && selectedJoint.userData.bone) {
-        selectedJoint.userData.bone.position.copy(selectedJoint.position);
+      if (selectedJoint) {
+        deformMeshWithJoints();
       }
       updateBoneLines();
     });
@@ -293,8 +291,7 @@
     jointDots = [];
     boneLines = [];
     selectedJoint = null;
-    bonesMap = {};
-    skeleton = null;
+    meshDataList = [];
   }
 
   function openRigOverlay() {
@@ -358,10 +355,7 @@
     const raycaster = new THREE.Raycaster();
     const mouse = new THREE.Vector2();
     const jointMap = {};
-    const bonesArray = [];
-    const boneKeys = [];
 
-    // 1. Position calculation for joints
     nodes.forEach(node => {
       const id = node.dataset.id;
       const nodeRect = node.getBoundingClientRect();
@@ -384,29 +378,19 @@
 
       const localPos = characterGroup.worldToLocal(targetWorldPos.clone());
 
-      // Create Three.js Bone for Mesh Deformation
-      const bone = new THREE.Bone();
-      bone.name = id;
-      bone.position.copy(localPos);
-      bonesArray.push(bone);
-      boneKeys.push(id);
-
-      // Create Interactive 3D Dot Mesh
       const dotGeo = new THREE.SphereGeometry(0.045, 16, 16);
       const dotMat = new THREE.MeshBasicMaterial({ color: 0x007aff, depthTest: false, depthWrite: false });
       const dotMesh = new THREE.Mesh(dotGeo, dotMat);
       
       dotMesh.position.copy(localPos);
       dotMesh.renderOrder = 999;
-      dotMesh.userData = { id: id, bone: bone };
+      dotMesh.userData = { id: id, initPos: localPos.clone() };
 
       rigGroup.add(dotMesh);
       jointDots.push(dotMesh);
       jointMap[id] = dotMesh;
-      bonesMap[id] = bone;
     });
 
-    // 2. Bone connections lines
     boneConnections.forEach(([fromId, toId]) => {
       const dot1 = jointMap[fromId];
       const dot2 = jointMap[toId];
@@ -423,49 +407,44 @@
       }
     });
 
-    // 3. AUTOMATIC MESH SKINNING (Binds 3D Model Mesh to Bones)
-    skeleton = new THREE.Skeleton(bonesArray);
-
+    // MESH VERTEX WEIGHT BINDING (Real-time Mesh Deformer Initialization)
+    meshDataList = [];
     activeModel.traverse((child) => {
-      if (child.isMesh) {
-        const geometry = child.geometry.clone();
-        const posAttr = geometry.attributes.position;
+      if (child.isMesh && child.geometry) {
+        const geo = child.geometry;
+        const posAttr = geo.attributes.position;
         const vertexCount = posAttr.count;
-
-        const skinIndices = [];
-        const skinWeights = [];
+        
+        const origPositions = new Float32Array(posAttr.array);
+        const weights = [];
 
         for (let i = 0; i < vertexCount; i++) {
-          const v = new THREE.Vector3().fromBufferAttribute(posAttr, i);
-          v.applyMatrix4(child.matrixWorld);
+          const vx = posAttr.getX(i);
+          const vy = posAttr.getY(i);
+          const vz = posAttr.getZ(i);
+          const vPos = new THREE.Vector3(vx, vy, vz);
 
-          let minDist = Infinity;
-          let bestBoneIndex = 0;
+          let totalWeight = 0;
+          const vWeights = [];
 
-          bonesArray.forEach((b, bIdx) => {
-            const dist = v.distanceTo(b.position);
-            if (dist < minDist) {
-              minDist = dist;
-              bestBoneIndex = bIdx;
-            }
+          jointDots.forEach(dot => {
+            const dist = vPos.distanceTo(dot.userData.initPos);
+            // Inverse Distance Weighting
+            const w = 1.0 / Math.pow(dist + 0.1, 3);
+            vWeights.push({ dot: dot, weight: w });
+            totalWeight += w;
           });
 
-          skinIndices.push(bestBoneIndex, 0, 0, 0);
-          skinWeights.push(1.0, 0, 0, 0);
+          // Normalize weights
+          vWeights.forEach(wObj => { wObj.weight /= totalWeight; });
+          weights.push(vWeights);
         }
 
-        geometry.setAttribute('skinIndex', new THREE.Uint16BufferAttribute(skinIndices, 4));
-        geometry.setAttribute('skinWeight', new THREE.Float32BufferAttribute(skinWeights, 4));
-
-        const skinnedMesh = new THREE.SkinnedMesh(geometry, child.material);
-        skinnedMesh.add(bonesArray[0]); // Root Bone
-        skinnedMesh.bind(skeleton);
-
-        // Replace regular static mesh with Skinned Mesh
-        if (child.parent) {
-          child.parent.add(skinnedMesh);
-          child.parent.remove(child);
-        }
+        meshDataList.push({
+          mesh: child,
+          origPositions: origPositions,
+          weights: weights
+        });
       }
     });
 
@@ -474,7 +453,36 @@
 
     if(jointDots.length > 0) selectJoint(jointDots[0]);
 
-    showToast("Rig Applied! Model skin bound to dots!");
+    showToast("Real-time Mesh Rigging Active!");
+  }
+
+  function deformMeshWithJoints() {
+    meshDataList.forEach(data => {
+      const mesh = data.mesh;
+      const posAttr = mesh.geometry.attributes.position;
+      const orig = data.origPositions;
+      const weights = data.weights;
+      const count = posAttr.count;
+
+      for (let i = 0; i < count; i++) {
+        const i3 = i * 3;
+        const origVec = new THREE.Vector3(orig[i3], orig[i3 + 1], orig[i3 + 2]);
+        const finalVec = new THREE.Vector3(0, 0, 0);
+
+        const vWeights = weights[i];
+        vWeights.forEach(wObj => {
+          const dot = wObj.dot;
+          const delta = new THREE.Vector3().subVectors(dot.position, dot.userData.initPos);
+          const deformed = new THREE.Vector3().addVectors(origVec, delta);
+          finalVec.addScaledVector(deformed, wObj.weight);
+        });
+
+        posAttr.setXYZ(i, finalVec.x, finalVec.y, finalVec.z);
+      }
+
+      posAttr.needsUpdate = true;
+      mesh.geometry.computeVertexNormals();
+    });
   }
 
   function updateBoneLines() {
