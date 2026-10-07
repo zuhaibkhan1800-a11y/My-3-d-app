@@ -119,6 +119,22 @@
     { id: 'ankle_l', name: 'L Ankle', x: 58, y: 90, class: '' }
   ];
 
+  // Structural Skeleton Bones Connections
+  const boneConnections = [
+    ['head', 'neck'],
+    ['neck', 'hips'],
+    ['neck', 'shoulder_r'],
+    ['shoulder_r', 'elbow_r'],
+    ['elbow_r', 'wrist_r'],
+    ['neck', 'shoulder_l'],
+    ['shoulder_l', 'elbow_l'],
+    ['elbow_l', 'wrist_l'],
+    ['hips', 'knee_r'],
+    ['knee_r', 'ankle_r'],
+    ['hips', 'knee_l'],
+    ['knee_l', 'ankle_l']
+  ];
+
   function showToast(msg) {
     const t = document.getElementById('toast');
     if (!t) return;
@@ -215,6 +231,8 @@
   function openRigOverlay() {
     if (!activeModel) { showToast("Import a 3D Model First!"); return; }
 
+    resetCamera(); // Ensure camera front view before placing joints
+
     const overlay = document.getElementById('rig-overlay');
     const container = document.getElementById('joints-container');
     container.innerHTML = '';
@@ -270,11 +288,15 @@
 
     const raycaster = new THREE.Raycaster();
     const mouse = new THREE.Vector2();
+    const jointMap = {};
 
-    const lineGeo = new THREE.BufferGeometry();
-    const linePositions = [];
+    // Get 3D Model Center for Z-depth Backup
+    const modelBox = new THREE.Box3().setFromObject(activeModel);
+    const modelCenter = modelBox.getCenter(new THREE.Vector3());
 
+    // 1. Precise Raycast per joint
     nodes.forEach(node => {
+      const id = node.dataset.id;
       const nodeRect = node.getBoundingClientRect();
       const x = nodeRect.left + nodeRect.width / 2;
       const y = nodeRect.top + nodeRect.height / 2;
@@ -287,35 +309,42 @@
 
       let targetPos = new THREE.Vector3();
       if (intersects.length > 0) {
-        targetPos = intersects[0].point.clone();
+        targetPos.copy(intersects[0].point);
       } else {
-        raycaster.ray.at(2.0, targetPos);
+        // Fallback positioning aligned with model plane
+        const plane = new THREE.Plane(new THREE.Vector3(0, 0, 1), -modelCenter.z);
+        raycaster.ray.intersectPlane(plane, targetPos);
       }
 
-      // Create Visible Always-On-Top Joint Sphere
-      const dot = new THREE.Mesh(
-        new THREE.SphereGeometry(0.04, 16, 16),
-        new THREE.MeshBasicMaterial({ color: 0x007aff, depthTest: false, depthWrite: false })
-      );
+      jointMap[id] = targetPos;
+
+      // Add Joint Marker
+      const dotMat = new THREE.MeshBasicMaterial({ color: 0x007aff, depthTest: false, depthWrite: false });
+      const dot = new THREE.Mesh(new THREE.SphereGeometry(0.04, 16, 16), dotMat);
       dot.position.copy(targetPos);
       dot.renderOrder = 999;
       rigGroup.add(dot);
-
-      linePositions.push(targetPos.x, targetPos.y, targetPos.z);
     });
 
-    // Create Connection Lines
-    lineGeo.setAttribute('position', new THREE.Float32BufferAttribute(linePositions, 3));
-    const lineMat = new THREE.LineBasicMaterial({ color: 0x00ffcc, linewidth: 2, depthTest: false, depthWrite: false });
-    const lineMesh = new THREE.Line(lineGeo, lineMat);
-    lineMesh.renderOrder = 998;
-    rigGroup.add(lineMesh);
+    // 2. Anatomically Correct Skeleton Connections
+    boneConnections.forEach(([fromId, toId]) => {
+      const p1 = jointMap[fromId];
+      const p2 = jointMap[toId];
+
+      if (p1 && p2) {
+        const lineGeo = new THREE.BufferGeometry().setFromPoints([p1, p2]);
+        const lineMat = new THREE.LineBasicMaterial({ color: 0x00ffcc, linewidth: 3, depthTest: false, depthWrite: false });
+        const line = new THREE.Line(lineGeo, lineMat);
+        line.renderOrder = 998;
+        rigGroup.add(line);
+      }
+    });
 
     scene.add(rigGroup);
     transformControls.attach(rigGroup);
 
     closeRigOverlay();
-    showToast("Rig Attached Successfully!");
+    showToast("Rig Aligned & Attached Perfectly!");
   }
 
   function startRenderLoop() {
