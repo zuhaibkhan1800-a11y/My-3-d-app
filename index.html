@@ -87,8 +87,8 @@
   </div>
 
   <div id="bottom-bar">
-    <button class="dock-btn active" onclick="setMode('rotate')"><span>🔄</span>Rotate</button>
-    <button class="dock-btn" onclick="setMode('translate')"><span>✢</span>Move</button>
+    <button class="dock-btn active" id="btn-rotate" onclick="setMode('rotate')"><span>🔄</span>Rotate</button>
+    <button class="dock-btn" id="btn-move" onclick="setMode('translate')"><span>✢</span>Move</button>
     <button class="dock-btn" onclick="openRigOverlay()"><span>🦴</span>Auto Rig</button>
     <button class="dock-btn" onclick="triggerImport()"><span>📂</span>Import</button>
     <button class="dock-btn" onclick="deleteSelected()"><span>🗑</span>Delete</button>
@@ -102,11 +102,12 @@
   let activeModel = null;
   let characterGroup = null;
   let isPlaying = false, currentTime = 0, duration = 5.0;
-  let boneHierarchyMap = {};
+
   let jointSpheres = [];
-  let boneVisualLines = [];
-  let selectedJointMesh = null;
-  let originalVerticesMap = new Map();
+  let boneLines = [];
+  let jointsDataMap = {};
+  let selectedJoint = null;
+  let skinWeightsMap = new Map();
 
   const defaultJoints = [
     { id: 'head', name: 'Head', x: 50, y: 16, parent: 'neck', class: 'head' },
@@ -157,7 +158,7 @@
     });
 
     transformControls.addEventListener('change', () => {
-      updateSkeletonAndSkin();
+      updateMeshDeformation();
     });
 
     scene.add(transformControls);
@@ -197,15 +198,15 @@
     }
   }
 
-  function selectJoint(jointMesh) {
-    jointSpheres.forEach(s => s.material.color.setHex(0xffffff));
+  function selectJoint(sphereMesh) {
+    jointSpheres.forEach(s => s.material.color.setHex(0x007aff));
 
-    selectedJointMesh = jointMesh;
-    selectedJointMesh.material.color.setHex(0xff9500);
+    selectedJoint = sphereMesh;
+    selectedJoint.material.color.setHex(0xff9500);
 
     transformControls.detach();
-    transformControls.attach(selectedJointMesh);
-    showToast(`Joint: ${selectedJointMesh.userData.id}`);
+    transformControls.attach(selectedJoint);
+    showToast(`Selected Joint: ${selectedJoint.userData.id}`);
   }
 
   function triggerImport() { document.getElementById('file-input').click(); }
@@ -263,25 +264,18 @@
     characterGroup.add(activeModel);
     transformControls.detach();
 
-    // Store original mesh vertex positions
-    originalVerticesMap.clear();
-    activeModel.traverse(c => {
-      if(c.isMesh && c.geometry && c.geometry.attributes.position) {
-        originalVerticesMap.set(c, c.geometry.attributes.position.array.slice());
-      }
-    });
-
     showToast("Model Loaded! Tap 'Auto Rig'");
   }
 
   function clearRig() {
     transformControls.detach();
     jointSpheres.forEach(s => scene.remove(s));
-    boneVisualLines.forEach(l => scene.remove(l));
+    boneLines.forEach(l => scene.remove(l));
     jointSpheres = [];
-    boneVisualLines = [];
-    boneHierarchyMap = {};
-    selectedJointMesh = null;
+    boneLines = [];
+    jointsDataMap = {};
+    selectedJoint = null;
+    skinWeightsMap.clear();
   }
 
   function openRigOverlay() {
@@ -305,7 +299,7 @@
       container.appendChild(node);
     });
 
-    showToast("Align Bones over Body");
+    showToast("Align Joints over Model");
   }
 
   function makeNodeDraggable(elm) {
@@ -333,7 +327,7 @@
   }
 
   function applyAutoRigging() {
-    if (!activeModel) { showToast("Model Load Karein!"); closeRigOverlay(); return; }
+    if (!activeModel) { closeRigOverlay(); return; }
 
     clearRig();
 
@@ -343,8 +337,8 @@
 
     const raycaster = new THREE.Raycaster();
     const mouse = new THREE.Vector2();
-    const worldPositions = {};
 
+    // 1. Create Joint Spheres
     nodes.forEach(node => {
       const id = node.dataset.id;
       const nodeRect = node.getBoundingClientRect();
@@ -364,129 +358,119 @@
         const plane = new THREE.Plane(new THREE.Vector3(0, 0, 1), 0);
         raycaster.ray.intersectPlane(plane, targetPos);
       }
-      worldPositions[id] = targetPos;
-    });
 
-    // Create Hierarchical Bone Structure (PRISMA 3D style)
-    defaultJoints.forEach(j => {
-      const boneGroup = new THREE.Group();
-      boneGroup.position.copy(worldPositions[j.id]);
-      
       const sphereGeo = new THREE.SphereGeometry(0.04, 16, 16);
-      const sphereMat = new THREE.MeshBasicMaterial({ color: 0xffffff, depthTest: false });
+      const sphereMat = new THREE.MeshBasicMaterial({ color: 0x007aff, depthTest: false });
       const sphereMesh = new THREE.Mesh(sphereGeo, sphereMat);
+      sphereMesh.position.copy(targetPos);
       sphereMesh.renderOrder = 999;
-      sphereMesh.userData = { id: j.id, restPosition: worldPositions[j.id].clone() };
+      sphereMesh.userData = { id: id, restPosition: targetPos.clone(), restQuaternion: sphereMesh.quaternion.clone() };
 
-      boneGroup.add(sphereMesh);
-      scene.add(boneGroup);
-
+      scene.add(sphereMesh);
       jointSpheres.push(sphereMesh);
 
-      boneHierarchyMap[j.id] = {
-        id: j.id,
-        group: boneGroup,
-        mesh: sphereMesh,
-        parent: j.parent,
-        restWorldPos: worldPositions[j.id].clone()
-      };
+      const parentId = defaultJoints.find(dj => dj.id === id).parent;
+      jointsDataMap[id] = { mesh: sphereMesh, parent: parentId, restPos: targetPos.clone() };
     });
 
-    // Build Visual Lines
+    // 2. Create Bone Connecting Lines
     defaultJoints.forEach(j => {
-      if (j.parent && boneHierarchyMap[j.parent]) {
-        const lineGeo = new THREE.BufferGeometry().setFromPoints([
-          boneHierarchyMap[j.parent].group.position,
-          boneHierarchyMap[j.id].group.position
-        ]);
+      if (j.parent && jointsDataMap[j.parent] && jointsDataMap[j.id]) {
+        const pMesh = jointsDataMap[j.parent].mesh;
+        const cMesh = jointsDataMap[j.id].mesh;
+
+        const lineGeo = new THREE.BufferGeometry().setFromPoints([pMesh.position, cMesh.position]);
         const lineMat = new THREE.LineBasicMaterial({ color: 0x00ffcc, linewidth: 3, depthTest: false });
         const line = new THREE.Line(lineGeo, lineMat);
         line.renderOrder = 998;
         scene.add(line);
 
-        boneVisualLines.push({
-          line: line,
-          parentGroup: boneHierarchyMap[j.parent].group,
-          childGroup: boneHierarchyMap[j.id].group
-        });
+        boneLines.push({ line, pMesh, cMesh });
       }
     });
 
-    // Calculate Rigid Bone Skinning Weights
+    // 3. Compute Smooth Linear Blend Skinning Weights
     activeModel.updateMatrixWorld(true);
     activeModel.traverse(child => {
       if (child.isMesh && child.geometry) {
         const posAttr = child.geometry.attributes.position;
         const count = posAttr.count;
-        const boneWeights = [];
+
+        const origPositions = new Float32Array(posAttr.array);
+        const vertexWeights = [];
 
         for (let i = 0; i < count; i++) {
           const vLocal = new THREE.Vector3(posAttr.getX(i), posAttr.getY(i), posAttr.getZ(i));
           const vWorld = vLocal.clone().applyMatrix4(child.matrixWorld);
 
-          let nearestBoneId = 'hips';
-          let minDist = Infinity;
+          let weights = [];
+          let totalWeight = 0;
 
-          Object.values(boneHierarchyMap).forEach(b => {
-            const d = vWorld.distanceTo(b.restWorldPos);
-            if (d < minDist) {
-              minDist = d;
-              nearestBoneId = b.id;
-            }
+          jointSpheres.forEach(joint => {
+            const dist = vWorld.distanceTo(joint.userData.restPosition);
+            const weight = 1 / Math.pow(dist + 0.05, 3); // Smooth Falloff
+            weights.push({ jointId: joint.userData.id, weight: weight });
+            totalWeight += weight;
           });
 
-          boneWeights.push(nearestBoneId);
+          // Normalize weights
+          weights.forEach(w => w.weight /= totalWeight);
+          // Keep top 3 influencing joints for fast smooth blending
+          weights.sort((a, b) => b.weight - a.weight);
+          weights = weights.slice(0, 3);
+
+          vertexWeights.push(weights);
         }
-        child.userData.boneWeights = boneWeights;
+
+        skinWeightsMap.set(child, { origPositions, vertexWeights });
       }
     });
 
     closeRigOverlay();
-    if(jointSpheres.length > 0) selectJoint(jointSpheres[0]);
+    if (jointSpheres.length > 0) selectJoint(jointSpheres[0]);
 
-    showToast("Prisma Skeleton Applied! Bones rotate perfectly.");
+    showToast("Rigging Complete! Move/Rotate Joints Now.");
   }
 
-  function updateSkeletonAndSkin() {
-    // 1. Update Bone Lines
-    boneVisualLines.forEach(item => {
-      const p1 = new THREE.Vector3();
-      const p2 = new THREE.Vector3();
-      item.parentGroup.getWorldPosition(p1);
-      item.childGroup.getWorldPosition(p2);
-
-      item.line.geometry.setFromPoints([p1, p2]);
-      item.line.geometry.attributes.position.needsUpdate = true;
+  function updateMeshDeformation() {
+    // 1. Update Visual Bone Lines
+    boneLines.forEach(b => {
+      b.line.geometry.setFromPoints([b.pMesh.position, b.cMesh.position]);
+      b.line.geometry.attributes.position.needsUpdate = true;
     });
 
-    // 2. Rigid FK Skinning (Rotate vertices based on attached bone transform)
+    // 2. Apply Dynamic Skin Mesh Transformation
     activeModel.traverse(child => {
-      if (child.isMesh && child.geometry && child.userData.boneWeights) {
+      if (child.isMesh && skinWeightsMap.has(child)) {
+        const { origPositions, vertexWeights } = skinWeightsMap.get(child);
         const posAttr = child.geometry.attributes.position;
-        const origArr = originalVerticesMap.get(child);
-        const weights = child.userData.boneWeights;
         const count = posAttr.count;
 
         const invWorld = new THREE.Matrix4().copy(child.matrixWorld).invert();
 
         for (let i = 0; i < count; i++) {
-          const origLoc = new THREE.Vector3(origArr[i*3], origArr[i*3+1], origArr[i*3+2]);
-          const origWorld = origLoc.clone().applyMatrix4(child.matrixWorld);
+          const vOrigLocal = new THREE.Vector3(origPositions[i * 3], origPositions[i * 3 + 1], origPositions[i * 3 + 2]);
+          const vOrigWorld = vOrigLocal.clone().applyMatrix4(child.matrixWorld);
 
-          const boneId = weights[i];
-          const boneData = boneHierarchyMap[boneId];
+          const finalWorld = new THREE.Vector3(0, 0, 0);
 
-          if (boneData) {
-            // Apply Bone Transform
-            const deltaWorld = origWorld.clone().sub(boneData.restWorldPos);
-            deltaWorld.applyQuaternion(boneData.group.quaternion);
+          const influences = vertexWeights[i];
+          influences.forEach(inf => {
+            const jointMesh = jointsDataMap[inf.jointId].mesh;
+            const restPos = jointMesh.userData.restPosition;
 
-            const finalWorld = boneData.group.position.clone().add(deltaWorld);
-            const finalLocal = finalWorld.applyMatrix4(invWorld);
+            // Transformed vertex offset
+            const delta = vOrigWorld.clone().sub(restPos);
+            delta.applyQuaternion(jointMesh.quaternion);
+            const transformedPoint = jointMesh.position.clone().add(delta);
 
-            posAttr.setXYZ(i, finalLocal.x, finalLocal.y, finalLocal.z);
-          }
+            finalWorld.addScaledVector(transformedPoint, inf.weight);
+          });
+
+          const finalLocal = finalWorld.applyMatrix4(invWorld);
+          posAttr.setXYZ(i, finalLocal.x, finalLocal.y, finalLocal.z);
         }
+
         posAttr.needsUpdate = true;
         child.geometry.computeVertexNormals();
       }
@@ -516,9 +500,13 @@
 
   function resetCamera() { camera.position.set(0, 1.2, 3.2); orbitControls.target.set(0, 1.0, 0); }
   function togglePlay() { isPlaying = !isPlaying; }
-  function setMode(m) { if(transformControls) transformControls.setMode(m); }
+  function setMode(m) { 
+    if (transformControls) transformControls.setMode(m);
+    document.getElementById('btn-rotate').classList.toggle('active', m === 'rotate');
+    document.getElementById('btn-move').classList.toggle('active', m === 'translate');
+  }
   function deleteSelected() { 
-    if(activeModel) { 
+    if (activeModel) { 
       characterGroup.remove(activeModel); 
       activeModel = null; 
       clearRig();
