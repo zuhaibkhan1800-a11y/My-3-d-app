@@ -87,9 +87,9 @@
   </div>
 
   <div id="bottom-bar">
-    <button class="dock-btn" onclick="setMode('translate')"><span>✢</span>Move</button>
+    <button class="dock-btn active" onclick="setMode('translate')"><span>✢</span>Move</button>
     <button class="dock-btn" onclick="setMode('rotate')"><span>🔄</span>Rotate</button>
-    <button class="dock-btn active" onclick="openRigOverlay()"><span>🦴</span>Auto Rig</button>
+    <button class="dock-btn" onclick="openRigOverlay()"><span>🦴</span>Auto Rig</button>
     <button class="dock-btn" onclick="triggerImport()"><span>📂</span>Import</button>
     <button class="dock-btn" onclick="deleteSelected()"><span>🗑</span>Delete</button>
   </div>
@@ -103,6 +103,9 @@
   let characterGroup = null;
   let isPlaying = false, currentTime = 0, duration = 5.0;
   let rigGroup = null;
+  let jointDots = [];
+  let boneLines = [];
+  let selectedJoint = null;
 
   const defaultJoints = [
     { id: 'head', name: 'Head', x: 50, y: 16, class: 'head' },
@@ -160,7 +163,16 @@
     orbitControls.target.set(0, 1.0, 0);
 
     transformControls = new THREE.TransformControls(camera, renderer.domElement);
-    transformControls.addEventListener('dragging-changed', (e) => { orbitControls.enabled = !e.value; });
+    transformControls.size = 0.75;
+    
+    // Joint dragging listener - Update bone lines when dot moves
+    transformControls.addEventListener('dragging-changed', (e) => { 
+      orbitControls.enabled = !e.value; 
+    });
+    transformControls.addEventListener('change', () => {
+      updateBoneLines();
+    });
+
     scene.add(transformControls);
 
     scene.add(new THREE.AmbientLight(0xffffff, 0.85));
@@ -172,8 +184,45 @@
     characterGroup = new THREE.Group();
     scene.add(characterGroup);
 
+    // Click Raycaster for selecting individual dots
+    renderer.domElement.addEventListener('pointerdown', onSceneClick);
+
     showToast("Engine Ready. Tap 'Import'");
     startRenderLoop();
+  }
+
+  function onSceneClick(event) {
+    // Prevent selection if interaction is on TransformControls gizmo
+    if (transformControls.dragging || transformControls.hovered) return;
+    if (jointDots.length === 0) return;
+
+    const rect = renderer.domElement.getBoundingClientRect();
+    const mouse = new THREE.Vector2(
+      ((event.clientX - rect.left) / rect.width) * 2 - 1,
+      -((event.clientY - rect.top) / rect.height) * 2 + 1
+    );
+
+    const raycaster = new THREE.Raycaster();
+    raycaster.setFromCamera(mouse, camera);
+
+    const intersects = raycaster.intersectObjects(jointDots, false);
+
+    if (intersects.length > 0) {
+      const hitDot = intersects[0].object;
+      selectJoint(hitDot);
+    }
+  }
+
+  function selectJoint(dot) {
+    // Reset former selected dot appearance
+    jointDots.forEach(d => d.material.color.setHex(0x007aff));
+
+    selectedJoint = dot;
+    selectedJoint.material.color.setHex(0xff9500); // Highlight selected dot in Orange
+
+    transformControls.detach();
+    transformControls.attach(selectedJoint);
+    showToast(`Selected Joint: ${selectedJoint.userData.id}`);
   }
 
   function triggerImport() { 
@@ -209,16 +258,14 @@
 
   function loadModelToScene(loadedObject) {
     if (activeModel) characterGroup.remove(activeModel);
-    if (rigGroup) characterGroup.remove(rigGroup);
+    clearRig();
 
     activeModel = loadedObject;
 
-    // Reset Character Group Coordinates
     characterGroup.position.set(0, 0, 0);
     characterGroup.rotation.set(0, 0, 0);
     characterGroup.scale.set(1, 1, 1);
 
-    // Center Geometry directly to origin
     const box = new THREE.Box3().setFromObject(activeModel);
     const center = box.getCenter(new THREE.Vector3());
     const size = box.getSize(new THREE.Vector3());
@@ -233,9 +280,17 @@
     }
 
     characterGroup.add(activeModel);
-    transformControls.attach(characterGroup);
+    transformControls.detach();
 
     showToast("Model Loaded! Tap 'Auto Rig'");
+  }
+
+  function clearRig() {
+    transformControls.detach();
+    if (rigGroup) characterGroup.remove(rigGroup);
+    jointDots = [];
+    boneLines = [];
+    selectedJoint = null;
   }
 
   function openRigOverlay() {
@@ -289,7 +344,7 @@
   function applyAutoRigging() {
     if (!activeModel) { showToast("Model Load Karein!"); closeRigOverlay(); return; }
 
-    if (rigGroup) characterGroup.remove(rigGroup);
+    clearRig();
     rigGroup = new THREE.Group();
 
     const container = document.getElementById('joints-container');
@@ -320,35 +375,55 @@
         raycaster.ray.intersectPlane(plane, targetWorldPos);
       }
 
-      // CRITICAL FIX: Convert World coordinates to Local characterGroup space
       const localPos = characterGroup.worldToLocal(targetWorldPos.clone());
-      jointMap[id] = localPos;
 
+      // Create Interactive 3D Dot Sphere Mesh
+      const dotGeo = new THREE.SphereGeometry(0.045, 16, 16);
       const dotMat = new THREE.MeshBasicMaterial({ color: 0x007aff, depthTest: false, depthWrite: false });
-      const dot = new THREE.Mesh(new THREE.SphereGeometry(0.04, 16, 16), dotMat);
-      dot.position.copy(localPos);
-      dot.renderOrder = 999;
-      rigGroup.add(dot);
+      const dotMesh = new THREE.Mesh(dotGeo, dotMat);
+      
+      dotMesh.position.copy(localPos);
+      dotMesh.renderOrder = 999;
+      dotMesh.userData = { id: id };
+
+      rigGroup.add(dotMesh);
+      jointDots.push(dotMesh);
+      jointMap[id] = dotMesh;
     });
 
+    // Create Lines connecting joints
     boneConnections.forEach(([fromId, toId]) => {
-      const p1 = jointMap[fromId];
-      const p2 = jointMap[toId];
+      const dot1 = jointMap[fromId];
+      const dot2 = jointMap[toId];
 
-      if (p1 && p2) {
-        const lineGeo = new THREE.BufferGeometry().setFromPoints([p1, p2]);
+      if (dot1 && dot2) {
+        const lineGeo = new THREE.BufferGeometry().setFromPoints([dot1.position, dot2.position]);
         const lineMat = new THREE.LineBasicMaterial({ color: 0x00ffcc, linewidth: 3, depthTest: false, depthWrite: false });
         const line = new THREE.Line(lineGeo, lineMat);
         line.renderOrder = 998;
+        
+        line.userData = { fromDot: dot1, toDot: dot2 };
         rigGroup.add(line);
+        boneLines.push(line);
       }
     });
 
     characterGroup.add(rigGroup);
-    transformControls.attach(characterGroup);
-
     closeRigOverlay();
-    showToast("Perfectly Aligned to Model!");
+
+    // Auto-select first joint (Head) so gizmo appears
+    if(jointDots.length > 0) selectJoint(jointDots[0]);
+
+    showToast("Tap any Dot to Select & Move it!");
+  }
+
+  function updateBoneLines() {
+    boneLines.forEach(line => {
+      const p1 = line.userData.fromDot.position;
+      const p2 = line.userData.toDot.position;
+      line.geometry.setFromPoints([p1, p2]);
+      line.geometry.attributes.position.needsUpdate = true;
+    });
   }
 
   function startRenderLoop() {
@@ -376,8 +451,17 @@
   function togglePlay() { isPlaying = !isPlaying; }
   function setMode(m) { if(transformControls) transformControls.setMode(m); }
   function deleteSelected() { 
-    if(activeModel) { characterGroup.remove(activeModel); activeModel = null; }
-    if(rigGroup) { characterGroup.remove(rigGroup); rigGroup = null; }
+    if(selectedJoint) {
+      showToast("Selected Dot removed!");
+      transformControls.detach();
+      rigGroup.remove(selectedJoint);
+      jointDots = jointDots.filter(d => d !== selectedJoint);
+      selectedJoint = null;
+    } else if(activeModel) { 
+      characterGroup.remove(activeModel); 
+      activeModel = null; 
+      clearRig();
+    }
   }
   function addKeyframe() { showToast("Keyframe Added!"); }
   function seekTimeline(e) { showToast("Timeline Seeked"); }
