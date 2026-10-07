@@ -100,6 +100,7 @@
 <script>
   let scene, camera, renderer, orbitControls, transformControls;
   let activeModel = null;
+  let characterGroup = null; // Combined Parent Group for Model + Rig
   let isPlaying = false, currentTime = 0, duration = 5.0;
   let rigGroup = null;
 
@@ -119,7 +120,6 @@
     { id: 'ankle_l', name: 'L Ankle', x: 58, y: 90, class: '' }
   ];
 
-  // Structural Skeleton Bones Connections
   const boneConnections = [
     ['head', 'neck'],
     ['neck', 'hips'],
@@ -169,6 +169,9 @@
     scene.add(dl);
     scene.add(new THREE.GridHelper(10, 10, 0x3d3d45, 0x222228));
 
+    characterGroup = new THREE.Group();
+    scene.add(characterGroup);
+
     showToast("Engine Ready. Tap 'Import'");
     startRenderLoop();
   }
@@ -205,8 +208,8 @@
   });
 
   function loadModelToScene(loadedObject) {
-    if (activeModel) scene.remove(activeModel);
-    if (rigGroup) scene.remove(rigGroup);
+    if (activeModel) characterGroup.remove(activeModel);
+    if (rigGroup) characterGroup.remove(rigGroup);
 
     activeModel = loadedObject;
 
@@ -224,14 +227,16 @@
       activeModel.scale.set(scale, scale, scale);
     }
 
-    scene.add(activeModel);
+    characterGroup.add(activeModel);
+    transformControls.attach(characterGroup); // Transform Controls binded to Main Character Group
+
     showToast("Model Loaded! Tap 'Auto Rig'");
   }
 
   function openRigOverlay() {
     if (!activeModel) { showToast("Import a 3D Model First!"); return; }
 
-    resetCamera(); // Ensure camera front view before placing joints
+    resetCamera();
 
     const overlay = document.getElementById('rig-overlay');
     const container = document.getElementById('joints-container');
@@ -279,7 +284,7 @@
   function applyAutoRigging() {
     if (!activeModel) { showToast("Model Load Karein!"); closeRigOverlay(); return; }
 
-    if (rigGroup) scene.remove(rigGroup);
+    if (rigGroup) characterGroup.remove(rigGroup);
     rigGroup = new THREE.Group();
 
     const container = document.getElementById('joints-container');
@@ -290,11 +295,9 @@
     const mouse = new THREE.Vector2();
     const jointMap = {};
 
-    // Get 3D Model Center for Z-depth Backup
     const modelBox = new THREE.Box3().setFromObject(activeModel);
     const modelCenter = modelBox.getCenter(new THREE.Vector3());
 
-    // 1. Precise Raycast per joint
     nodes.forEach(node => {
       const id = node.dataset.id;
       const nodeRect = node.getBoundingClientRect();
@@ -311,14 +314,12 @@
       if (intersects.length > 0) {
         targetPos.copy(intersects[0].point);
       } else {
-        // Fallback positioning aligned with model plane
         const plane = new THREE.Plane(new THREE.Vector3(0, 0, 1), -modelCenter.z);
         raycaster.ray.intersectPlane(plane, targetPos);
       }
 
       jointMap[id] = targetPos;
 
-      // Add Joint Marker
       const dotMat = new THREE.MeshBasicMaterial({ color: 0x007aff, depthTest: false, depthWrite: false });
       const dot = new THREE.Mesh(new THREE.SphereGeometry(0.04, 16, 16), dotMat);
       dot.position.copy(targetPos);
@@ -326,7 +327,6 @@
       rigGroup.add(dot);
     });
 
-    // 2. Anatomically Correct Skeleton Connections
     boneConnections.forEach(([fromId, toId]) => {
       const p1 = jointMap[fromId];
       const p2 = jointMap[toId];
@@ -340,11 +340,11 @@
       }
     });
 
-    scene.add(rigGroup);
-    transformControls.attach(rigGroup);
+    characterGroup.add(rigGroup);
+    transformControls.attach(characterGroup); // Attach Transform Controls to Combined Object
 
     closeRigOverlay();
-    showToast("Rig Aligned & Attached Perfectly!");
+    showToast("Model & Rig Bound Together!");
   }
 
   function startRenderLoop() {
@@ -372,8 +372,8 @@
   function togglePlay() { isPlaying = !isPlaying; }
   function setMode(m) { if(transformControls) transformControls.setMode(m); }
   function deleteSelected() { 
-    if(activeModel) { scene.remove(activeModel); activeModel = null; }
-    if(rigGroup) { scene.remove(rigGroup); rigGroup = null; }
+    if(activeModel) { characterGroup.remove(activeModel); activeModel = null; }
+    if(rigGroup) { characterGroup.remove(rigGroup); rigGroup = null; }
   }
   function addKeyframe() { showToast("Keyframe Added!"); }
   function seekTimeline(e) { showToast("Timeline Seeked"); }
