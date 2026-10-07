@@ -103,22 +103,23 @@
   let characterGroup = null;
   let isPlaying = false, currentTime = 0, duration = 5.0;
 
+  let boneNodes = {};
   let jointSpheres = [];
   let boneLines = [];
-  let jointsDataMap = {};
   let selectedJoint = null;
-  let skinWeightsMap = new Map();
+  let meshOriginalPositions = new Map();
+  let vertexBoneAssignments = new Map();
 
   const defaultJoints = [
-    { id: 'head', name: 'Head', x: 50, y: 16, parent: 'neck', class: 'head' },
+    { id: 'hips', name: 'Hips', x: 50, y: 52, parent: null, class: 'hip' },
     { id: 'neck', name: 'Neck', x: 50, y: 24, parent: 'hips', class: '' },
+    { id: 'head', name: 'Head', x: 50, y: 16, parent: 'neck', class: 'head' },
     { id: 'shoulder_r', name: 'R Shoulder', x: 38, y: 28, parent: 'neck', class: '' },
     { id: 'elbow_r', name: 'R Elbow', x: 25, y: 28, parent: 'shoulder_r', class: '' },
     { id: 'wrist_r', name: 'R Wrist', x: 12, y: 28, parent: 'elbow_r', class: '' },
     { id: 'shoulder_l', name: 'L Shoulder', x: 62, y: 28, parent: 'neck', class: '' },
     { id: 'elbow_l', name: 'L Elbow', x: 75, y: 28, parent: 'shoulder_l', class: '' },
     { id: 'wrist_l', name: 'L Wrist', x: 88, y: 28, parent: 'elbow_l', class: '' },
-    { id: 'hips', name: 'Hips', x: 50, y: 52, parent: null, class: 'hip' },
     { id: 'knee_r', name: 'R Knee', x: 42, y: 72, parent: 'hips', class: '' },
     { id: 'ankle_r', name: 'R Ankle', x: 42, y: 90, parent: 'knee_r', class: '' },
     { id: 'knee_l', name: 'L Knee', x: 58, y: 72, parent: 'hips', class: '' },
@@ -158,7 +159,7 @@
     });
 
     transformControls.addEventListener('change', () => {
-      updateMeshDeformation();
+      updateSkeletonAndSkin();
     });
 
     scene.add(transformControls);
@@ -205,8 +206,9 @@
     selectedJoint.material.color.setHex(0xff9500);
 
     transformControls.detach();
-    transformControls.attach(selectedJoint);
-    showToast(`Selected Joint: ${selectedJoint.userData.id}`);
+    // Attach to the parent Group container of the joint so rotation cascades down
+    transformControls.attach(selectedJoint.parent);
+    showToast(`Joint: ${selectedJoint.userData.id}`);
   }
 
   function triggerImport() { document.getElementById('file-input').click(); }
@@ -264,6 +266,14 @@
     characterGroup.add(activeModel);
     transformControls.detach();
 
+    // Cache original geometry position arrays
+    meshOriginalPositions.clear();
+    activeModel.traverse(c => {
+      if (c.isMesh && c.geometry && c.geometry.attributes.position) {
+        meshOriginalPositions.set(c, c.geometry.attributes.position.array.slice());
+      }
+    });
+
     showToast("Model Loaded! Tap 'Auto Rig'");
   }
 
@@ -271,11 +281,13 @@
     transformControls.detach();
     jointSpheres.forEach(s => scene.remove(s));
     boneLines.forEach(l => scene.remove(l));
+    Object.values(boneNodes).forEach(b => scene.remove(b.group));
+
+    boneNodes = {};
     jointSpheres = [];
     boneLines = [];
-    jointsDataMap = {};
     selectedJoint = null;
-    skinWeightsMap.clear();
+    vertexBoneAssignments.clear();
   }
 
   function openRigOverlay() {
@@ -337,8 +349,9 @@
 
     const raycaster = new THREE.Raycaster();
     const mouse = new THREE.Vector2();
+    const calculatedWorldPositions = {};
 
-    // 1. Create Joint Spheres
+    // 1. Calculate world positions from 2D overlay alignment
     nodes.forEach(node => {
       const id = node.dataset.id;
       const nodeRect = node.getBoundingClientRect();
@@ -358,117 +371,148 @@
         const plane = new THREE.Plane(new THREE.Vector3(0, 0, 1), 0);
         raycaster.ray.intersectPlane(plane, targetPos);
       }
+      calculatedWorldPositions[id] = targetPos;
+    });
+
+    // 2. Build FK Hierarchical Bone Group Tree
+    defaultJoints.forEach(j => {
+      const group = new THREE.Group();
+      group.position.copy(calculatedWorldPositions[j.id]);
 
       const sphereGeo = new THREE.SphereGeometry(0.04, 16, 16);
       const sphereMat = new THREE.MeshBasicMaterial({ color: 0x007aff, depthTest: false });
       const sphereMesh = new THREE.Mesh(sphereGeo, sphereMat);
-      sphereMesh.position.copy(targetPos);
       sphereMesh.renderOrder = 999;
-      sphereMesh.userData = { id: id, restPosition: targetPos.clone(), restQuaternion: sphereMesh.quaternion.clone() };
+      sphereMesh.userData = { id: j.id, restWorldPos: calculatedWorldPositions[j.id].clone() };
 
-      scene.add(sphereMesh);
+      group.add(sphereMesh);
+
+      boneNodes[j.id] = {
+        id: j.id,
+        group: group,
+        sphere: sphereMesh,
+        parent: j.parent,
+        restWorldPos: calculatedWorldPositions[j.id].clone()
+      };
+
       jointSpheres.push(sphereMesh);
-
-      const parentId = defaultJoints.find(dj => dj.id === id).parent;
-      jointsDataMap[id] = { mesh: sphereMesh, parent: parentId, restPos: targetPos.clone() };
     });
 
-    // 2. Create Bone Connecting Lines
+    // Attach Parent-Child Tree Relationships
     defaultJoints.forEach(j => {
-      if (j.parent && jointsDataMap[j.parent] && jointsDataMap[j.id]) {
-        const pMesh = jointsDataMap[j.parent].mesh;
-        const cMesh = jointsDataMap[j.id].mesh;
+      if (j.parent && boneNodes[j.parent]) {
+        const parentNode = boneNodes[j.parent];
+        const childNode = boneNodes[j.id];
 
-        const lineGeo = new THREE.BufferGeometry().setFromPoints([pMesh.position, cMesh.position]);
+        // Convert child position to parent's local space
+        const localPos = childNode.group.position.clone().sub(parentNode.restWorldPos);
+        childNode.group.position.copy(localPos);
+        parentNode.group.add(childNode.group);
+      } else {
+        scene.add(boneNodes[j.id].group);
+      }
+    });
+
+    // 3. Build Visual Bone Lines
+    defaultJoints.forEach(j => {
+      if (j.parent && boneNodes[j.parent]) {
+        const lineGeo = new THREE.BufferGeometry().setFromPoints([
+          new THREE.Vector3(), new THREE.Vector3()
+        ]);
         const lineMat = new THREE.LineBasicMaterial({ color: 0x00ffcc, linewidth: 3, depthTest: false });
         const line = new THREE.Line(lineGeo, lineMat);
         line.renderOrder = 998;
         scene.add(line);
 
-        boneLines.push({ line, pMesh, cMesh });
+        boneLines.push({
+          line: line,
+          childId: j.id,
+          parentId: j.parent
+        });
       }
     });
 
-    // 3. Compute Smooth Linear Blend Skinning Weights
+    // 4. Rigid Skinning Assignment (Attach vertices to closest bone)
     activeModel.updateMatrixWorld(true);
     activeModel.traverse(child => {
       if (child.isMesh && child.geometry) {
         const posAttr = child.geometry.attributes.position;
         const count = posAttr.count;
-
-        const origPositions = new Float32Array(posAttr.array);
-        const vertexWeights = [];
+        const vertexMap = [];
 
         for (let i = 0; i < count; i++) {
           const vLocal = new THREE.Vector3(posAttr.getX(i), posAttr.getY(i), posAttr.getZ(i));
           const vWorld = vLocal.clone().applyMatrix4(child.matrixWorld);
 
-          let weights = [];
-          let totalWeight = 0;
+          let minDistance = Infinity;
+          let closestBoneId = 'hips';
 
-          jointSpheres.forEach(joint => {
-            const dist = vWorld.distanceTo(joint.userData.restPosition);
-            const weight = 1 / Math.pow(dist + 0.05, 3); // Smooth Falloff
-            weights.push({ jointId: joint.userData.id, weight: weight });
-            totalWeight += weight;
+          Object.values(boneNodes).forEach(b => {
+            const dist = vWorld.distanceTo(b.restWorldPos);
+            if (dist < minDistance) {
+              minDistance = dist;
+              closestBoneId = b.id;
+            }
           });
 
-          // Normalize weights
-          weights.forEach(w => w.weight /= totalWeight);
-          // Keep top 3 influencing joints for fast smooth blending
-          weights.sort((a, b) => b.weight - a.weight);
-          weights = weights.slice(0, 3);
-
-          vertexWeights.push(weights);
+          vertexMap.push(closestBoneId);
         }
 
-        skinWeightsMap.set(child, { origPositions, vertexWeights });
+        vertexBoneAssignments.set(child, vertexMap);
       }
     });
 
     closeRigOverlay();
     if (jointSpheres.length > 0) selectJoint(jointSpheres[0]);
+    setMode('rotate');
 
-    showToast("Rigging Complete! Move/Rotate Joints Now.");
+    showToast("Rigged! Select joint and Rotate 🔄");
   }
 
-  function updateMeshDeformation() {
-    // 1. Update Visual Bone Lines
+  function updateSkeletonAndSkin() {
+    // 1. Update Bone Lines
     boneLines.forEach(b => {
-      b.line.geometry.setFromPoints([b.pMesh.position, b.cMesh.position]);
+      const p1 = new THREE.Vector3();
+      const p2 = new THREE.Vector3();
+      boneNodes[b.parentId].sphere.getWorldPosition(p1);
+      boneNodes[b.childId].sphere.getWorldPosition(p2);
+
+      b.line.geometry.setFromPoints([p1, p2]);
       b.line.geometry.attributes.position.needsUpdate = true;
     });
 
-    // 2. Apply Dynamic Skin Mesh Transformation
+    // 2. Rigid Skeletal Mesh Deformation
     activeModel.traverse(child => {
-      if (child.isMesh && skinWeightsMap.has(child)) {
-        const { origPositions, vertexWeights } = skinWeightsMap.get(child);
+      if (child.isMesh && vertexBoneAssignments.has(child)) {
         const posAttr = child.geometry.attributes.position;
+        const origArr = meshOriginalPositions.get(child);
+        const assignments = vertexBoneAssignments.get(child);
         const count = posAttr.count;
 
         const invWorld = new THREE.Matrix4().copy(child.matrixWorld).invert();
 
         for (let i = 0; i < count; i++) {
-          const vOrigLocal = new THREE.Vector3(origPositions[i * 3], origPositions[i * 3 + 1], origPositions[i * 3 + 2]);
-          const vOrigWorld = vOrigLocal.clone().applyMatrix4(child.matrixWorld);
+          const boneId = assignments[i];
+          const bNode = boneNodes[boneId];
 
-          const finalWorld = new THREE.Vector3(0, 0, 0);
+          const origLocal = new THREE.Vector3(origArr[i * 3], origArr[i * 3 + 1], origArr[i * 3 + 2]);
+          const origWorld = origLocal.clone().applyMatrix4(child.matrixWorld);
 
-          const influences = vertexWeights[i];
-          influences.forEach(inf => {
-            const jointMesh = jointsDataMap[inf.jointId].mesh;
-            const restPos = jointMesh.userData.restPosition;
+          // Get vertex relative offset to bone rest position
+          const offset = origWorld.clone().sub(bNode.restWorldPos);
 
-            // Transformed vertex offset
-            const delta = vOrigWorld.clone().sub(restPos);
-            delta.applyQuaternion(jointMesh.quaternion);
-            const transformedPoint = jointMesh.position.clone().add(delta);
+          // Get current world matrix of the bone
+          const currentBoneWorldPos = new THREE.Vector3();
+          const currentBoneWorldQuat = new THREE.Quaternion();
+          bNode.group.getWorldPosition(currentBoneWorldPos);
+          bNode.group.getWorldQuaternion(currentBoneWorldQuat);
 
-            finalWorld.addScaledVector(transformedPoint, inf.weight);
-          });
+          // Apply current bone rotation & location
+          offset.applyQuaternion(currentBoneWorldQuat);
+          const finalWorldPos = currentBoneWorldPos.clone().add(offset);
 
-          const finalLocal = finalWorld.applyMatrix4(invWorld);
-          posAttr.setXYZ(i, finalLocal.x, finalLocal.y, finalLocal.z);
+          const finalLocalPos = finalWorldPos.applyMatrix4(invWorld);
+          posAttr.setXYZ(i, finalLocalPos.x, finalLocalPos.y, finalLocalPos.z);
         }
 
         posAttr.needsUpdate = true;
