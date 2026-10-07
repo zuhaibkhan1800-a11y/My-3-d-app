@@ -100,7 +100,7 @@
 <script>
   let scene, camera, renderer, orbitControls, transformControls;
   let activeModel = null;
-  let characterGroup = null; // Combined Parent Group for Model + Rig
+  let characterGroup = null;
   let isPlaying = false, currentTime = 0, duration = 5.0;
   let rigGroup = null;
 
@@ -213,13 +213,18 @@
 
     activeModel = loadedObject;
 
+    // Reset Character Group Coordinates
+    characterGroup.position.set(0, 0, 0);
+    characterGroup.rotation.set(0, 0, 0);
+    characterGroup.scale.set(1, 1, 1);
+
+    // Center Geometry directly to origin
     const box = new THREE.Box3().setFromObject(activeModel);
     const center = box.getCenter(new THREE.Vector3());
     const size = box.getSize(new THREE.Vector3());
 
-    activeModel.position.x += (activeModel.position.x - center.x);
-    activeModel.position.y += (activeModel.position.y - center.y) + (size.y / 2);
-    activeModel.position.z += (activeModel.position.z - center.z);
+    activeModel.position.sub(center); 
+    activeModel.position.y += size.y / 2;
 
     const maxDim = Math.max(size.x, size.y, size.z);
     if (maxDim > 0) {
@@ -228,7 +233,7 @@
     }
 
     characterGroup.add(activeModel);
-    transformControls.attach(characterGroup); // Transform Controls binded to Main Character Group
+    transformControls.attach(characterGroup);
 
     showToast("Model Loaded! Tap 'Auto Rig'");
   }
@@ -295,9 +300,6 @@
     const mouse = new THREE.Vector2();
     const jointMap = {};
 
-    const modelBox = new THREE.Box3().setFromObject(activeModel);
-    const modelCenter = modelBox.getCenter(new THREE.Vector3());
-
     nodes.forEach(node => {
       const id = node.dataset.id;
       const nodeRect = node.getBoundingClientRect();
@@ -310,19 +312,21 @@
       raycaster.setFromCamera(mouse, camera);
       const intersects = raycaster.intersectObject(activeModel, true);
 
-      let targetPos = new THREE.Vector3();
+      let targetWorldPos = new THREE.Vector3();
       if (intersects.length > 0) {
-        targetPos.copy(intersects[0].point);
+        targetWorldPos.copy(intersects[0].point);
       } else {
-        const plane = new THREE.Plane(new THREE.Vector3(0, 0, 1), -modelCenter.z);
-        raycaster.ray.intersectPlane(plane, targetPos);
+        const plane = new THREE.Plane(new THREE.Vector3(0, 0, 1), 0);
+        raycaster.ray.intersectPlane(plane, targetWorldPos);
       }
 
-      jointMap[id] = targetPos;
+      // CRITICAL FIX: Convert World coordinates to Local characterGroup space
+      const localPos = characterGroup.worldToLocal(targetWorldPos.clone());
+      jointMap[id] = localPos;
 
       const dotMat = new THREE.MeshBasicMaterial({ color: 0x007aff, depthTest: false, depthWrite: false });
       const dot = new THREE.Mesh(new THREE.SphereGeometry(0.04, 16, 16), dotMat);
-      dot.position.copy(targetPos);
+      dot.position.copy(localPos);
       dot.renderOrder = 999;
       rigGroup.add(dot);
     });
@@ -341,10 +345,10 @@
     });
 
     characterGroup.add(rigGroup);
-    transformControls.attach(characterGroup); // Attach Transform Controls to Combined Object
+    transformControls.attach(characterGroup);
 
     closeRigOverlay();
-    showToast("Model & Rig Bound Together!");
+    showToast("Perfectly Aligned to Model!");
   }
 
   function startRenderLoop() {
