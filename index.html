@@ -407,42 +407,44 @@
       }
     });
 
-    // MESH VERTEX WEIGHT BINDING (Real-time Mesh Deformer Initialization)
+    // ADVANCED WORLD-SPACE MULTI-MESH DEFORMER (Handles Sub-groups & Complex Geometry)
     meshDataList = [];
+    activeModel.updateMatrixWorld(true);
+
     activeModel.traverse((child) => {
       if (child.isMesh && child.geometry) {
         const geo = child.geometry;
         const posAttr = geo.attributes.position;
         const vertexCount = posAttr.count;
         
-        const origPositions = new Float32Array(posAttr.array);
+        const origWorldPositions = [];
         const weights = [];
 
         for (let i = 0; i < vertexCount; i++) {
-          const vx = posAttr.getX(i);
-          const vy = posAttr.getY(i);
-          const vz = posAttr.getZ(i);
-          const vPos = new THREE.Vector3(vx, vy, vz);
+          const vLoc = new THREE.Vector3(posAttr.getX(i), posAttr.getY(i), posAttr.getZ(i));
+          const vWorld = vLoc.clone().applyMatrix4(child.matrixWorld);
+          const vGroupLocal = characterGroup.worldToLocal(vWorld.clone());
+
+          origWorldPositions.push(vGroupLocal);
 
           let totalWeight = 0;
           const vWeights = [];
 
           jointDots.forEach(dot => {
-            const dist = vPos.distanceTo(dot.userData.initPos);
-            // Inverse Distance Weighting
-            const w = 1.0 / Math.pow(dist + 0.1, 3);
+            const dist = vGroupLocal.distanceTo(dot.userData.initPos);
+            // Sharp Inverse Weighting Radius
+            const w = 1.0 / Math.pow(dist + 0.05, 3.5);
             vWeights.push({ dot: dot, weight: w });
             totalWeight += w;
           });
 
-          // Normalize weights
           vWeights.forEach(wObj => { wObj.weight /= totalWeight; });
           weights.push(vWeights);
         }
 
         meshDataList.push({
           mesh: child,
-          origPositions: origPositions,
+          origWorldPositions: origWorldPositions,
           weights: weights
         });
       }
@@ -453,31 +455,38 @@
 
     if(jointDots.length > 0) selectJoint(jointDots[0]);
 
-    showToast("Real-time Mesh Rigging Active!");
+    showToast("Auto-Rig Applied! Body moves with dots.");
   }
 
   function deformMeshWithJoints() {
+    characterGroup.updateMatrixWorld(true);
+
     meshDataList.forEach(data => {
       const mesh = data.mesh;
       const posAttr = mesh.geometry.attributes.position;
-      const orig = data.origPositions;
+      const origWorldPositions = data.origWorldPositions;
       const weights = data.weights;
       const count = posAttr.count;
 
+      const invMeshMatrix = new THREE.Matrix4().copy(mesh.matrixWorld).invert();
+
       for (let i = 0; i < count; i++) {
-        const i3 = i * 3;
-        const origVec = new THREE.Vector3(orig[i3], orig[i3 + 1], orig[i3 + 2]);
-        const finalVec = new THREE.Vector3(0, 0, 0);
+        const origVecGroup = origWorldPositions[i];
+        const finalVecGroup = new THREE.Vector3(0, 0, 0);
 
         const vWeights = weights[i];
         vWeights.forEach(wObj => {
           const dot = wObj.dot;
           const delta = new THREE.Vector3().subVectors(dot.position, dot.userData.initPos);
-          const deformed = new THREE.Vector3().addVectors(origVec, delta);
-          finalVec.addScaledVector(deformed, wObj.weight);
+          const deformed = new THREE.Vector3().addVectors(origVecGroup, delta);
+          finalVecGroup.addScaledVector(deformed, wObj.weight);
         });
 
-        posAttr.setXYZ(i, finalVec.x, finalVec.y, finalVec.z);
+        // Convert back from character group space to individual submesh local space
+        const finalWorld = characterGroup.localToWorld(finalVecGroup.clone());
+        const finalLocal = finalWorld.applyMatrix4(invMeshMatrix);
+
+        posAttr.setXYZ(i, finalLocal.x, finalLocal.y, finalLocal.z);
       }
 
       posAttr.needsUpdate = true;
