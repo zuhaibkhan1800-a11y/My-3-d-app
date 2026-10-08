@@ -3,17 +3,17 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>Prisma 3D Auto-Rig Engine (IK Enabled)</title>
+  <title>Prisma 3D Auto-Rig Engine (Studio Light)</title>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; -webkit-tap-highlight-color: transparent; }
-    html, body { width: 100vw; height: 100dvh; overflow: hidden; background: #121215; color: #fff; font-family: system-ui, -apple-system, sans-serif; }
+    html, body { width: 100vw; height: 100dvh; overflow: hidden; background: #1b1b20; color: #fff; font-family: system-ui, -apple-system, sans-serif; }
     #app { display: flex; flex-direction: column; width: 100%; height: 100dvh; position: relative; }
 
-    #top-bar { height: 44px; background: #18181c; display: flex; align-items: center; justify-content: space-between; padding: 0 12px; border-bottom: 1px solid #2a2a32; z-index: 10; }
+    #top-bar { height: 44px; background: #222228; display: flex; align-items: center; justify-content: space-between; padding: 0 12px; border-bottom: 1px solid #33333d; z-index: 10; }
     .brand-title { font-size: 12px; font-weight: bold; color: #007aff; }
     .icon-btn { background: none; border: none; color: #eee; font-size: 14px; cursor: pointer; padding: 6px; }
 
-    #viewport { flex: 1; position: relative; background: #18181c; overflow: hidden; }
+    #viewport { flex: 1; position: relative; background: #2b2b32; overflow: hidden; }
     #canvas3d { width: 100%; height: 100%; display: block; touch-action: none; }
 
     #rig-overlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); display: none; z-index: 100; touch-action: none; }
@@ -24,19 +24,19 @@
     .joint-node.head { background: #30d158; }
     .joint-node.hip { background: #ff3b30; }
 
-    #rig-tools-bar { position: absolute; bottom: 18px; left: 50%; transform: translateX(-50%); display: flex; gap: 10px; background: rgba(24, 24, 28, 0.95); padding: 8px 16px; border-radius: 30px; border: 1px solid #3d3d45; backdrop-filter: blur(8px); z-index: 102; }
-    .rig-btn { background: #2c2c35; border: none; color: #fff; padding: 8px 18px; border-radius: 20px; font-size: 11px; font-weight: bold; cursor: pointer; }
+    #rig-tools-bar { position: absolute; bottom: 18px; left: 50%; transform: translateX(-50%); display: flex; gap: 10px; background: rgba(34, 34, 40, 0.95); padding: 8px 16px; border-radius: 30px; border: 1px solid #444450; backdrop-filter: blur(8px); z-index: 102; }
+    .rig-btn { background: #32323c; border: none; color: #fff; padding: 8px 18px; border-radius: 20px; font-size: 11px; font-weight: bold; cursor: pointer; }
     .rig-btn.apply { background: #30d158; color: #000; }
 
-    #timeline-panel { height: 85px; background: #141417; border-top: 1px solid #28282e; display: flex; flex-direction: column; flex-shrink: 0; z-index: 10; }
-    #tl-header { height: 24px; background: #1c1c20; display: flex; align-items: center; justify-content: space-between; padding: 0 12px; font-size: 10px; color: #aaa; }
+    #timeline-panel { height: 85px; background: #1c1c22; border-top: 1px solid #33333d; display: flex; flex-direction: column; flex-shrink: 0; z-index: 10; }
+    #tl-header { height: 24px; background: #25252d; display: flex; align-items: center; justify-content: space-between; padding: 0 12px; font-size: 10px; color: #aaa; }
     .tl-btn.play { background: #007aff; border: none; color: #fff; font-size: 10px; padding: 2px 8px; border-radius: 3px; cursor: pointer; }
     .tl-btn.keyframe { background: #ffcc00; border: none; color: #000; font-size: 10px; padding: 2px 8px; border-radius: 3px; font-weight: bold; cursor: pointer; }
 
-    #tl-canvas-wrap { flex: 1; position: relative; background: #0c0c0e; overflow: hidden; }
+    #tl-canvas-wrap { flex: 1; position: relative; background: #121216; overflow: hidden; }
     #tl-canvas { width: 100%; height: 100%; display: block; }
 
-    #bottom-bar { height: 54px; background: #18181a; border-top: 1px solid #28282e; display: flex; align-items: center; justify-content: space-between; padding: 0 4px; z-index: 20; }
+    #bottom-bar { height: 54px; background: #222228; border-top: 1px solid #33333d; display: flex; align-items: center; justify-content: space-between; padding: 0 4px; z-index: 20; }
     .dock-btn { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; color: #aaa; font-size: 10px; cursor: pointer; background: none; border: none; width: 20%; height: 100%; }
     .dock-btn.active, .dock-btn:active { color: #007aff; }
     .dock-btn span { font-size: 18px; }
@@ -145,7 +145,9 @@
   function init3DEngine() {
     const container = document.getElementById('viewport');
     scene = new THREE.Scene();
-    scene.background = new THREE.Color(0x18181c);
+    
+    // Prisma 3D Light-Grey Studio Viewport Color
+    scene.background = new THREE.Color(0x2d2d35);
 
     camera = new THREE.PerspectiveCamera(50, container.clientWidth / container.clientHeight, 0.1, 1000);
     camera.position.set(0, 1.2, 3.2);
@@ -176,18 +178,33 @@
 
     scene.add(transformControls);
 
-    scene.add(new THREE.AmbientLight(0xffffff, 0.85));
-    const dl = new THREE.DirectionalLight(0xffffff, 1.0);
-    dl.position.set(3, 8, 5);
-    scene.add(dl);
-    scene.add(new THREE.GridHelper(10, 10, 0x3d3d45, 0x222228));
+    // --- BRIGHT PRISMA 3D LIGHTING SETUP ---
+    const ambientLight = new THREE.AmbientLight(0xffffff, 1.2);
+    scene.add(ambientLight);
+
+    const hemiLight = new THREE.HemisphereLight(0xffffff, 0x444455, 1.0);
+    hemiLight.position.set(0, 20, 0);
+    scene.add(hemiLight);
+
+    const mainDirLight = new THREE.DirectionalLight(0xffffff, 1.5);
+    mainDirLight.position.set(5, 10, 7);
+    scene.add(mainDirLight);
+
+    const fillDirLight = new THREE.DirectionalLight(0xffffff, 0.8);
+    fillDirLight.position.set(-5, 5, -5);
+    scene.add(fillDirLight);
+
+    // Grid System
+    const gridHelper = new THREE.GridHelper(10, 20, 0x5a5a68, 0x3d3d48);
+    gridHelper.position.y = -0.01;
+    scene.add(gridHelper);
 
     characterGroup = new THREE.Group();
     scene.add(characterGroup);
 
     renderer.domElement.addEventListener('pointerdown', onSceneClick);
 
-    showToast("Engine Ready. Tap 'Import'");
+    showToast("Engine Ready. Studio Light Active");
     startRenderLoop();
   }
 
@@ -585,7 +602,7 @@
 
     cvs.width = wrap.clientWidth; cvs.height = wrap.clientHeight;
     const ctx = cvs.getContext('2d');
-    ctx.fillStyle = '#0c0c0e'; ctx.fillRect(0, 0, cvs.width, cvs.height);
+    ctx.fillStyle = '#121216'; ctx.fillRect(0, 0, cvs.width, cvs.height);
 
     const px = (currentTime / duration) * cvs.width;
     ctx.strokeStyle = '#007aff'; ctx.lineWidth = 2;
