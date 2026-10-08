@@ -109,6 +109,7 @@
   let selectedJoint = null;
   let meshOriginalPositions = new Map();
   let vertexBoneAssignments = new Map();
+  let isUpdatingTransform = false;
 
   const defaultJoints = [
     { id: 'hips', name: 'Hips', x: 50, y: 52, parent: null, class: 'hip' },
@@ -159,14 +160,20 @@
     });
 
     transformControls.addEventListener('change', () => {
-      // 2-Bone Analytical IK Solution for Translate Mode on Limb End-Effectors
+      if (isUpdatingTransform) return;
+      isUpdatingTransform = true;
+
+      // Ensure non-hip bones maintain bone structure stability during Move
       if (transformControls.getMode() === 'translate' && selectedJoint) {
         const id = selectedJoint.userData.id;
-        if (id === 'wrist_r' || id === 'wrist_l' || id === 'ankle_r' || id === 'ankle_l') {
-          solveIK(id);
+        if (id !== 'hips') {
+          const bNode = boneNodes[id];
+          if (bNode) bNode.group.position.copy(bNode.initialLocalPos);
         }
       }
+
       updateSkeletonAndSkin();
+      isUpdatingTransform = false;
     });
 
     scene.add(transformControls);
@@ -184,43 +191,6 @@
 
     showToast("Engine Ready. Tap 'Import'");
     startRenderLoop();
-  }
-
-  // Analytical 2-Bone IK to prevent bone stretching when translating hands/feet
-  function solveIK(effectorId) {
-    let parentId = '', grandParentId = '';
-    if (effectorId === 'wrist_r') { parentId = 'elbow_r'; grandParentId = 'shoulder_r'; }
-    if (effectorId === 'wrist_l') { parentId = 'elbow_l'; grandParentId = 'shoulder_l'; }
-    if (effectorId === 'ankle_r') { parentId = 'knee_r'; grandParentId = 'hips'; }
-    if (effectorId === 'ankle_l') { parentId = 'knee_l'; grandParentId = 'hips'; }
-
-    const targetNode = boneNodes[effectorId];
-    const midNode = boneNodes[parentId];
-    const rootNode = boneNodes[grandParentId];
-
-    if (!targetNode || !midNode || !rootNode) return;
-
-    const rootWorld = new THREE.Vector3();
-    const targetWorld = new THREE.Vector3();
-    rootNode.group.getWorldPosition(rootWorld);
-    targetNode.group.getWorldPosition(targetWorld);
-
-    const l1 = midNode.initialLocalPos.length();
-    const l2 = targetNode.initialLocalPos.length();
-
-    const dist = Math.min(Math.max(rootWorld.distanceTo(targetWorld), 0.001), l1 + l2 - 0.001);
-    const dir = targetWorld.clone().sub(rootWorld).normalize();
-
-    // Limit target position along rigid max reach length to prevent mesh tearing
-    const maxTargetWorld = rootWorld.clone().add(dir.clone().multiplyScalar(dist));
-    targetNode.group.position.copy(targetNode.group.parent.worldToLocal(maxTargetWorld));
-
-    // Calculate elbow/knee angle
-    const cosAngle = (l1 * l1 + dist * dist - l2 * l2) / (2 * l1 * dist);
-    const angle = Math.acos(THREE.MathUtils.clamp(cosAngle, -1, 1));
-
-    rootNode.group.quaternion.setFromUnitVectors(new THREE.Vector3(0, -1, 0), dir);
-    rootNode.group.rotateX(angle);
   }
 
   function onSceneClick(event) {
@@ -251,7 +221,14 @@
 
     transformControls.detach();
     transformControls.attach(selectedJoint.parent);
-    showToast(`Joint: ${selectedJoint.userData.id}`);
+
+    const id = selectedJoint.userData.id;
+    if (id !== 'hips' && transformControls.getMode() === 'translate') {
+      setMode('rotate');
+      showToast(`Selected ${id}. Switched to Rotate mode.`);
+    } else {
+      showToast(`Joint: ${id}`);
+    }
   }
 
   function triggerImport() { document.getElementById('file-input').click(); }
@@ -505,7 +482,7 @@
     if (jointSpheres.length > 0) selectJoint(jointSpheres[0]);
     setMode('rotate');
 
-    showToast("Rigged! Select joint and Rotate/Move 🔄");
+    showToast("Rigged! Use Rotate 🔄 to pose character");
   }
 
   function updateSkeletonAndSkin() {
@@ -580,6 +557,10 @@
   function togglePlay() { isPlaying = !isPlaying; }
 
   function setMode(m) { 
+    if (m === 'translate' && selectedJoint && selectedJoint.userData.id !== 'hips') {
+      showToast("Move mode is for Hips. Use Rotate for limbs.");
+      return;
+    }
     if (transformControls) transformControls.setMode(m);
     document.getElementById('btn-rotate').classList.toggle('active', m === 'rotate');
     document.getElementById('btn-move').classList.toggle('active', m === 'translate');
