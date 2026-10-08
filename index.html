@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>Prisma 3D Auto-Rig Engine</title>
+  <title>Prisma 3D Auto-Rig Engine (IK Enabled)</title>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; -webkit-tap-highlight-color: transparent; }
     html, body { width: 100vw; height: 100dvh; overflow: hidden; background: #121215; color: #fff; font-family: system-ui, -apple-system, sans-serif; }
@@ -127,6 +127,13 @@
     { id: 'ankle_l', name: 'L Ankle', x: 58, y: 90, parent: 'knee_l', class: '' }
   ];
 
+  const ikChains = {
+    'wrist_r': { root: 'shoulder_r', mid: 'elbow_r', end: 'wrist_r', bendDir: new THREE.Vector3(0, 0, -1) },
+    'wrist_l': { root: 'shoulder_l', mid: 'elbow_l', end: 'wrist_l', bendDir: new THREE.Vector3(0, 0, -1) },
+    'ankle_r': { root: 'knee_r', mid: 'ankle_r', end: 'ankle_r', bendDir: new THREE.Vector3(0, 0, 1) },
+    'ankle_l': { root: 'knee_l', mid: 'ankle_l', end: 'ankle_l', bendDir: new THREE.Vector3(0, 0, 1) }
+  };
+
   function showToast(msg) {
     const t = document.getElementById('toast');
     if (!t) return;
@@ -162,6 +169,7 @@
     transformControls.addEventListener('change', () => {
       if (isUpdatingTransform) return;
       isUpdatingTransform = true;
+      handleTransformChange();
       updateSkeletonAndSkin();
       isUpdatingTransform = false;
     });
@@ -214,6 +222,53 @@
 
     const id = selectedJoint.userData.id;
     showToast(`Selected Joint: ${id}`);
+  }
+
+  function handleTransformChange() {
+    if (!selectedJoint) return;
+    const jointId = selectedJoint.userData.id;
+    const mode = transformControls.getMode();
+
+    if (mode === 'translate' && ikChains[jointId]) {
+      solveTwoBoneIK(ikChains[jointId]);
+    }
+  }
+
+  function solveTwoBoneIK(chain) {
+    const rootNode = boneNodes[chain.root];
+    const midNode = boneNodes[chain.mid];
+    const endNode = boneNodes[chain.end];
+
+    if (!rootNode || !midNode || !endNode) return;
+
+    const a = rootNode.restLength || 0.3;
+    const b = midNode.restLength || 0.3;
+
+    const rootPos = new THREE.Vector3();
+    const targetPos = new THREE.Vector3();
+    rootNode.group.getWorldPosition(rootPos);
+    endNode.group.getWorldPosition(targetPos);
+
+    const dir = new THREE.Vector3().subVectors(targetPos, rootPos);
+    let dist = dir.length();
+
+    dist = Math.min(dist, a + b - 0.001);
+    dist = Math.max(dist, Math.abs(a - b) + 0.001);
+
+    dir.normalize();
+
+    const cosAngleA = (a * a + dist * dist - b * b) / (2 * a * dist);
+    const angleA = Math.acos(THREE.MathUtils.clamp(cosAngleA, -1, 1));
+
+    const axis = new THREE.Vector3().crossVectors(dir, chain.bendDir).normalize();
+    if (axis.lengthSq() < 0.001) axis.set(0, 1, 0);
+
+    const rootRot = new THREE.Quaternion().setFromAxisAngle(axis, angleA);
+    rootNode.group.quaternion.setFromUnitVectors(new THREE.Vector3(1, 0, 0), dir).multiply(rootRot);
+
+    const cosAngleB = (a * a + b * b - dist * dist) / (2 * a * b);
+    const angleB = Math.acos(THREE.MathUtils.clamp(cosAngleB, -1, 1));
+    midNode.group.quaternion.setFromAxisAngle(axis, Math.PI - angleB);
   }
 
   function triggerImport() { document.getElementById('file-input').click(); }
@@ -408,6 +463,8 @@
         const localPos = childNode.group.position.clone().sub(parentNode.restWorldPos);
         childNode.group.position.copy(localPos);
         parentNode.group.add(childNode.group);
+
+        parentNode.restLength = parentNode.restWorldPos.distanceTo(childNode.restWorldPos);
       } else {
         scene.add(boneNodes[j.id].group);
       }
