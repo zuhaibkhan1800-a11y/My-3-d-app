@@ -159,15 +159,11 @@
     });
 
     transformControls.addEventListener('change', () => {
-      // Direct Move limit check for non-hip bones
+      // 2-Bone Analytical IK Solution for Translate Mode on Limb End-Effectors
       if (transformControls.getMode() === 'translate' && selectedJoint) {
-        const jointId = selectedJoint.userData.id;
-        if (jointId !== 'hips') {
-          // Lock child translation to initial rest position offset
-          const bNode = boneNodes[jointId];
-          if (bNode) {
-            bNode.group.position.copy(bNode.initialLocalPos);
-          }
+        const id = selectedJoint.userData.id;
+        if (id === 'wrist_r' || id === 'wrist_l' || id === 'ankle_r' || id === 'ankle_l') {
+          solveIK(id);
         }
       }
       updateSkeletonAndSkin();
@@ -188,6 +184,43 @@
 
     showToast("Engine Ready. Tap 'Import'");
     startRenderLoop();
+  }
+
+  // Analytical 2-Bone IK to prevent bone stretching when translating hands/feet
+  function solveIK(effectorId) {
+    let parentId = '', grandParentId = '';
+    if (effectorId === 'wrist_r') { parentId = 'elbow_r'; grandParentId = 'shoulder_r'; }
+    if (effectorId === 'wrist_l') { parentId = 'elbow_l'; grandParentId = 'shoulder_l'; }
+    if (effectorId === 'ankle_r') { parentId = 'knee_r'; grandParentId = 'hips'; }
+    if (effectorId === 'ankle_l') { parentId = 'knee_l'; grandParentId = 'hips'; }
+
+    const targetNode = boneNodes[effectorId];
+    const midNode = boneNodes[parentId];
+    const rootNode = boneNodes[grandParentId];
+
+    if (!targetNode || !midNode || !rootNode) return;
+
+    const rootWorld = new THREE.Vector3();
+    const targetWorld = new THREE.Vector3();
+    rootNode.group.getWorldPosition(rootWorld);
+    targetNode.group.getWorldPosition(targetWorld);
+
+    const l1 = midNode.initialLocalPos.length();
+    const l2 = targetNode.initialLocalPos.length();
+
+    const dist = Math.min(Math.max(rootWorld.distanceTo(targetWorld), 0.001), l1 + l2 - 0.001);
+    const dir = targetWorld.clone().sub(rootWorld).normalize();
+
+    // Limit target position along rigid max reach length to prevent mesh tearing
+    const maxTargetWorld = rootWorld.clone().add(dir.clone().multiplyScalar(dist));
+    targetNode.group.position.copy(targetNode.group.parent.worldToLocal(maxTargetWorld));
+
+    // Calculate elbow/knee angle
+    const cosAngle = (l1 * l1 + dist * dist - l2 * l2) / (2 * l1 * dist);
+    const angle = Math.acos(THREE.MathUtils.clamp(cosAngle, -1, 1));
+
+    rootNode.group.quaternion.setFromUnitVectors(new THREE.Vector3(0, -1, 0), dir);
+    rootNode.group.rotateX(angle);
   }
 
   function onSceneClick(event) {
@@ -382,7 +415,6 @@
       calculatedWorldPositions[id] = targetPos;
     });
 
-    // Create Hierarchy
     defaultJoints.forEach(j => {
       const group = new THREE.Group();
       group.position.copy(calculatedWorldPositions[j.id]);
@@ -407,7 +439,6 @@
       jointSpheres.push(sphereMesh);
     });
 
-    // Setup Parent-Child hierarchy tree
     defaultJoints.forEach(j => {
       if (j.parent && boneNodes[j.parent]) {
         const parentNode = boneNodes[j.parent];
@@ -423,7 +454,6 @@
       }
     });
 
-    // Bone connectors
     defaultJoints.forEach(j => {
       if (j.parent && boneNodes[j.parent]) {
         const lineGeo = new THREE.BufferGeometry().setFromPoints([
@@ -442,7 +472,6 @@
       }
     });
 
-    // Rigid Vertex Assignment
     activeModel.updateMatrixWorld(true);
     activeModel.traverse(child => {
       if (child.isMesh && child.geometry) {
@@ -476,11 +505,10 @@
     if (jointSpheres.length > 0) selectJoint(jointSpheres[0]);
     setMode('rotate');
 
-    showToast("Rigged! Select joint and Rotate 🔄");
+    showToast("Rigged! Select joint and Rotate/Move 🔄");
   }
 
   function updateSkeletonAndSkin() {
-    // Update lines
     boneLines.forEach(b => {
       const p1 = new THREE.Vector3();
       const p2 = new THREE.Vector3();
@@ -491,7 +519,6 @@
       b.line.geometry.attributes.position.needsUpdate = true;
     });
 
-    // Transform Rigid Mesh
     activeModel.traverse(child => {
       if (child.isMesh && vertexBoneAssignments.has(child)) {
         const posAttr = child.geometry.attributes.position;
@@ -556,9 +583,6 @@
     if (transformControls) transformControls.setMode(m);
     document.getElementById('btn-rotate').classList.toggle('active', m === 'rotate');
     document.getElementById('btn-move').classList.toggle('active', m === 'translate');
-    if (m === 'translate') {
-      showToast("Note: Use Move only on Hips. Use Rotate for arms/legs.");
-    }
   }
 
   function deleteSelected() { 
