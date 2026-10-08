@@ -16,7 +16,7 @@
     #viewport { flex: 1; position: relative; background: #18181c; overflow: hidden; }
     #canvas3d { width: 100%; height: 100%; display: block; touch-action: none; }
 
-    #rig-overlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.45); display: none; z-index: 100; touch-action: none; }
+    #rig-overlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); display: none; z-index: 100; touch-action: none; }
     #center-guide { position: absolute; left: 50%; top: 0; bottom: 0; width: 1px; background: rgba(255,255,255,0.7); transform: translateX(-50%); pointer-events: none; }
 
     #joints-container { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: auto; }
@@ -159,6 +159,17 @@
     });
 
     transformControls.addEventListener('change', () => {
+      // Direct Move limit check for non-hip bones
+      if (transformControls.getMode() === 'translate' && selectedJoint) {
+        const jointId = selectedJoint.userData.id;
+        if (jointId !== 'hips') {
+          // Lock child translation to initial rest position offset
+          const bNode = boneNodes[jointId];
+          if (bNode) {
+            bNode.group.position.copy(bNode.initialLocalPos);
+          }
+        }
+      }
       updateSkeletonAndSkin();
     });
 
@@ -206,7 +217,6 @@
     selectedJoint.material.color.setHex(0xff9500);
 
     transformControls.detach();
-    // Attach to the parent Group container of the joint so rotation cascades down
     transformControls.attach(selectedJoint.parent);
     showToast(`Joint: ${selectedJoint.userData.id}`);
   }
@@ -266,7 +276,6 @@
     characterGroup.add(activeModel);
     transformControls.detach();
 
-    // Cache original geometry position arrays
     meshOriginalPositions.clear();
     activeModel.traverse(c => {
       if (c.isMesh && c.geometry && c.geometry.attributes.position) {
@@ -351,7 +360,6 @@
     const mouse = new THREE.Vector2();
     const calculatedWorldPositions = {};
 
-    // 1. Calculate world positions from 2D overlay alignment
     nodes.forEach(node => {
       const id = node.dataset.id;
       const nodeRect = node.getBoundingClientRect();
@@ -374,7 +382,7 @@
       calculatedWorldPositions[id] = targetPos;
     });
 
-    // 2. Build FK Hierarchical Bone Group Tree
+    // Create Hierarchy
     defaultJoints.forEach(j => {
       const group = new THREE.Group();
       group.position.copy(calculatedWorldPositions[j.id]);
@@ -383,7 +391,7 @@
       const sphereMat = new THREE.MeshBasicMaterial({ color: 0x007aff, depthTest: false });
       const sphereMesh = new THREE.Mesh(sphereGeo, sphereMat);
       sphereMesh.renderOrder = 999;
-      sphereMesh.userData = { id: j.id, restWorldPos: calculatedWorldPositions[j.id].clone() };
+      sphereMesh.userData = { id: j.id };
 
       group.add(sphereMesh);
 
@@ -392,28 +400,30 @@
         group: group,
         sphere: sphereMesh,
         parent: j.parent,
-        restWorldPos: calculatedWorldPositions[j.id].clone()
+        restWorldPos: calculatedWorldPositions[j.id].clone(),
+        initialLocalPos: new THREE.Vector3()
       };
 
       jointSpheres.push(sphereMesh);
     });
 
-    // Attach Parent-Child Tree Relationships
+    // Setup Parent-Child hierarchy tree
     defaultJoints.forEach(j => {
       if (j.parent && boneNodes[j.parent]) {
         const parentNode = boneNodes[j.parent];
         const childNode = boneNodes[j.id];
 
-        // Convert child position to parent's local space
         const localPos = childNode.group.position.clone().sub(parentNode.restWorldPos);
         childNode.group.position.copy(localPos);
+        childNode.initialLocalPos.copy(localPos);
         parentNode.group.add(childNode.group);
       } else {
         scene.add(boneNodes[j.id].group);
+        boneNodes[j.id].initialLocalPos.copy(boneNodes[j.id].group.position);
       }
     });
 
-    // 3. Build Visual Bone Lines
+    // Bone connectors
     defaultJoints.forEach(j => {
       if (j.parent && boneNodes[j.parent]) {
         const lineGeo = new THREE.BufferGeometry().setFromPoints([
@@ -432,7 +442,7 @@
       }
     });
 
-    // 4. Rigid Skinning Assignment (Attach vertices to closest bone)
+    // Rigid Vertex Assignment
     activeModel.updateMatrixWorld(true);
     activeModel.traverse(child => {
       if (child.isMesh && child.geometry) {
@@ -470,7 +480,7 @@
   }
 
   function updateSkeletonAndSkin() {
-    // 1. Update Bone Lines
+    // Update lines
     boneLines.forEach(b => {
       const p1 = new THREE.Vector3();
       const p2 = new THREE.Vector3();
@@ -481,7 +491,7 @@
       b.line.geometry.attributes.position.needsUpdate = true;
     });
 
-    // 2. Rigid Skeletal Mesh Deformation
+    // Transform Rigid Mesh
     activeModel.traverse(child => {
       if (child.isMesh && vertexBoneAssignments.has(child)) {
         const posAttr = child.geometry.attributes.position;
@@ -498,16 +508,13 @@
           const origLocal = new THREE.Vector3(origArr[i * 3], origArr[i * 3 + 1], origArr[i * 3 + 2]);
           const origWorld = origLocal.clone().applyMatrix4(child.matrixWorld);
 
-          // Get vertex relative offset to bone rest position
           const offset = origWorld.clone().sub(bNode.restWorldPos);
 
-          // Get current world matrix of the bone
           const currentBoneWorldPos = new THREE.Vector3();
           const currentBoneWorldQuat = new THREE.Quaternion();
           bNode.group.getWorldPosition(currentBoneWorldPos);
           bNode.group.getWorldQuaternion(currentBoneWorldQuat);
 
-          // Apply current bone rotation & location
           offset.applyQuaternion(currentBoneWorldQuat);
           const finalWorldPos = currentBoneWorldPos.clone().add(offset);
 
@@ -544,11 +551,16 @@
 
   function resetCamera() { camera.position.set(0, 1.2, 3.2); orbitControls.target.set(0, 1.0, 0); }
   function togglePlay() { isPlaying = !isPlaying; }
+
   function setMode(m) { 
     if (transformControls) transformControls.setMode(m);
     document.getElementById('btn-rotate').classList.toggle('active', m === 'rotate');
     document.getElementById('btn-move').classList.toggle('active', m === 'translate');
+    if (m === 'translate') {
+      showToast("Note: Use Move only on Hips. Use Rotate for arms/legs.");
+    }
   }
+
   function deleteSelected() { 
     if (activeModel) { 
       characterGroup.remove(activeModel); 
