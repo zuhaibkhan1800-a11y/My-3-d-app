@@ -162,16 +162,6 @@
     transformControls.addEventListener('change', () => {
       if (isUpdatingTransform) return;
       isUpdatingTransform = true;
-
-      // Ensure non-hip bones maintain bone structure stability during Move
-      if (transformControls.getMode() === 'translate' && selectedJoint) {
-        const id = selectedJoint.userData.id;
-        if (id !== 'hips') {
-          const bNode = boneNodes[id];
-          if (bNode) bNode.group.position.copy(bNode.initialLocalPos);
-        }
-      }
-
       updateSkeletonAndSkin();
       isUpdatingTransform = false;
     });
@@ -223,12 +213,7 @@
     transformControls.attach(selectedJoint.parent);
 
     const id = selectedJoint.userData.id;
-    if (id !== 'hips' && transformControls.getMode() === 'translate') {
-      setMode('rotate');
-      showToast(`Selected ${id}. Switched to Rotate mode.`);
-    } else {
-      showToast(`Joint: ${id}`);
-    }
+    showToast(`Selected Joint: ${id}`);
   }
 
   function triggerImport() { document.getElementById('file-input').click(); }
@@ -409,8 +394,7 @@
         group: group,
         sphere: sphereMesh,
         parent: j.parent,
-        restWorldPos: calculatedWorldPositions[j.id].clone(),
-        initialLocalPos: new THREE.Vector3()
+        restWorldPos: calculatedWorldPositions[j.id].clone()
       };
 
       jointSpheres.push(sphereMesh);
@@ -423,11 +407,9 @@
 
         const localPos = childNode.group.position.clone().sub(parentNode.restWorldPos);
         childNode.group.position.copy(localPos);
-        childNode.initialLocalPos.copy(localPos);
         parentNode.group.add(childNode.group);
       } else {
         scene.add(boneNodes[j.id].group);
-        boneNodes[j.id].initialLocalPos.copy(boneNodes[j.id].group.position);
       }
     });
 
@@ -482,7 +464,7 @@
     if (jointSpheres.length > 0) selectJoint(jointSpheres[0]);
     setMode('rotate');
 
-    showToast("Rigged! Use Rotate 🔄 to pose character");
+    showToast("Rigging Complete!");
   }
 
   function updateSkeletonAndSkin() {
@@ -557,13 +539,10 @@
   function togglePlay() { isPlaying = !isPlaying; }
 
   function setMode(m) { 
-    if (m === 'translate' && selectedJoint && selectedJoint.userData.id !== 'hips') {
-      showToast("Move mode is for Hips. Use Rotate for limbs.");
-      return;
-    }
     if (transformControls) transformControls.setMode(m);
     document.getElementById('btn-rotate').classList.toggle('active', m === 'rotate');
     document.getElementById('btn-move').classList.toggle('active', m === 'translate');
+    showToast(`Mode: ${m.toUpperCase()}`);
   }
 
   function deleteSelected() { 
