@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>Prisma 3D Auto-Rig Engine (Native SkinnedMesh Fix)</title>
+  <title>Prisma 3D Auto-Rig Engine (Hierarchy & Symmetry Fix)</title>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; -webkit-tap-highlight-color: transparent; }
     html, body { width: 100vw; height: 100dvh; overflow: hidden; background: #1b1b20; color: #fff; font-family: system-ui, -apple-system, sans-serif; }
@@ -20,7 +20,7 @@
     #center-guide { position: absolute; left: 50%; top: 0; bottom: 0; width: 2px; background: rgba(0, 122, 255, 0.8); transform: translateX(-50%); pointer-events: none; }
 
     #joints-container { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; }
-    .joint-node { position: absolute; width: 26px; height: 26px; border-radius: 50%; border: 2px solid #ffffff; background: #ff9500; transform: translate(-50%, -50%); cursor: pointer; touch-action: none; z-index: 101; box-shadow: 0 0 10px rgba(0,0,0,0.8); pointer-events: auto; }
+    .joint-node { position: absolute; width: 24px; height: 24px; border-radius: 50%; border: 2px solid #ffffff; background: #ff9500; transform: translate(-50%, -50%); cursor: pointer; touch-action: none; z-index: 101; box-shadow: 0 0 10px rgba(0,0,0,0.8); pointer-events: auto; }
     .joint-node.head { background: #30d158; }
     .joint-node.hip { background: #ff3b30; }
 
@@ -108,14 +108,17 @@
   let skeletonHelper = null;
   let selectedBone = null;
 
+  // Fix: Explicit parent mapping for clear hierarchy
   const defaultJoints = [
     { id: 'hips', name: 'Hips', x: 50, y: 52, parent: null, class: 'hip' },
-    { id: 'neck', name: 'Neck', x: 50, y: 24, parent: 'hips', class: '' },
+    { id: 'spine_01', name: 'Spine 01', x: 50, y: 44, parent: 'hips', class: '' },
+    { id: 'spine_02', name: 'Spine 02', x: 50, y: 36, parent: 'spine_01', class: '' },
+    { id: 'neck', name: 'Neck', x: 50, y: 24, parent: 'spine_02', class: '' },
     { id: 'head', name: 'Head', x: 50, y: 16, parent: 'neck', class: 'head' },
-    { id: 'shoulder_r', name: 'R Shoulder', x: 38, y: 28, parent: 'neck', class: '', pair: 'shoulder_l' },
+    { id: 'shoulder_r', name: 'R Shoulder', x: 38, y: 28, parent: 'spine_02', class: '', pair: 'shoulder_l' },
     { id: 'elbow_r', name: 'R Elbow', x: 25, y: 28, parent: 'shoulder_r', class: '', pair: 'elbow_l' },
     { id: 'wrist_r', name: 'R Wrist', x: 12, y: 28, parent: 'elbow_r', class: '', pair: 'wrist_l' },
-    { id: 'shoulder_l', name: 'L Shoulder', x: 62, y: 28, parent: 'neck', class: '', pair: 'shoulder_r' },
+    { id: 'shoulder_l', name: 'L Shoulder', x: 62, y: 28, parent: 'spine_02', class: '', pair: 'shoulder_r' },
     { id: 'elbow_l', name: 'L Elbow', x: 75, y: 28, parent: 'shoulder_l', class: '', pair: 'elbow_r' },
     { id: 'wrist_l', name: 'L Wrist', x: 88, y: 28, parent: 'elbow_l', class: '', pair: 'wrist_r' },
     { id: 'knee_r', name: 'R Knee', x: 42, y: 72, parent: 'hips', class: '', pair: 'knee_l' },
@@ -303,7 +306,7 @@
       container.appendChild(node);
     });
 
-    showToast("Align Joints over Model");
+    showToast("Align Joints with Symmetry Active");
   }
 
   function makeNodeDraggable(elm) {
@@ -329,6 +332,7 @@
         elm.style.left = newLeft + 'px';
         elm.style.top = newTop + 'px';
 
+        // --- Symmetry/Mirror Fix ---
         const pairId = elm.dataset.pair;
         if (pairId) {
           const pairNode = container.querySelector(`[data-id="${pairId}"]`);
@@ -404,7 +408,7 @@
       boneIndexMap[j.id] = index;
     });
 
-    // Parent setup and local positioning
+    // Fix: Proper Hierarchy Parent/Child Connections
     defaultJoints.forEach(j => {
       const bone = bonesMap[j.id];
       const worldPos = calculatedWorldPositions[j.id];
@@ -414,6 +418,7 @@
         const parentWorldPos = calculatedWorldPositions[j.parent];
         bone.position.copy(worldPos.clone().sub(parentWorldPos));
       } else {
+        // Hips: World to local copy
         characterGroup.add(bone);
         bone.position.copy(worldPos);
       }
@@ -422,7 +427,7 @@
     // Create Skeleton
     const skeleton = new THREE.Skeleton(bonesList);
 
-    // 2. Convert standard Mesh/Group to THREE.SkinnedMesh
+    // 2. Skin the Mesh
     const meshesToSkin = [];
     activeModel.traverse(child => {
       if (child.isMesh && child.geometry) {
@@ -468,6 +473,7 @@
       skinnedMesh.rotation.copy(oldMesh.rotation);
       skinnedMesh.scale.copy(oldMesh.scale);
 
+      // Use matrixWorld for stable binding
       skinnedMesh.bind(skeleton, skinnedMesh.matrixWorld);
 
       if (oldMesh.parent) {
@@ -476,7 +482,7 @@
       }
     });
 
-    // 3. Create interactive visual handles for bones
+    // 3. Create interactive handles and SkeletonHelper
     defaultJoints.forEach(j => {
       const bone = bonesMap[j.id];
 
