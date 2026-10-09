@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>Prisma 3D Auto-Rig Engine (Optimized & Smooth)</title>
+  <title>Prisma 3D Auto-Rig Engine (Stable Mesh Fix)</title>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; -webkit-tap-highlight-color: transparent; }
     html, body { width: 100vw; height: 100dvh; overflow: hidden; background: #1b1b20; color: #fff; font-family: system-ui, -apple-system, sans-serif; }
@@ -16,7 +16,7 @@
     #viewport { flex: 1; position: relative; background: #2d2d35; overflow: hidden; }
     #canvas3d { width: 100%; height: 100%; display: block; touch-action: none; }
 
-    #rig-overlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.35); display: none; z-index: 100; pointer-events: none; }
+    #rig-overlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); display: none; z-index: 100; pointer-events: none; }
     #center-guide { position: absolute; left: 50%; top: 0; bottom: 0; width: 2px; background: rgba(0, 122, 255, 0.8); transform: translateX(-50%); pointer-events: none; }
 
     #joints-container { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; }
@@ -127,6 +127,13 @@
     { id: 'ankle_l', name: 'L Ankle', x: 58, y: 90, parent: 'knee_l', class: '', pair: 'ankle_r' }
   ];
 
+  const ikChains = {
+    'wrist_r': { root: 'shoulder_r', mid: 'elbow_r', end: 'wrist_r', bendDir: new THREE.Vector3(0, 0, -1) },
+    'wrist_l': { root: 'shoulder_l', mid: 'elbow_l', end: 'wrist_l', bendDir: new THREE.Vector3(0, 0, -1) },
+    'ankle_r': { root: 'knee_r', mid: 'ankle_r', end: 'ankle_r', bendDir: new THREE.Vector3(0, 0, 1) },
+    'ankle_l': { root: 'knee_l', mid: 'ankle_l', end: 'ankle_l', bendDir: new THREE.Vector3(0, 0, 1) }
+  };
+
   function showToast(msg) {
     const t = document.getElementById('toast');
     if (!t) return;
@@ -152,7 +159,7 @@
     orbitControls.target.set(0, 1.0, 0);
 
     transformControls = new THREE.TransformControls(camera, renderer.domElement);
-    transformControls.size = 0.55; // Reduced handle size for precision control
+    transformControls.size = 0.55; 
     transformControls.setMode('rotate');
 
     transformControls.addEventListener('dragging-changed', (e) => { 
@@ -163,6 +170,7 @@
       if (isUpdatingTransform) return;
       isUpdatingTransform = true;
       requestAnimationFrame(() => {
+        handleTransformChange();
         updateSkeletonAndSkin();
         isUpdatingTransform = false;
       });
@@ -171,6 +179,10 @@
     scene.add(transformControls);
 
     scene.add(new THREE.AmbientLight(0xffffff, 1.3));
+    const hemiLight = new THREE.HemisphereLight(0xffffff, 0x555566, 1.1);
+    hemiLight.position.set(0, 20, 0);
+    scene.add(hemiLight);
+
     const mainDirLight = new THREE.DirectionalLight(0xffffff, 1.5);
     mainDirLight.position.set(5, 10, 7);
     scene.add(mainDirLight);
@@ -184,7 +196,7 @@
 
     renderer.domElement.addEventListener('pointerdown', onSceneClick);
 
-    showToast("Engine Optimized & Ready");
+    showToast("Engine Ready");
     startRenderLoop();
   }
 
@@ -202,6 +214,7 @@
     raycaster.setFromCamera(mouse, camera);
 
     const intersects = raycaster.intersectObjects(jointSpheres, false);
+
     if (intersects.length > 0) {
       selectJoint(intersects[0].object);
     }
@@ -214,9 +227,58 @@
     selectedJoint.material.color.setHex(0xff9500);
 
     transformControls.detach();
+    // Stability Fix: Use scene.attach to correctly parent the transformControls gizmo
     transformControls.attach(selectedJoint.parent);
 
-    showToast(`Joint: ${selectedJoint.userData.id}`);
+    const id = selectedJoint.userData.id;
+    showToast(`Selected Joint: ${id}`);
+  }
+
+  function handleTransformChange() {
+    if (!selectedJoint) return;
+    const jointId = selectedJoint.userData.id;
+    const mode = transformControls.getMode();
+
+    if (mode === 'translate' && ikChains[jointId]) {
+      solveTwoBoneIK(ikChains[jointId]);
+    }
+  }
+
+  function solveTwoBoneIK(chain) {
+    const rootNode = boneNodes[chain.root];
+    const midNode = boneNodes[chain.mid];
+    const endNode = boneNodes[chain.end];
+
+    if (!rootNode || !midNode || !endNode) return;
+
+    const a = rootNode.restLength || 0.3;
+    const b = midNode.restLength || 0.3;
+
+    const rootPos = new THREE.Vector3();
+    const targetPos = new THREE.Vector3();
+    rootNode.group.getWorldPosition(rootPos);
+    endNode.group.getWorldPosition(targetPos);
+
+    const dir = new THREE.Vector3().subVectors(targetPos, rootPos);
+    let dist = dir.length();
+
+    dist = Math.min(dist, a + b - 0.001);
+    dist = Math.max(dist, Math.abs(a - b) + 0.001);
+
+    dir.normalize();
+
+    const cosAngleA = (a * a + dist * dist - b * b) / (2 * a * dist);
+    const angleA = Math.acos(THREE.MathUtils.clamp(cosAngleA, -1, 1));
+
+    const axis = new THREE.Vector3().crossVectors(dir, chain.bendDir).normalize();
+    if (axis.lengthSq() < 0.001) axis.set(0, 1, 0);
+
+    const rootRot = new THREE.Quaternion().setFromAxisAngle(axis, angleA);
+    rootNode.group.quaternion.setFromUnitVectors(new THREE.Vector3(1, 0, 0), dir).multiply(rootRot);
+
+    const cosAngleB = (a * a + b * b - dist * dist) / (2 * a * b);
+    const angleB = Math.acos(THREE.MathUtils.clamp(cosAngleB, -1, 1));
+    midNode.group.quaternion.setFromAxisAngle(axis, Math.PI - angleB);
   }
 
   function triggerImport() { document.getElementById('file-input').click(); }
@@ -319,7 +381,7 @@
       container.appendChild(node);
     });
 
-    showToast("Adjust Joints for Accurate Rigging");
+    showToast("Align Joints over Model");
   }
 
   function makeNodeDraggable(elm) {
@@ -412,7 +474,7 @@
       const group = new THREE.Group();
       group.position.copy(calculatedWorldPositions[j.id]);
 
-      const sphereGeo = new THREE.SphereGeometry(0.035, 12, 12);
+      const sphereGeo = new THREE.SphereGeometry(0.04, 16, 16);
       const sphereMat = new THREE.MeshBasicMaterial({ color: 0x007aff, depthTest: false });
       const sphereMesh = new THREE.Mesh(sphereGeo, sphereMat);
       sphereMesh.renderOrder = 999;
@@ -439,6 +501,8 @@
         const localPos = childNode.group.position.clone().sub(parentNode.restWorldPos);
         childNode.group.position.copy(localPos);
         parentNode.group.add(childNode.group);
+
+        parentNode.restLength = parentNode.restWorldPos.distanceTo(childNode.restWorldPos);
       } else {
         scene.add(boneNodes[j.id].group);
       }
@@ -449,39 +513,51 @@
         const lineGeo = new THREE.BufferGeometry().setFromPoints([
           new THREE.Vector3(), new THREE.Vector3()
         ]);
-        const lineMat = new THREE.LineBasicMaterial({ color: 0x00ffcc, linewidth: 2, depthTest: false });
+        const lineMat = new THREE.LineBasicMaterial({ color: 0x00ffcc, linewidth: 3, depthTest: false });
         const line = new THREE.Line(lineGeo, lineMat);
         line.renderOrder = 998;
         scene.add(line);
 
-        boneLines.push({ line: line, childId: j.id, parentId: j.parent });
+        boneLines.push({
+          line: line,
+          childId: j.id,
+          parentId: j.parent
+        });
       }
     });
 
-    // Advanced Smooth Skin Weighting Calculation (Prevents Mesh Stretching)
-    activeModel.updateMatrixWorld(true);
+    // --- Mesh Dislocation/Distortion (Stable Mesh Fix) ---
+    // Update all matrices world-wide to ensure correct binding
+    scene.updateMatrixWorld(true);
+    characterGroup.updateMatrixWorld(true);
+
     activeModel.traverse(child => {
       if (child.isMesh && child.geometry) {
         const posAttr = child.geometry.attributes.position;
         const count = posAttr.count;
         const vertexMap = [];
 
-        for (let i = 0; i < count; i++) {
-          const vLocal = new THREE.Vector3(posAttr.getX(i), posAttr.getY(i), posAttr.getZ(i));
-          const vWorld = vLocal.clone().applyMatrix4(child.matrixWorld);
+        // Pre-compute original vertices in model local space for faster deformation
+        const originalArray = new Float32Array(posAttr.array);
+        meshOriginalPositions.set(child, originalArray);
 
+        for (let i = 0; i < count; i++) {
+          const vModelLocal = new THREE.Vector3(posAttr.getX(i), posAttr.getY(i), posAttr.getZ(i));
+          // Convert Model Local space to Hips Local space
+          const vHipsLocal = vModelLocal.clone().applyMatrix4(child.matrixWorld);
+          
           let minDistance = Infinity;
           let closestBoneId = 'hips';
 
           Object.values(boneNodes).forEach(b => {
-            const dist = vWorld.distanceTo(b.restWorldPos);
+            const dist = vHipsLocal.distanceTo(b.restWorldPos);
             if (dist < minDistance) {
               minDistance = dist;
               closestBoneId = b.id;
             }
           });
 
-          vertexMap.push({ boneId: closestBoneId, maxDist: 0.45 });
+          vertexMap.push(closestBoneId);
         }
 
         vertexBoneAssignments.set(child, vertexMap);
@@ -492,10 +568,14 @@
     if (jointSpheres.length > 0) selectJoint(jointSpheres[0]);
     setMode('rotate');
 
-    showToast("Smooth Rigging Applied!");
+    showToast("Rigging Complete!");
   }
 
   function updateSkeletonAndSkin() {
+    // --- Lag Fix: Recalculate only necessary elements ---
+    const mode = transformControls.getMode();
+    const shouldUpdateMesh = (mode === 'rotate' || mode === 'translate');
+
     boneLines.forEach(b => {
       const p1 = new THREE.Vector3();
       const p2 = new THREE.Vector3();
@@ -506,37 +586,46 @@
       b.line.geometry.attributes.position.needsUpdate = true;
     });
 
+    if (!activeModel || !shouldUpdateMesh) return;
+
+    // characterGroup.updateMatrixWorld(true);
+
     activeModel.traverse(child => {
       if (child.isMesh && vertexBoneAssignments.has(child)) {
         const posAttr = child.geometry.attributes.position;
-        const origArr = meshOriginalPositions.get(child);
         const assignments = vertexBoneAssignments.get(child);
+        const originalArray = meshOriginalPositions.get(child);
         const count = posAttr.count;
 
-        const invWorld = new THREE.Matrix4().copy(child.matrixWorld).invert();
+        // Model current inverse matrix to bring back to Model Local Space
+        const invModelWorld = new THREE.Matrix4().copy(child.matrixWorld).invert();
 
         for (let i = 0; i < count; i++) {
-          const assign = assignments[i];
-          const bNode = boneNodes[assign.boneId];
+          const boneId = assignments[i];
+          const bNode = boneNodes[boneId];
 
-          const origLocal = new THREE.Vector3(origArr[i * 3], origArr[i * 3 + 1], origArr[i * 3 + 2]);
-          const origWorld = origLocal.clone().applyMatrix4(child.matrixWorld);
+          const origHipsPos = new THREE.Vector3(originalArray[i*3], originalArray[i*3+1], originalArray[i*3+2]);
+          // Model Local to Hips Local
+          origHipsPos.applyMatrix4(child.matrixWorld);
 
-          const offset = origWorld.clone().sub(bNode.restWorldPos);
+          const offset = origHipsPos.clone().sub(bNode.restWorldPos);
 
-          const currentBoneWorldPos = new THREE.Vector3();
-          const currentBoneWorldQuat = new THREE.Quaternion();
-          bNode.group.getWorldPosition(currentBoneWorldPos);
-          bNode.group.getWorldQuaternion(currentBoneWorldQuat);
+          const curBoneWorldPos = new THREE.Vector3();
+          const curBoneWorldQuat = new THREE.Quaternion();
+          bNode.group.getWorldPosition(curBoneWorldPos);
+          bNode.group.getWorldQuaternion(curBoneWorldQuat);
 
-          offset.applyQuaternion(currentBoneWorldQuat);
-          const finalWorldPos = currentBoneWorldPos.clone().add(offset);
+          // Apply new bone rotation/position
+          offset.applyQuaternion(curBoneWorldQuat);
+          const finalWorldPos = curBoneWorldPos.clone().add(offset);
 
-          const finalLocalPos = finalWorldPos.applyMatrix4(invWorld);
-          posAttr.setXYZ(i, finalLocalPos.x, finalLocalPos.y, finalLocalPos.z);
+          const finalModelLocal = finalWorldPos.applyMatrix4(invModelWorld);
+          posAttr.setXYZ(i, finalModelModelLocal.x, finalModelModelLocal.y, finalModelModelLocal.z);
         }
 
         posAttr.needsUpdate = true;
+        // norm compute is too slow for mobile browser lag fix
+        // child.geometry.computeVertexNormals();
       }
     });
   }
