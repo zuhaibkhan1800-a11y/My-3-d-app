@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>Prisma 3D Auto-Rig Engine (Full Joint Movement Fix)</title>
+  <title>Prisma 3D Auto-Rig Engine (Child Bone Control Fix)</title>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; -webkit-tap-highlight-color: transparent; }
     html, body { width: 100vw; height: 100dvh; overflow: hidden; background: #1b1b20; color: #fff; font-family: system-ui, -apple-system, sans-serif; }
@@ -107,6 +107,7 @@
   let boneHelpers = [];
   let skeletonHelper = null;
   let selectedBone = null;
+  let activeSkeleton = null;
 
   const defaultJoints = [
     { id: 'hips', name: 'Hips', x: 50, y: 52, parent: null, class: 'hip' },
@@ -153,9 +154,16 @@
     transformControls = new THREE.TransformControls(camera, renderer.domElement);
     transformControls.size = 0.55; 
     transformControls.setMode('rotate');
+    transformControls.space = 'local'; // Fix: Force local transformation space for child bones
 
     transformControls.addEventListener('dragging-changed', (e) => { 
       orbitControls.enabled = !e.value; 
+    });
+
+    transformControls.addEventListener('change', () => {
+      if (activeSkeleton) {
+        activeSkeleton.update();
+      }
     });
 
     scene.add(transformControls);
@@ -212,7 +220,7 @@
 
     transformControls.detach();
     transformControls.attach(bone);
-    showToast(`Selected Joint: ${bone.name}`);
+    showToast(`Joint Selected: ${bone.name}`);
   }
 
   function triggerImport() { document.getElementById('file-input').click(); }
@@ -281,6 +289,7 @@
     bonesMap = {};
     boneHelpers = [];
     selectedBone = null;
+    activeSkeleton = null;
   }
 
   function openRigOverlay() {
@@ -394,7 +403,7 @@
       calculatedWorldPositions[id] = targetPos;
     });
 
-    // 1. Build Bones Hierarchy
+    // 1. Build Skeleton Bones Tree
     const bonesList = [];
     const boneIndexMap = {};
 
@@ -413,8 +422,7 @@
       if (j.parent && bonesMap[j.parent]) {
         bonesMap[j.parent].add(bone);
         const parentWorldPos = calculatedWorldPositions[j.parent];
-        const offset = worldPos.clone().sub(parentWorldPos);
-        bone.position.copy(offset);
+        bone.position.copy(worldPos.clone().sub(parentWorldPos));
       } else {
         characterGroup.add(bone);
         bone.position.copy(worldPos);
@@ -422,9 +430,9 @@
     });
 
     characterGroup.updateMatrixWorld(true);
-    const skeleton = new THREE.Skeleton(bonesList);
+    activeSkeleton = new THREE.Skeleton(bonesList);
 
-    // 2. SkinnedMesh Generation with Multi-Bone Smooth Weighting Fix
+    // 2. SkinnedMesh Vertex Assignment & Direct Skin Bind
     const meshesToSkin = [];
     activeModel.traverse(child => {
       if (child.isMesh && child.geometry) {
@@ -447,25 +455,26 @@
         vWorld.set(posAttr.getX(i), posAttr.getY(i), posAttr.getZ(i));
         vWorld.applyMatrix4(oldMesh.matrixWorld);
 
-        // Find distances to all bones for smooth deform binding
-        let distances = [];
+        let closestBoneId = 'hips';
+        let minDist = Infinity;
+
         defaultJoints.forEach(j => {
           const dist = vWorld.distanceTo(calculatedWorldPositions[j.id]);
-          distances.push({ id: j.id, dist: dist, idx: boneIndexMap[j.id] });
+          if (dist < minDist) {
+            minDist = dist;
+            closestBoneId = j.id;
+          }
         });
 
-        distances.sort((a, b) => a.dist - b.dist);
-
-        // Closest primary bone gets 1.0 weight
-        const primaryBoneIdx = distances[0].idx;
+        const boneIdx = boneIndexMap[closestBoneId];
         
-        skinIndices[i * 4] = primaryBoneIdx;
-        skinIndices[i * 4 + 1] = distances[1].idx;
+        skinIndices[i * 4] = boneIdx;
+        skinIndices[i * 4 + 1] = 0;
         skinIndices[i * 4 + 2] = 0;
         skinIndices[i * 4 + 3] = 0;
 
-        skinWeights[i * 4] = 0.85;
-        skinWeights[i * 4 + 1] = 0.15;
+        skinWeights[i * 4] = 1.0;
+        skinWeights[i * 4 + 1] = 0.0;
         skinWeights[i * 4 + 2] = 0.0;
         skinWeights[i * 4 + 3] = 0.0;
       }
@@ -477,7 +486,7 @@
       newMaterial.skinning = true;
 
       const skinnedMesh = new THREE.SkinnedMesh(geometry, newMaterial);
-      skinnedMesh.bind(skeleton, oldMesh.matrixWorld);
+      skinnedMesh.bind(activeSkeleton, oldMesh.matrixWorld);
 
       if (oldMesh.parent) {
         oldMesh.parent.add(skinnedMesh);
@@ -485,7 +494,7 @@
       }
     });
 
-    // 3. Render Interactive Joint Handles
+    // 3. Render Helper Nodes
     defaultJoints.forEach(j => {
       const bone = bonesMap[j.id];
 
@@ -502,4 +511,61 @@
 
     skeletonHelper = new THREE.SkeletonHelper(characterGroup);
     skeletonHelper.material.linewidth = 2;
-    scene.add(skeletonHelp
+    scene.add(skeletonHelper);
+
+    closeRigOverlay();
+    if (bonesList.length > 0) selectBone(bonesList[0]);
+
+    setMode('rotate');
+    showToast("Rigging Done! All Joints Active");
+  }
+
+  function startRenderLoop() {
+    requestAnimationFrame(startRenderLoop);
+    orbitControls.update();
+    renderer.render(scene, camera);
+    drawTimelineCanvas();
+  }
+
+  function drawTimelineCanvas() {
+    const cvs = document.getElementById('tl-canvas');
+    const wrap = document.getElementById('tl-canvas-wrap');
+    if (!cvs || !wrap) return;
+
+    cvs.width = wrap.clientWidth; cvs.height = wrap.clientHeight;
+    const ctx = cvs.getContext('2d');
+    ctx.fillStyle = '#121216'; ctx.fillRect(0, 0, cvs.width, cvs.height);
+
+    const px = (currentTime / duration) * cvs.width;
+    ctx.strokeStyle = '#007aff'; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.moveTo(px, 0); ctx.lineTo(px, cvs.height); ctx.stroke();
+  }
+
+  function resetCamera() { camera.position.set(0, 1.2, 3.2); orbitControls.target.set(0, 1.0, 0); }
+  function togglePlay() { isPlaying = !isPlaying; }
+
+  function setMode(m) { 
+    if (transformControls) {
+      transformControls.setMode(m);
+      transformControls.space = 'local';
+    }
+    document.getElementById('btn-rotate').classList.toggle('active', m === 'rotate');
+    document.getElementById('btn-move').classList.toggle('active', m === 'translate');
+    showToast(`Mode: ${m.toUpperCase()}`);
+  }
+
+  function deleteSelected() { 
+    if (activeModel) { 
+      characterGroup.remove(activeModel); 
+      activeModel = null; 
+      clearRig();
+      showToast("Model Deleted!");
+    }
+  }
+  function addKeyframe() { showToast("Keyframe Added!"); }
+  function seekTimeline(e) { showToast("Timeline Seeked"); }
+
+  window.addEventListener('load', init3DEngine);
+</script>
+</body>
+</html>
