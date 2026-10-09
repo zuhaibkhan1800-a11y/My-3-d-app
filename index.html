@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>Prisma 3D Auto-Rig Engine (Unlocked Movement)</title>
+  <title>Prisma 3D Auto-Rig Engine (Smart FK Workflow)</title>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; -webkit-tap-highlight-color: transparent; }
     html, body { width: 100vw; height: 100dvh; overflow: hidden; background: #1b1b20; color: #fff; font-family: system-ui, -apple-system, sans-serif; }
@@ -219,7 +219,13 @@
 
     transformControls.detach();
     transformControls.attach(bone);
-    showToast(`Selected: ${bone.name}`);
+
+    // Smart FK Rule: Child bones auto-switch to Rotate mode to prevent mesh tearing
+    if (bone.name !== 'hips') {
+      setMode('rotate');
+    }
+
+    showToast(`Joint: ${bone.name}`);
   }
 
   function triggerImport() { document.getElementById('file-input').click(); }
@@ -401,7 +407,7 @@
       calculatedWorldPositions[id] = targetPos;
     });
 
-    // 1. Build Bones Tree
+    // 1. Build Bones Hierarchy
     const bonesList = [];
     const boneIndexMap = {};
 
@@ -431,7 +437,7 @@
     characterGroup.updateMatrixWorld(true);
     activeSkeleton = new THREE.Skeleton(bonesList);
 
-    // 2. SkinnedMesh Smooth Conversion
+    // 2. SkinnedMesh Conversion with Dual-Bone Weights
     const meshesToSkin = [];
     activeModel.traverse(child => {
       if (child.isMesh && child.geometry) {
@@ -495,7 +501,7 @@
       }
     });
 
-    // 3. Render Joint Spheres Only
+    // 3. Render Joint Spheres Only (Dots Only UI)
     defaultJoints.forEach(j => {
       const bone = bonesMap[j.id];
 
@@ -514,7 +520,7 @@
     if (bonesList.length > 0) selectBone(bonesList[0]);
 
     setMode('rotate');
-    showToast("Rigging Attached & Unlocked!");
+    showToast("Rigging Done! Smart FK Active");
   }
 
   function startRenderLoop() {
@@ -542,6 +548,12 @@
   function togglePlay() { isPlaying = !isPlaying; }
 
   function setMode(m) { 
+    // Guard: Prevent translate mode on child bones to protect mesh integrity
+    if (m === 'translate' && selectedBone && selectedBone.name !== 'hips') {
+      showToast("Use Rotate Mode for Limb Joints");
+      m = 'rotate';
+    }
+
     if (transformControls) {
       transformControls.setMode(m);
       transformControls.space = 'local';
