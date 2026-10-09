@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>Prisma 3D Auto-Rig Engine (Mesh Movement Fix)</title>
+  <title>Prisma 3D Auto-Rig Engine (Perfect Skin Bind)</title>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; -webkit-tap-highlight-color: transparent; }
     html, body { width: 100vw; height: 100dvh; overflow: hidden; background: #1b1b20; color: #fff; font-family: system-ui, -apple-system, sans-serif; }
@@ -394,7 +394,7 @@
       calculatedWorldPositions[id] = targetPos;
     });
 
-    // 1. Build Skeleton Hierarchy
+    // 1. Build Bones
     const bonesList = [];
     const boneIndexMap = {};
 
@@ -423,7 +423,7 @@
     characterGroup.updateMatrixWorld(true);
     const skeleton = new THREE.Skeleton(bonesList);
 
-    // 2. Mesh Skinning with Explicit Matrix Binding
+    // 2. Direct Local SkinnedMesh Conversion
     const meshesToSkin = [];
     activeModel.traverse(child => {
       if (child.isMesh && child.geometry) {
@@ -438,7 +438,7 @@
       const posAttr = geometry.attributes.position;
       const vertexCount = posAttr.count;
 
-      const skinIndices = new Float32Array(vertexCount * 4);
+      const skinIndices = new Uint16Array(vertexCount * 4);
       const skinWeights = new Float32Array(vertexCount * 4);
       const vWorld = new THREE.Vector3();
 
@@ -474,12 +474,10 @@
       geometry.setAttribute('skinWeight', new THREE.Float32BufferAttribute(skinWeights, 4));
 
       const skinnedMesh = new THREE.SkinnedMesh(geometry, oldMesh.material);
-      skinnedMesh.position.copy(oldMesh.position);
-      skinnedMesh.rotation.copy(oldMesh.rotation);
-      skinnedMesh.scale.copy(oldMesh.scale);
-
-      // Exact Pose Bind Fix
-      skinnedMesh.bind(skeleton, skinnedMesh.matrixWorld);
+      skinnedMesh.matrixAutoUpdate = true;
+      
+      // Bind skeleton directly
+      skinnedMesh.bind(skeleton);
 
       if (oldMesh.parent) {
         oldMesh.parent.add(skinnedMesh);
@@ -487,7 +485,7 @@
       }
     });
 
-    // 3. Render Joint Helpers
+    // 3. Helper Handles
     defaultJoints.forEach(j => {
       const bone = bonesMap[j.id];
 
