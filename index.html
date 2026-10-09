@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>Prisma 3D Auto-Rig Engine (Fixed Skinning & Constraints)</title>
+  <title>Prisma 3D Auto-Rig Engine (Unlocked Movement)</title>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; -webkit-tap-highlight-color: transparent; }
     html, body { width: 100vw; height: 100dvh; overflow: hidden; background: #1b1b20; color: #fff; font-family: system-ui, -apple-system, sans-serif; }
@@ -160,12 +160,6 @@
     });
 
     transformControls.addEventListener('change', () => {
-      // Prevent child bones from stretching away in Move mode
-      if (selectedBone && transformControls.getMode() === 'translate' && selectedBone.name !== 'hips') {
-        if (selectedBone.userData.restOffset) {
-          selectedBone.position.copy(selectedBone.userData.restOffset);
-        }
-      }
       if (activeSkeleton) {
         activeSkeleton.update();
       }
@@ -225,13 +219,7 @@
 
     transformControls.detach();
     transformControls.attach(bone);
-
-    // Auto-switch to Rotate Mode for child bones to prevent stretching
-    if (bone.name !== 'hips' && transformControls.getMode() === 'translate') {
-      setMode('rotate');
-    }
-
-    showToast(`Joint Selected: ${bone.name}`);
+    showToast(`Selected: ${bone.name}`);
   }
 
   function triggerImport() { document.getElementById('file-input').click(); }
@@ -413,7 +401,7 @@
       calculatedWorldPositions[id] = targetPos;
     });
 
-    // 1. Build Skeleton Bones Tree
+    // 1. Build Bones Tree
     const bonesList = [];
     const boneIndexMap = {};
 
@@ -434,18 +422,16 @@
         const parentWorldPos = calculatedWorldPositions[j.parent];
         const offset = worldPos.clone().sub(parentWorldPos);
         bone.position.copy(offset);
-        bone.userData.restOffset = offset.clone();
       } else {
         characterGroup.add(bone);
         bone.position.copy(worldPos);
-        bone.userData.restOffset = worldPos.clone();
       }
     });
 
     characterGroup.updateMatrixWorld(true);
     activeSkeleton = new THREE.Skeleton(bonesList);
 
-    // 2. SkinnedMesh Conversion with Dual-Bone Smooth Weights
+    // 2. SkinnedMesh Smooth Conversion
     const meshesToSkin = [];
     activeModel.traverse(child => {
       if (child.isMesh && child.geometry) {
@@ -476,7 +462,6 @@
 
         distList.sort((a, b) => a.dist - b.dist);
 
-        // Blended weight assignment for smooth elbow/knee bending
         const primary = distList[0];
         const secondary = distList[1];
 
@@ -510,7 +495,7 @@
       }
     });
 
-    // 3. Render Spheres (Dots Only UI)
+    // 3. Render Joint Spheres Only
     defaultJoints.forEach(j => {
       const bone = bonesMap[j.id];
 
@@ -529,7 +514,7 @@
     if (bonesList.length > 0) selectBone(bonesList[0]);
 
     setMode('rotate');
-    showToast("Rigging Attached! Mesh Deform Active");
+    showToast("Rigging Attached & Unlocked!");
   }
 
   function startRenderLoop() {
