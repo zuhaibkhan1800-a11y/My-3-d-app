@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>Prisma 3D Engine (Skinning Fixed)</title>
+  <title>Prisma 3D Engine (IK & Deform Fix)</title>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; -webkit-tap-highlight-color: transparent; }
     html, body { width: 100vw; height: 100dvh; overflow: hidden; background: #1b1b20; color: #fff; font-family: system-ui, -apple-system, sans-serif; }
@@ -156,6 +156,16 @@
 
     transformControls.addEventListener('dragging-changed', (e) => { 
       orbitControls.enabled = !e.value; 
+    });
+
+    transformControls.addEventListener('change', () => {
+      // Prevent bone translation detachment except for Hips
+      if (selectedBone && transformControls.getMode() === 'translate' && selectedBone.name !== 'hips') {
+        const parentPos = new THREE.Vector3();
+        if (selectedBone.parent && selectedBone.parent.isBone) {
+          selectedBone.position.set(selectedBone.userData.restOffset.x, selectedBone.userData.restOffset.y, selectedBone.userData.restOffset.z);
+        }
+      }
     });
 
     scene.add(transformControls);
@@ -394,7 +404,7 @@
       calculatedWorldPositions[id] = targetPos;
     });
 
-    // 1. Create Bones Hierarchy
+    // 1. Create Bones Hierarchy & Lock Rest Offset
     const bonesList = [];
     const boneIndexMap = {};
 
@@ -413,17 +423,20 @@
       if (j.parent && bonesMap[j.parent]) {
         bonesMap[j.parent].add(bone);
         const parentWorldPos = calculatedWorldPositions[j.parent];
-        bone.position.copy(worldPos.clone().sub(parentWorldPos));
+        const offset = worldPos.clone().sub(parentWorldPos);
+        bone.position.copy(offset);
+        bone.userData.restOffset = offset.clone();
       } else {
         characterGroup.add(bone);
         bone.position.copy(worldPos);
+        bone.userData.restOffset = worldPos.clone();
       }
     });
 
     characterGroup.updateMatrixWorld(true);
     const skeleton = new THREE.Skeleton(bonesList);
 
-    // 2. Bind SkinnedMesh + Force Shader Skinning Flag
+    // 2. SkinnedMesh Conversion with Shader Skinning Support
     const meshesToSkin = [];
     activeModel.traverse(child => {
       if (child.isMesh && child.geometry) {
@@ -473,7 +486,6 @@
       geometry.setAttribute('skinIndex', new THREE.Uint16BufferAttribute(skinIndices, 4));
       geometry.setAttribute('skinWeight', new THREE.Float32BufferAttribute(skinWeights, 4));
 
-      // Enable WebGL Shader Material Skinning Flag
       const newMaterial = oldMesh.material.clone();
       newMaterial.skinning = true;
 
@@ -486,7 +498,7 @@
       }
     });
 
-    // 3. Render Bone Controls
+    // 3. Joint Handles Setup
     defaultJoints.forEach(j => {
       const bone = bonesMap[j.id];
 
@@ -507,11 +519,11 @@
 
     closeRigOverlay();
     if (bonesList.length > 0) selectBone(bonesList[0]);
-    
-    // Default Prisma 3D mode: ROTATE MODE
+
+    // Prisma 3D default animation mode: Rotate
     setMode('rotate');
 
-    showToast("Rigging Attached & Skinning Enabled!");
+    showToast("Rigging Attached & FK/IK Deform Enabled!");
   }
 
   function startRenderLoop() {
