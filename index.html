@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>Prisma 3D Auto-Rig Engine (Perfect Skin Bind)</title>
+  <title>Prisma 3D Engine (Skinning Fixed)</title>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; -webkit-tap-highlight-color: transparent; }
     html, body { width: 100vw; height: 100dvh; overflow: hidden; background: #1b1b20; color: #fff; font-family: system-ui, -apple-system, sans-serif; }
@@ -394,7 +394,7 @@
       calculatedWorldPositions[id] = targetPos;
     });
 
-    // 1. Build Bones
+    // 1. Create Bones Hierarchy
     const bonesList = [];
     const boneIndexMap = {};
 
@@ -423,7 +423,7 @@
     characterGroup.updateMatrixWorld(true);
     const skeleton = new THREE.Skeleton(bonesList);
 
-    // 2. Direct Local SkinnedMesh Conversion
+    // 2. Bind SkinnedMesh + Force Shader Skinning Flag
     const meshesToSkin = [];
     activeModel.traverse(child => {
       if (child.isMesh && child.geometry) {
@@ -473,11 +473,12 @@
       geometry.setAttribute('skinIndex', new THREE.Uint16BufferAttribute(skinIndices, 4));
       geometry.setAttribute('skinWeight', new THREE.Float32BufferAttribute(skinWeights, 4));
 
-      const skinnedMesh = new THREE.SkinnedMesh(geometry, oldMesh.material);
-      skinnedMesh.matrixAutoUpdate = true;
-      
-      // Bind skeleton directly
-      skinnedMesh.bind(skeleton);
+      // Enable WebGL Shader Material Skinning Flag
+      const newMaterial = oldMesh.material.clone();
+      newMaterial.skinning = true;
+
+      const skinnedMesh = new THREE.SkinnedMesh(geometry, newMaterial);
+      skinnedMesh.bind(skeleton, oldMesh.matrixWorld);
 
       if (oldMesh.parent) {
         oldMesh.parent.add(skinnedMesh);
@@ -485,7 +486,7 @@
       }
     });
 
-    // 3. Helper Handles
+    // 3. Render Bone Controls
     defaultJoints.forEach(j => {
       const bone = bonesMap[j.id];
 
@@ -506,9 +507,11 @@
 
     closeRigOverlay();
     if (bonesList.length > 0) selectBone(bonesList[0]);
+    
+    // Default Prisma 3D mode: ROTATE MODE
     setMode('rotate');
 
-    showToast("Rig Attached & Locked!");
+    showToast("Rigging Attached & Skinning Enabled!");
   }
 
   function startRenderLoop() {
