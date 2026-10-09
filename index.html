@@ -3,24 +3,24 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>Prisma 3D Auto-Rig Engine (Smooth & Optimized)</title>
+  <title>Prisma 3D Auto-Rig Engine (Symmetry Mode)</title>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; -webkit-tap-highlight-color: transparent; }
     html, body { width: 100vw; height: 100dvh; overflow: hidden; background: #1b1b20; color: #fff; font-family: system-ui, -apple-system, sans-serif; }
     #app { display: flex; flex-direction: column; width: 100%; height: 100dvh; position: relative; }
 
     #top-bar { height: 44px; background: #222228; display: flex; align-items: center; justify-content: space-between; padding: 0 12px; border-bottom: 1px solid #33333d; z-index: 10; }
-    .brand-title { font-size: 12px; font-weight: bold; color: #007aff; }
-    .icon-btn { background: none; border: none; color: #eee; font-size: 14px; cursor: pointer; padding: 6px; }
+    .brand-title { font-size: 11px; font-weight: bold; color: #007aff; letter-spacing: 0.5px; }
+    .icon-btn { background: none; border: none; color: #eee; font-size: 13px; cursor: pointer; padding: 6px; }
 
     #viewport { flex: 1; position: relative; background: #2d2d35; overflow: hidden; }
     #canvas3d { width: 100%; height: 100%; display: block; touch-action: none; }
 
-    #rig-overlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); display: none; z-index: 100; touch-action: none; }
-    #center-guide { position: absolute; left: 50%; top: 0; bottom: 0; width: 1px; background: rgba(255,255,255,0.7); transform: translateX(-50%); pointer-events: none; }
+    #rig-overlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.45); display: none; z-index: 100; touch-action: none; }
+    #center-guide { position: absolute; left: 50%; top: 0; bottom: 0; width: 2px; background: rgba(0, 122, 255, 0.8); transform: translateX(-50%); pointer-events: none; }
 
     #joints-container { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: auto; }
-    .joint-node { position: absolute; width: 22px; height: 22px; border-radius: 50%; border: 2px solid #ffffff; background: #ff9500; transform: translate(-50%, -50%); cursor: pointer; touch-action: none; z-index: 101; box-shadow: 0 0 10px rgba(0,0,0,0.8); }
+    .joint-node { position: absolute; width: 24px; height: 24px; border-radius: 50%; border: 2px solid #ffffff; background: #ff9500; transform: translate(-50%, -50%); cursor: pointer; touch-action: none; z-index: 101; box-shadow: 0 0 8px rgba(0,0,0,0.6); }
     .joint-node.head { background: #30d158; }
     .joint-node.hip { background: #ff3b30; }
 
@@ -115,16 +115,16 @@
     { id: 'hips', name: 'Hips', x: 50, y: 52, parent: null, class: 'hip' },
     { id: 'neck', name: 'Neck', x: 50, y: 24, parent: 'hips', class: '' },
     { id: 'head', name: 'Head', x: 50, y: 16, parent: 'neck', class: 'head' },
-    { id: 'shoulder_r', name: 'R Shoulder', x: 38, y: 28, parent: 'neck', class: '' },
-    { id: 'elbow_r', name: 'R Elbow', x: 25, y: 28, parent: 'shoulder_r', class: '' },
-    { id: 'wrist_r', name: 'R Wrist', x: 12, y: 28, parent: 'elbow_r', class: '' },
-    { id: 'shoulder_l', name: 'L Shoulder', x: 62, y: 28, parent: 'neck', class: '' },
-    { id: 'elbow_l', name: 'L Elbow', x: 75, y: 28, parent: 'shoulder_l', class: '' },
-    { id: 'wrist_l', name: 'L Wrist', x: 88, y: 28, parent: 'elbow_l', class: '' },
-    { id: 'knee_r', name: 'R Knee', x: 42, y: 72, parent: 'hips', class: '' },
-    { id: 'ankle_r', name: 'R Ankle', x: 42, y: 90, parent: 'knee_r', class: '' },
-    { id: 'knee_l', name: 'L Knee', x: 58, y: 72, parent: 'hips', class: '' },
-    { id: 'ankle_l', name: 'L Ankle', x: 58, y: 90, parent: 'knee_l', class: '' }
+    { id: 'shoulder_r', name: 'R Shoulder', x: 38, y: 28, parent: 'neck', class: '', pair: 'shoulder_l' },
+    { id: 'elbow_r', name: 'R Elbow', x: 25, y: 28, parent: 'shoulder_r', class: '', pair: 'elbow_l' },
+    { id: 'wrist_r', name: 'R Wrist', x: 12, y: 28, parent: 'elbow_r', class: '', pair: 'wrist_l' },
+    { id: 'shoulder_l', name: 'L Shoulder', x: 62, y: 28, parent: 'neck', class: '', pair: 'shoulder_r' },
+    { id: 'elbow_l', name: 'L Elbow', x: 75, y: 28, parent: 'shoulder_l', class: '', pair: 'elbow_r' },
+    { id: 'wrist_l', name: 'L Wrist', x: 88, y: 28, parent: 'elbow_l', class: '', pair: 'wrist_r' },
+    { id: 'knee_r', name: 'R Knee', x: 42, y: 72, parent: 'hips', class: '', pair: 'knee_l' },
+    { id: 'ankle_r', name: 'R Ankle', x: 42, y: 90, parent: 'knee_r', class: '', pair: 'ankle_l' },
+    { id: 'knee_l', name: 'L Knee', x: 58, y: 72, parent: 'hips', class: '', pair: 'knee_r' },
+    { id: 'ankle_l', name: 'L Ankle', x: 58, y: 90, parent: 'knee_l', class: '', pair: 'ankle_r' }
   ];
 
   const ikChains = {
@@ -178,8 +178,8 @@
 
     scene.add(transformControls);
 
-    scene.add(new THREE.AmbientLight(0xffffff, 1.2));
-    const hemiLight = new THREE.HemisphereLight(0xffffff, 0x444455, 1.0);
+    scene.add(new THREE.AmbientLight(0xffffff, 1.3));
+    const hemiLight = new THREE.HemisphereLight(0xffffff, 0x555566, 1.1);
     hemiLight.position.set(0, 20, 0);
     scene.add(hemiLight);
 
@@ -373,12 +373,13 @@
       node.style.left = `${j.x}%`;
       node.style.top = `${j.y}%`;
       node.dataset.id = j.id;
+      if (j.pair) node.dataset.pair = j.pair;
 
       makeNodeDraggable(node);
       container.appendChild(node);
     });
 
-    showToast("Align Joints over Model");
+    showToast("Symmetry Active: Adjust Joints");
   }
 
   function makeNodeDraggable(elm) {
@@ -393,8 +394,28 @@
     window.addEventListener('pointermove', (e) => {
       if (active) {
         e.preventDefault();
-        elm.style.left = (e.clientX - initialX) + 'px';
-        elm.style.top = (e.clientY - initialY) + 'px';
+        const container = document.getElementById('joints-container');
+        const cWidth = container.clientWidth;
+
+        let newLeft = e.clientX - initialX;
+        let newTop = e.clientY - initialY;
+
+        elm.style.left = newLeft + 'px';
+        elm.style.top = newTop + 'px';
+
+        // --- MIRROR/SYMMETRY LOGIC ---
+        const pairId = elm.dataset.pair;
+        if (pairId) {
+          const pairNode = container.querySelector(`[data-id="${pairId}"]`);
+          if (pairNode) {
+            const centerX = cWidth / 2;
+            const distFromCenter = newLeft - centerX;
+            const mirroredLeft = centerX - distFromCenter;
+
+            pairNode.style.left = mirroredLeft + 'px';
+            pairNode.style.top = newTop + 'px';
+          }
+        }
       }
     });
 
