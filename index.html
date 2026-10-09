@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>Prisma 3D Auto-Rig Engine (Symmetry Mode)</title>
+  <title>Prisma 3D Auto-Rig Engine (Interactive Camera & Symmetry)</title>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; -webkit-tap-highlight-color: transparent; }
     html, body { width: 100vw; height: 100dvh; overflow: hidden; background: #1b1b20; color: #fff; font-family: system-ui, -apple-system, sans-serif; }
@@ -16,15 +16,16 @@
     #viewport { flex: 1; position: relative; background: #2d2d35; overflow: hidden; }
     #canvas3d { width: 100%; height: 100%; display: block; touch-action: none; }
 
-    #rig-overlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.45); display: none; z-index: 100; touch-action: none; }
+    /* Fix: pointer-events: none allow camera zoom & rotate through overlay */
+    #rig-overlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.35); display: none; z-index: 100; pointer-events: none; }
     #center-guide { position: absolute; left: 50%; top: 0; bottom: 0; width: 2px; background: rgba(0, 122, 255, 0.8); transform: translateX(-50%); pointer-events: none; }
 
-    #joints-container { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: auto; }
-    .joint-node { position: absolute; width: 24px; height: 24px; border-radius: 50%; border: 2px solid #ffffff; background: #ff9500; transform: translate(-50%, -50%); cursor: pointer; touch-action: none; z-index: 101; box-shadow: 0 0 8px rgba(0,0,0,0.6); }
+    #joints-container { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; }
+    .joint-node { position: absolute; width: 26px; height: 26px; border-radius: 50%; border: 2px solid #ffffff; background: #ff9500; transform: translate(-50%, -50%); cursor: pointer; touch-action: none; z-index: 101; box-shadow: 0 0 10px rgba(0,0,0,0.8); pointer-events: auto; }
     .joint-node.head { background: #30d158; }
     .joint-node.hip { background: #ff3b30; }
 
-    #rig-tools-bar { position: absolute; bottom: 18px; left: 50%; transform: translateX(-50%); display: flex; gap: 10px; background: rgba(34, 34, 40, 0.95); padding: 8px 16px; border-radius: 30px; border: 1px solid #444450; backdrop-filter: blur(8px); z-index: 102; }
+    #rig-tools-bar { position: absolute; bottom: 18px; left: 50%; transform: translateX(-50%); display: flex; gap: 10px; background: rgba(34, 34, 40, 0.95); padding: 8px 16px; border-radius: 30px; border: 1px solid #444450; backdrop-filter: blur(8px); z-index: 102; pointer-events: auto; }
     .rig-btn { background: #32323c; border: none; color: #fff; padding: 8px 18px; border-radius: 20px; font-size: 11px; font-weight: bold; cursor: pointer; }
     .rig-btn.apply { background: #30d158; color: #000; }
 
@@ -379,16 +380,18 @@
       container.appendChild(node);
     });
 
-    showToast("Symmetry Active: Adjust Joints");
+    showToast("Zoom/Rotate Enabled! Set Joints");
   }
 
   function makeNodeDraggable(elm) {
     let active = false, initialX, initialY;
 
     elm.addEventListener('pointerdown', (e) => {
+      e.stopPropagation();
       active = true;
       initialX = e.clientX - elm.offsetLeft;
       initialY = e.clientY - elm.offsetTop;
+      orbitControls.enabled = false; 
     });
 
     window.addEventListener('pointermove', (e) => {
@@ -403,7 +406,6 @@
         elm.style.left = newLeft + 'px';
         elm.style.top = newTop + 'px';
 
-        // --- MIRROR/SYMMETRY LOGIC ---
         const pairId = elm.dataset.pair;
         if (pairId) {
           const pairNode = container.querySelector(`[data-id="${pairId}"]`);
@@ -419,11 +421,17 @@
       }
     });
 
-    window.addEventListener('pointerup', () => { active = false; });
+    window.addEventListener('pointerup', () => { 
+      if(active) {
+        active = false; 
+        orbitControls.enabled = true;
+      }
+    });
   }
 
   function closeRigOverlay() {
     document.getElementById('rig-overlay').style.display = 'none';
+    orbitControls.enabled = true;
   }
 
   function applyAutoRigging() {
