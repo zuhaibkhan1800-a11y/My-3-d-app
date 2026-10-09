@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>Prisma 3D Auto-Rig Engine (Child Bone Control Fix)</title>
+  <title>Prisma 3D Auto-Rig Engine (Dots Only UI)</title>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; -webkit-tap-highlight-color: transparent; }
     html, body { width: 100vw; height: 100dvh; overflow: hidden; background: #1b1b20; color: #fff; font-family: system-ui, -apple-system, sans-serif; }
@@ -105,7 +105,6 @@
 
   let bonesMap = {};
   let boneHelpers = [];
-  let skeletonHelper = null;
   let selectedBone = null;
   let activeSkeleton = null;
 
@@ -154,7 +153,7 @@
     transformControls = new THREE.TransformControls(camera, renderer.domElement);
     transformControls.size = 0.55; 
     transformControls.setMode('rotate');
-    transformControls.space = 'local'; // Fix: Force local transformation space for child bones
+    transformControls.space = 'local';
 
     transformControls.addEventListener('dragging-changed', (e) => { 
       orbitControls.enabled = !e.value; 
@@ -283,7 +282,6 @@
 
   function clearRig() {
     transformControls.detach();
-    if (skeletonHelper) { scene.remove(skeletonHelper); skeletonHelper = null; }
     boneHelpers.forEach(h => scene.remove(h));
 
     bonesMap = {};
@@ -432,7 +430,7 @@
     characterGroup.updateMatrixWorld(true);
     activeSkeleton = new THREE.Skeleton(bonesList);
 
-    // 2. SkinnedMesh Vertex Assignment & Direct Skin Bind
+    // 2. SkinnedMesh Conversion
     const meshesToSkin = [];
     activeModel.traverse(child => {
       if (child.isMesh && child.geometry) {
@@ -494,7 +492,7 @@
       }
     });
 
-    // 3. Render Helper Nodes
+    // 3. Render Joint Spheres Only (Skeleton lines removed)
     defaultJoints.forEach(j => {
       const bone = bonesMap[j.id];
 
@@ -509,15 +507,11 @@
       boneHelpers.push(handle);
     });
 
-    skeletonHelper = new THREE.SkeletonHelper(characterGroup);
-    skeletonHelper.material.linewidth = 2;
-    scene.add(skeletonHelper);
-
     closeRigOverlay();
     if (bonesList.length > 0) selectBone(bonesList[0]);
 
     setMode('rotate');
-    showToast("Rigging Done! All Joints Active");
+    showToast("Rigging Done! Dots Only UI Active");
   }
 
   function startRenderLoop() {
