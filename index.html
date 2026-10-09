@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>Prisma 3D Auto-Rig Engine (Rig Attach Fix)</title>
+  <title>Prisma 3D Auto-Rig Engine (Mesh Movement Fix)</title>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; -webkit-tap-highlight-color: transparent; }
     html, body { width: 100vw; height: 100dvh; overflow: hidden; background: #1b1b20; color: #fff; font-family: system-ui, -apple-system, sans-serif; }
@@ -305,7 +305,7 @@
       container.appendChild(node);
     });
 
-    showToast("Align Joints with Symmetry Active");
+    showToast("Align Joints Front View");
   }
 
   function makeNodeDraggable(elm) {
@@ -372,6 +372,9 @@
     const mouse = new THREE.Vector2();
     const calculatedWorldPositions = {};
 
+    const modelBox = new THREE.Box3().setFromObject(activeModel);
+    const modelCenterZ = modelBox.getCenter(new THREE.Vector3()).z;
+
     nodes.forEach(node => {
       const id = node.dataset.id;
       const nodeRect = node.getBoundingClientRect();
@@ -382,19 +385,16 @@
       mouse.y = -((y - rect.top) / rect.height) * 2 + 1;
 
       raycaster.setFromCamera(mouse, camera);
-      const intersects = raycaster.intersectObject(activeModel, true);
 
       let targetPos = new THREE.Vector3();
-      if (intersects.length > 0) {
-        targetPos.copy(intersects[0].point);
-      } else {
-        const plane = new THREE.Plane(new THREE.Vector3(0, 0, 1), 0);
-        raycaster.ray.intersectPlane(plane, targetPos);
-      }
+      const plane = new THREE.Plane(new THREE.Vector3(0, 0, 1), -modelCenterZ);
+      raycaster.ray.intersectPlane(plane, targetPos);
+      
+      targetPos.z = modelCenterZ;
       calculatedWorldPositions[id] = targetPos;
     });
 
-    // 1. Build Bones
+    // 1. Build Skeleton Hierarchy
     const bonesList = [];
     const boneIndexMap = {};
 
@@ -406,7 +406,6 @@
       boneIndexMap[j.id] = index;
     });
 
-    // Parent hierarchy link & world-to-local matrix align
     defaultJoints.forEach(j => {
       const bone = bonesMap[j.id];
       const worldPos = calculatedWorldPositions[j.id];
@@ -422,11 +421,9 @@
     });
 
     characterGroup.updateMatrixWorld(true);
-
-    // Create Skeleton
     const skeleton = new THREE.Skeleton(bonesList);
 
-    // 2. Skinning & Glued Attachment Fix
+    // 2. Mesh Skinning with Explicit Matrix Binding
     const meshesToSkin = [];
     activeModel.traverse(child => {
       if (child.isMesh && child.geometry) {
@@ -441,9 +438,8 @@
       const posAttr = geometry.attributes.position;
       const vertexCount = posAttr.count;
 
-      const skinIndices = [];
-      const skinWeights = [];
-
+      const skinIndices = new Float32Array(vertexCount * 4);
+      const skinWeights = new Float32Array(vertexCount * 4);
       const vWorld = new THREE.Vector3();
 
       for (let i = 0; i < vertexCount; i++) {
@@ -462,19 +458,28 @@
         });
 
         const boneIdx = boneIndexMap[closestBoneId];
-        skinIndices.push(boneIdx, 0, 0, 0);
-        skinWeights.push(1.0, 0, 0, 0);
+        
+        skinIndices[i * 4] = boneIdx;
+        skinIndices[i * 4 + 1] = 0;
+        skinIndices[i * 4 + 2] = 0;
+        skinIndices[i * 4 + 3] = 0;
+
+        skinWeights[i * 4] = 1.0;
+        skinWeights[i * 4 + 1] = 0.0;
+        skinWeights[i * 4 + 2] = 0.0;
+        skinWeights[i * 4 + 3] = 0.0;
       }
 
       geometry.setAttribute('skinIndex', new THREE.Uint16BufferAttribute(skinIndices, 4));
       geometry.setAttribute('skinWeight', new THREE.Float32BufferAttribute(skinWeights, 4));
 
       const skinnedMesh = new THREE.SkinnedMesh(geometry, oldMesh.material);
-      skinnedMesh.matrix.copy(oldMesh.matrix);
-      skinnedMesh.matrixWorld.copy(oldMesh.matrixWorld);
+      skinnedMesh.position.copy(oldMesh.position);
+      skinnedMesh.rotation.copy(oldMesh.rotation);
+      skinnedMesh.scale.copy(oldMesh.scale);
 
-      // Direct bind to ensure mesh moves along with bones
-      skinnedMesh.bind(skeleton, characterGroup.matrixWorld);
+      // Exact Pose Bind Fix
+      skinnedMesh.bind(skeleton, skinnedMesh.matrixWorld);
 
       if (oldMesh.parent) {
         oldMesh.parent.add(skinnedMesh);
@@ -482,11 +487,11 @@
       }
     });
 
-    // 3. Bone Handles & Skeleton Helper
+    // 3. Render Joint Helpers
     defaultJoints.forEach(j => {
       const bone = bonesMap[j.id];
 
-      const sphereGeo = new THREE.SphereGeometry(0.04, 16, 16);
+      const sphereGeo = new THREE.SphereGeometry(0.035, 16, 16);
       const sphereMat = new THREE.MeshBasicMaterial({ color: 0x007aff, depthTest: false });
       const handle = new THREE.Mesh(sphereGeo, sphereMat);
       handle.renderOrder = 999;
@@ -505,7 +510,7 @@
     if (bonesList.length > 0) selectBone(bonesList[0]);
     setMode('rotate');
 
-    showToast("Rigging Attached Successfully!");
+    showToast("Rig Attached & Locked!");
   }
 
   function startRenderLoop() {
