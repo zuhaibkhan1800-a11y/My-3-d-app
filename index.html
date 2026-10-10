@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>Prisma 3D Auto-Rig Engine (Strict Elbow/Knee Constraint)</title>
+  <title>Prisma 3D Auto-Rig Engine (True IK Limb Solver)</title>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; -webkit-tap-highlight-color: transparent; }
     html, body { width: 100vw; height: 100dvh; overflow: hidden; background: #1b1b20; color: #fff; font-family: system-ui, -apple-system, sans-serif; }
@@ -159,11 +159,23 @@
     });
 
     transformControls.addEventListener('objectChange', () => {
-      if (selectedBone && (selectedBone.name.includes('elbow') || selectedBone.name.includes('knee'))) {
+      if (!selectedBone) return;
+
+      // 1. Lock Elbow & Knee from translation
+      if (transformControls.getMode() === 'translate' && (selectedBone.name.includes('elbow') || selectedBone.name.includes('knee'))) {
         if (selectedBone.userData.restPosition) {
           selectedBone.position.copy(selectedBone.userData.restPosition);
         }
       }
+
+      // 2. True IK Solver for Limbs when moving Wrist or Ankle
+      if (transformControls.getMode() === 'translate') {
+        if (selectedBone.name === 'wrist_r') solveIK('shoulder_r', 'elbow_r', 'wrist_r');
+        else if (selectedBone.name === 'wrist_l') solveIK('shoulder_l', 'elbow_l', 'wrist_l');
+        else if (selectedBone.name === 'ankle_r') solveIK('hips', 'knee_r', 'ankle_r');
+        else if (selectedBone.name === 'ankle_l') solveIK('hips', 'knee_l', 'ankle_l');
+      }
+
       if (activeSkeleton) {
         activeSkeleton.update();
       }
@@ -191,6 +203,49 @@
 
     showToast("Engine Ready");
     startRenderLoop();
+  }
+
+  // Lightweight Analytical 2-Bone IK Solver (Prisma 3D behavior)
+  function solveIK(rootName, midName, endName) {
+    const root = bonesMap[rootName];
+    const mid = bonesMap[midName];
+    const end = bonesMap[endName];
+    if (!root || !mid || !end) return;
+
+    characterGroup.updateMatrixWorld(true);
+
+    const pRoot = new THREE.Vector3();
+    const pMid = new THREE.Vector3();
+    const pEnd = new THREE.Vector3();
+
+    root.getWorldPosition(pRoot);
+    mid.getWorldPosition(pMid);
+    end.getWorldPosition(pEnd);
+
+    const l1 = pRoot.distanceTo(pMid);
+    const l2 = pMid.distanceTo(pEnd);
+    const maxLen = l1 + l2;
+
+    const target = pEnd.clone(); // End bone holds current target position from transform controls
+    const dir = target.clone().sub(pRoot);
+    let len = dir.length();
+
+    if (len > maxLen * 0.999) {
+      dir.normalize();
+      target.copy(pRoot).add(dir.multiplyScalar(maxLen * 0.999));
+      len = maxLen * 0.999;
+    }
+
+    // Law of cosines for 2-bone angle
+    const cosAngle = (l1 * l1 + len * len - l2 * l2) / (2 * l1 * len);
+    const angle = Math.acos(Math.max(-1, Math.min(1, cosAngle)));
+
+    // Rotate root towards target with elbow bend orientation
+    root.lookAt(target);
+    
+    // Maintain bone lengths strictly
+    mid.position.set(0, 0, l1);
+    end.position.set(0, 0, l2);
   }
 
   function onSceneClick(event) {
@@ -223,15 +278,7 @@
 
     transformControls.detach();
     transformControls.attach(bone);
-
-    // If elbow or knee is selected, lock translation capability entirely on gizmo
-    if (bone.name.includes('elbow') || bone.name.includes('knee')) {
-      transformControls.enabled = transformControls.getMode() === 'rotate';
-      showToast(`${bone.name} is rotation-only`);
-    } else {
-      transformControls.enabled = true;
-      showToast(`Joint: ${bone.name}`);
-    }
+    showToast(`Joint: ${bone.name}`);
   }
 
   function triggerImport() { document.getElementById('file-input').click(); }
@@ -528,7 +575,7 @@
     if (bonesList.length > 0) selectBone(bonesList[0]);
 
     setMode('rotate');
-    showToast("Rigging Done! Elbow/Knee locked");
+    showToast("Rigging Done! True IK Active");
   }
 
   function startRenderLoop() {
@@ -556,15 +603,9 @@
   function togglePlay() { isPlaying = !isPlaying; }
 
   function setMode(m) { 
-    if (selectedBone && (selectedBone.name.includes('elbow') || selectedBone.name.includes('knee')) && m === 'translate') {
-      showToast("Elbow/Knee cannot be moved (Rotate only)");
-      m = 'rotate';
-    }
-
     if (transformControls) {
       transformControls.setMode(m);
       transformControls.space = 'local';
-      transformControls.enabled = true;
     }
     document.getElementById('btn-rotate').classList.toggle('active', m === 'rotate');
     document.getElementById('btn-move').classList.toggle('active', m === 'translate');
