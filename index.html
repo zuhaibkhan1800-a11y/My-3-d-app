@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>Prisma 3D Auto-Rig Engine (Full Move & Rotate Control)</title>
+  <title>Prisma 3D Auto-Rig Engine (Clean Minimal Spine Rig)</title>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; -webkit-tap-highlight-color: transparent; }
     html, body { width: 100vw; height: 100dvh; overflow: hidden; background: #1b1b20; color: #fff; font-family: system-ui, -apple-system, sans-serif; }
@@ -108,16 +108,16 @@
   let selectedBone = null;
   let activeSkeleton = null;
 
+  // Minimal & Clean Spine Joint Setup (Prisma 3D style)
   const defaultJoints = [
     { id: 'hips', name: 'Hips', x: 50, y: 52, parent: null, class: 'hip' },
-    { id: 'spine_01', name: 'Spine 01', x: 50, y: 44, parent: 'hips', class: '' },
-    { id: 'spine_02', name: 'Spine 02', x: 50, y: 36, parent: 'spine_01', class: '' },
-    { id: 'neck', name: 'Neck', x: 50, y: 24, parent: 'spine_02', class: '' },
+    { id: 'spine', name: 'Spine', x: 50, y: 38, parent: 'hips', class: '' },
+    { id: 'neck', name: 'Neck', x: 50, y: 24, parent: 'spine', class: '' },
     { id: 'head', name: 'Head', x: 50, y: 16, parent: 'neck', class: 'head' },
-    { id: 'shoulder_r', name: 'R Shoulder', x: 38, y: 28, parent: 'spine_02', class: '', pair: 'shoulder_l' },
+    { id: 'shoulder_r', name: 'R Shoulder', x: 38, y: 28, parent: 'spine', class: '', pair: 'shoulder_l' },
     { id: 'elbow_r', name: 'R Elbow', x: 25, y: 28, parent: 'shoulder_r', class: '', pair: 'elbow_l' },
     { id: 'wrist_r', name: 'R Wrist', x: 12, y: 28, parent: 'elbow_r', class: '', pair: 'wrist_l' },
-    { id: 'shoulder_l', name: 'L Shoulder', x: 62, y: 28, parent: 'spine_02', class: '', pair: 'shoulder_r' },
+    { id: 'shoulder_l', name: 'L Shoulder', x: 62, y: 28, parent: 'spine', class: '', pair: 'shoulder_r' },
     { id: 'elbow_l', name: 'L Elbow', x: 75, y: 28, parent: 'shoulder_l', class: '', pair: 'elbow_r' },
     { id: 'wrist_l', name: 'L Wrist', x: 88, y: 28, parent: 'elbow_l', class: '', pair: 'wrist_r' },
     { id: 'knee_r', name: 'R Knee', x: 42, y: 72, parent: 'hips', class: '', pair: 'knee_l' },
@@ -219,7 +219,7 @@
 
     transformControls.detach();
     transformControls.attach(bone);
-    showToast(`Joint Selected: ${bone.name}`);
+    showToast(`Joint: ${bone.name}`);
   }
 
   function triggerImport() { document.getElementById('file-input').click(); }
@@ -514,7 +514,7 @@
     if (bonesList.length > 0) selectBone(bonesList[0]);
 
     setMode('rotate');
-    showToast("Rigging Done! Move & Rotate Fully Unlocked");
+    showToast("Rigging Done! Minimal Setup Active");
   }
 
   function startRenderLoop() {
@@ -542,7 +542,6 @@
   function togglePlay() { isPlaying = !isPlaying; }
 
   function setMode(m) { 
-    // Unlocked: Allow Move/Translate on all joints freely just like Prisma 3D
     if (transformControls) {
       transformControls.setMode(m);
       transformControls.space = 'local';
