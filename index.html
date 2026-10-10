@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>Prisma 3D Auto-Rig Engine (Move Button Fixed)</title>
+  <title>Prisma 3D Auto-Rig Engine (Elbow/Knee Lock)</title>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; -webkit-tap-highlight-color: transparent; }
     html, body { width: 100vw; height: 100dvh; overflow: hidden; background: #1b1b20; color: #fff; font-family: system-ui, -apple-system, sans-serif; }
@@ -159,6 +159,14 @@
     });
 
     transformControls.addEventListener('change', () => {
+      // Prevent elbow and knee translation offset (lock position like Prisma 3D)
+      if (selectedBone && transformControls.getMode() === 'translate') {
+        if (selectedBone.name.includes('elbow') || selectedBone.name.includes('knee')) {
+          if (selectedBone.userData.restPosition) {
+            selectedBone.position.copy(selectedBone.userData.restPosition);
+          }
+        }
+      }
       if (activeSkeleton) {
         activeSkeleton.update();
       }
@@ -218,7 +226,14 @@
 
     transformControls.detach();
     transformControls.attach(bone);
-    showToast(`Joint: ${bone.name}`);
+
+    // If elbow or knee is selected in Move mode, auto-switch to Rotate mode
+    if ((bone.name.includes('elbow') || bone.name.includes('knee')) && transformControls.getMode() === 'translate') {
+      setMode('rotate');
+      showToast("Elbow/Knee locked for rotation only");
+    } else {
+      showToast(`Joint: ${bone.name}`);
+    }
   }
 
   function triggerImport() { document.getElementById('file-input').click(); }
@@ -421,9 +436,11 @@
         const parentWorldPos = calculatedWorldPositions[j.parent];
         const offset = worldPos.clone().sub(parentWorldPos);
         bone.position.copy(offset);
+        bone.userData.restPosition = offset.clone();
       } else {
         characterGroup.add(bone);
         bone.position.copy(worldPos);
+        bone.userData.restPosition = worldPos.clone();
       }
     });
 
@@ -513,7 +530,7 @@
     if (bonesList.length > 0) selectBone(bonesList[0]);
 
     setMode('rotate');
-    showToast("Rigging Done! Move Mode Unlocked");
+    showToast("Rigging Done! Elbow/Knee Translation Locked");
   }
 
   function startRenderLoop() {
@@ -541,6 +558,11 @@
   function togglePlay() { isPlaying = !isPlaying; }
 
   function setMode(m) { 
+    if (m === 'translate' && selectedBone && (selectedBone.name.includes('elbow') || selectedBone.name.includes('knee'))) {
+      showToast("Elbow/Knee locked for rotation only");
+      m = 'rotate';
+    }
+
     if (transformControls) {
       transformControls.setMode(m);
       transformControls.space = 'local';
