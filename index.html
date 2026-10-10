@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>Prisma 3D Auto-Rig Engine (Locked Elbow/Knee Translation)</title>
+  <title>Prisma 3D Auto-Rig Engine (Locked Limb Translation)</title>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; -webkit-tap-highlight-color: transparent; }
     html, body { width: 100vw; height: 100dvh; overflow: hidden; background: #1b1b20; color: #fff; font-family: system-ui, -apple-system, sans-serif; }
@@ -159,12 +159,10 @@
     });
 
     transformControls.addEventListener('change', () => {
-      // Lock position offset for elbow and knee joints to prevent translation stretching
-      if (selectedBone && transformControls.getMode() === 'translate') {
-        if (selectedBone.name.includes('elbow') || selectedBone.name.includes('knee')) {
-          if (selectedBone.userData.restPosition) {
-            selectedBone.position.copy(selectedBone.userData.restPosition);
-          }
+      // Force lock all child bones translation offset to prevent stretching/pulling
+      if (selectedBone && transformControls.getMode() === 'translate' && selectedBone.name !== 'hips') {
+        if (selectedBone.userData.restPosition) {
+          selectedBone.position.copy(selectedBone.userData.restPosition);
         }
       }
       if (activeSkeleton) {
@@ -227,8 +225,8 @@
     transformControls.detach();
     transformControls.attach(bone);
 
-    // Auto-switch to Rotate mode if selecting elbow or knee in move mode
-    if ((bone.name.includes('elbow') || bone.name.includes('knee')) && transformControls.getMode() === 'translate') {
+    // Auto-switch non-hip bones to rotate mode to prevent stretching
+    if (bone.name !== 'hips' && transformControls.getMode() === 'translate') {
       setMode('rotate');
     }
 
@@ -529,7 +527,7 @@
     if (bonesList.length > 0) selectBone(bonesList[0]);
 
     setMode('rotate');
-    showToast("Rigging Done! Elbow/Knee locked for Rotation Only");
+    showToast("Rigging Done! Limb Stretching Locked");
   }
 
   function startRenderLoop() {
@@ -557,9 +555,9 @@
   function togglePlay() { isPlaying = !isPlaying; }
 
   function setMode(m) { 
-    // Guard: Prevent translate mode on elbows and knees
-    if (m === 'translate' && selectedBone && (selectedBone.name.includes('elbow') || selectedBone.name.includes('knee'))) {
-      showToast("Elbow/Knee can only Rotate");
+    // Guard: Prevent translate mode on any child bone to keep lengths fixed
+    if (m === 'translate' && selectedBone && selectedBone.name !== 'hips') {
+      showToast("Only Hips can move. Use Rotate for limbs.");
       m = 'rotate';
     }
 
