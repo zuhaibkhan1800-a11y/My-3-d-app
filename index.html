@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>Prisma 3D Auto-Rig Engine (Locked Limb Translation)</title>
+  <title>Prisma 3D Auto-Rig Engine (Move Button Fixed)</title>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; -webkit-tap-highlight-color: transparent; }
     html, body { width: 100vw; height: 100dvh; overflow: hidden; background: #1b1b20; color: #fff; font-family: system-ui, -apple-system, sans-serif; }
@@ -159,12 +159,6 @@
     });
 
     transformControls.addEventListener('change', () => {
-      // Force lock all child bones translation offset to prevent stretching/pulling
-      if (selectedBone && transformControls.getMode() === 'translate' && selectedBone.name !== 'hips') {
-        if (selectedBone.userData.restPosition) {
-          selectedBone.position.copy(selectedBone.userData.restPosition);
-        }
-      }
       if (activeSkeleton) {
         activeSkeleton.update();
       }
@@ -224,12 +218,6 @@
 
     transformControls.detach();
     transformControls.attach(bone);
-
-    // Auto-switch non-hip bones to rotate mode to prevent stretching
-    if (bone.name !== 'hips' && transformControls.getMode() === 'translate') {
-      setMode('rotate');
-    }
-
     showToast(`Joint: ${bone.name}`);
   }
 
@@ -433,11 +421,9 @@
         const parentWorldPos = calculatedWorldPositions[j.parent];
         const offset = worldPos.clone().sub(parentWorldPos);
         bone.position.copy(offset);
-        bone.userData.restPosition = offset.clone();
       } else {
         characterGroup.add(bone);
         bone.position.copy(worldPos);
-        bone.userData.restPosition = worldPos.clone();
       }
     });
 
@@ -527,7 +513,7 @@
     if (bonesList.length > 0) selectBone(bonesList[0]);
 
     setMode('rotate');
-    showToast("Rigging Done! Limb Stretching Locked");
+    showToast("Rigging Done! Move Mode Unlocked");
   }
 
   function startRenderLoop() {
@@ -555,12 +541,6 @@
   function togglePlay() { isPlaying = !isPlaying; }
 
   function setMode(m) { 
-    // Guard: Prevent translate mode on any child bone to keep lengths fixed
-    if (m === 'translate' && selectedBone && selectedBone.name !== 'hips') {
-      showToast("Only Hips can move. Use Rotate for limbs.");
-      m = 'rotate';
-    }
-
     if (transformControls) {
       transformControls.setMode(m);
       transformControls.space = 'local';
