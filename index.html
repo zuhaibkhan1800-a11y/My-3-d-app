@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>Prisma 3D Auto-Rig Engine (World Space IK Fix)</title>
+  <title>Prisma 3D Auto-Rig Engine (Clamped IK Fix)</title>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; -webkit-tap-highlight-color: transparent; }
     html, body { width: 100vw; height: 100dvh; overflow: hidden; background: #1b1b20; color: #fff; font-family: system-ui, -apple-system, sans-serif; }
@@ -152,7 +152,7 @@
     transformControls = new THREE.TransformControls(camera, renderer.domElement);
     transformControls.size = 0.55; 
     transformControls.setMode('rotate');
-    transformControls.space = 'world'; // Fixed to world space to prevent glitching/offset mismatch
+    transformControls.space = 'world';
 
     transformControls.addEventListener('dragging-changed', (e) => { 
       orbitControls.enabled = !e.value; 
@@ -161,19 +161,17 @@
     transformControls.addEventListener('objectChange', () => {
       if (!selectedBone) return;
 
-      // Lock intermediate joints from translation offset drift
       if (selectedBone.name.includes('elbow') || selectedBone.name.includes('knee')) {
         if (selectedBone.userData.restPosition) {
           selectedBone.position.copy(selectedBone.userData.restPosition);
         }
       }
 
-      // Stable World-Space 2-Bone IK Logic for Limbs
       if (transformControls.getMode() === 'translate') {
-        if (selectedBone.name === 'wrist_r') solveStableIK('shoulder_r', 'elbow_r', 'wrist_r');
-        else if (selectedBone.name === 'wrist_l') solveStableIK('shoulder_l', 'elbow_l', 'wrist_l');
-        else if (selectedBone.name === 'ankle_r') solveStableIK('hips', 'knee_r', 'ankle_r');
-        else if (selectedBone.name === 'ankle_l') solveStableIK('hips', 'knee_l', 'ankle_l');
+        if (selectedBone.name === 'wrist_r') solveClampedIK('shoulder_r', 'elbow_r', 'wrist_r');
+        else if (selectedBone.name === 'wrist_l') solveClampedIK('shoulder_l', 'elbow_l', 'wrist_l');
+        else if (selectedBone.name === 'ankle_r') solveClampedIK('hips', 'knee_r', 'ankle_r');
+        else if (selectedBone.name === 'ankle_l') solveClampedIK('hips', 'knee_l', 'ankle_l');
       }
 
       if (activeSkeleton) {
@@ -205,8 +203,8 @@
     startRenderLoop();
   }
 
-  // Stable World-Space IK calculation preventing reverse/glitched flipping
-  function solveStableIK(rootName, midName, endName) {
+  // Clamped Stable IK Solver to prevent chest collapse and over-stretching
+  function solveClampedIK(rootName, midName, endName) {
     const root = bonesMap[rootName];
     const mid = bonesMap[midName];
     const end = bonesMap[endName];
@@ -222,15 +220,18 @@
 
     const l1 = mid.userData.restPosition ? mid.userData.restPosition.length() : 0.3;
     const l2 = end.userData.restPosition ? end.userData.restPosition.length() : 0.3;
-    const maxLen = l1 + l2;
+    const maxLen = (l1 + l2) * 0.99;
+    const minLen = Math.abs(l1 - l2) * 1.1;
 
     const targetPos = pEnd.clone();
     const dir = targetPos.clone().sub(pRoot);
     let dist = dir.length();
 
-    if (dist > maxLen * 0.99) {
-      dist = maxLen * 0.99;
-      dir.normalize().multiplyScalar(dist);
+    if (dist > maxLen) {
+      dir.normalize().multiplyScalar(maxLen);
+      targetPos.copy(pRoot).add(dir);
+    } else if (dist < minLen) {
+      dir.normalize().multiplyScalar(minLen);
       targetPos.copy(pRoot).add(dir);
     }
 
@@ -577,7 +578,7 @@
     if (bonesList.length > 0) selectBone(bonesList[0]);
 
     setMode('rotate');
-    showToast("Rigging Done! World-Space IK Active");
+    showToast("Rigging Done! Clamped IK Active");
   }
 
   function startRenderLoop() {
