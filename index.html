@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>Prisma 3D Auto-Rig Engine (Clamped IK Fix)</title>
+  <title>Prisma 3D Auto-Rig Engine (Anti-Glitch Stable IK)</title>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; -webkit-tap-highlight-color: transparent; }
     html, body { width: 100vw; height: 100dvh; overflow: hidden; background: #1b1b20; color: #fff; font-family: system-ui, -apple-system, sans-serif; }
@@ -152,7 +152,7 @@
     transformControls = new THREE.TransformControls(camera, renderer.domElement);
     transformControls.size = 0.55; 
     transformControls.setMode('rotate');
-    transformControls.space = 'world';
+    transformControls.space = 'local';
 
     transformControls.addEventListener('dragging-changed', (e) => { 
       orbitControls.enabled = !e.value; 
@@ -161,17 +161,19 @@
     transformControls.addEventListener('objectChange', () => {
       if (!selectedBone) return;
 
+      // Prevent elbow/knee drift
       if (selectedBone.name.includes('elbow') || selectedBone.name.includes('knee')) {
         if (selectedBone.userData.restPosition) {
           selectedBone.position.copy(selectedBone.userData.restPosition);
         }
       }
 
+      // Smooth Safe IK Evaluation
       if (transformControls.getMode() === 'translate') {
-        if (selectedBone.name === 'wrist_r') solveClampedIK('shoulder_r', 'elbow_r', 'wrist_r');
-        else if (selectedBone.name === 'wrist_l') solveClampedIK('shoulder_l', 'elbow_l', 'wrist_l');
-        else if (selectedBone.name === 'ankle_r') solveClampedIK('hips', 'knee_r', 'ankle_r');
-        else if (selectedBone.name === 'ankle_l') solveClampedIK('hips', 'knee_l', 'ankle_l');
+        if (selectedBone.name === 'wrist_r') solveSmoothIK('shoulder_r', 'elbow_r', 'wrist_r');
+        else if (selectedBone.name === 'wrist_l') solveSmoothIK('shoulder_l', 'elbow_l', 'wrist_l');
+        else if (selectedBone.name === 'ankle_r') solveSmoothIK('hips', 'knee_r', 'ankle_r');
+        else if (selectedBone.name === 'ankle_l') solveSmoothIK('hips', 'knee_l', 'ankle_l');
       }
 
       if (activeSkeleton) {
@@ -203,8 +205,8 @@
     startRenderLoop();
   }
 
-  // Clamped Stable IK Solver to prevent chest collapse and over-stretching
-  function solveClampedIK(rootName, midName, endName) {
+  // Smooth Anti-Flipping IK Solver using Slerp/Quaternion damping
+  function solveSmoothIK(rootName, midName, endName) {
     const root = bonesMap[rootName];
     const mid = bonesMap[midName];
     const end = bonesMap[endName];
@@ -214,14 +216,12 @@
 
     const pRoot = new THREE.Vector3();
     const pEnd = new THREE.Vector3();
-
     root.getWorldPosition(pRoot);
     end.getWorldPosition(pEnd);
 
     const l1 = mid.userData.restPosition ? mid.userData.restPosition.length() : 0.3;
     const l2 = end.userData.restPosition ? end.userData.restPosition.length() : 0.3;
-    const maxLen = (l1 + l2) * 0.99;
-    const minLen = Math.abs(l1 - l2) * 1.1;
+    const maxLen = (l1 + l2) * 0.98;
 
     const targetPos = pEnd.clone();
     const dir = targetPos.clone().sub(pRoot);
@@ -230,15 +230,18 @@
     if (dist > maxLen) {
       dir.normalize().multiplyScalar(maxLen);
       targetPos.copy(pRoot).add(dir);
-    } else if (dist < minLen) {
-      dir.normalize().multiplyScalar(minLen);
-      targetPos.copy(pRoot).add(dir);
+      end.position.copy(pRoot).clone().add(dir); // clamp endpoint position locally
     }
 
+    // Lock intermediate joint position to prevent collapse
     mid.position.copy(mid.userData.restPosition);
-    end.position.copy(end.userData.restPosition);
 
-    root.lookAt(targetPos);
+    // Smooth Quaternion rotation towards target without flipping
+    const targetQuaternion = new THREE.Quaternion();
+    const m = new THREE.Matrix4();
+    m.lookAt(pRoot, targetPos, root.up);
+    targetQuaternion.setFromRotationMatrix(m);
+    root.quaternion.slerp(targetQuaternion, 0.4);
   }
 
   function onSceneClick(event) {
@@ -578,7 +581,7 @@
     if (bonesList.length > 0) selectBone(bonesList[0]);
 
     setMode('rotate');
-    showToast("Rigging Done! Clamped IK Active");
+    showToast("Rigging Done! Anti-Glitch IK Active");
   }
 
   function startRenderLoop() {
@@ -613,7 +616,7 @@
 
     if (transformControls) {
       transformControls.setMode(m);
-      transformControls.space = 'world';
+      transformControls.space = 'local';
     }
     document.getElementById('btn-rotate').classList.toggle('active', m === 'rotate');
     document.getElementById('btn-move').classList.toggle('active', m === 'translate');
