@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>Prisma 3D Auto-Rig Engine (Full IK & Decoupled Root Fix)</title>
+  <title>Prisma 3D Auto-Rig Engine (Pro Lighting & Shading Fix)</title>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; -webkit-tap-highlight-color: transparent; }
     html, body { width: 100vw; height: 100dvh; overflow: hidden; background: #1b1b20; color: #fff; font-family: system-ui, -apple-system, sans-serif; }
@@ -144,6 +144,11 @@
     renderer = new THREE.WebGLRenderer({ canvas: document.getElementById('canvas3d'), antialias: true });
     renderer.setSize(container.clientWidth, container.clientHeight);
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
+    
+    // Professional 3D Shading & Tone Mapping (Prisma 3D style)
+    renderer.outputEncoding = THREE.sRGBEncoding;
+    renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    renderer.toneMappingExposure = 1.2;
 
     orbitControls = new THREE.OrbitControls(camera, renderer.domElement);
     orbitControls.enableDamping = true;
@@ -158,22 +163,16 @@
       orbitControls.enabled = !e.value; 
     });
 
-    // 5. TransformControls Logic & IK Integration
     transformControls.addEventListener('objectChange', () => {
       if (!selectedBone) return;
 
       if (transformControls.getMode() === 'translate') {
-        // Trigger Full IK Solver for End-Effectors (Decoupling root and keeping bone lengths fixed)
         if (selectedBone.name === 'wrist_r') updateIK('shoulder_r', 'elbow_r', 'wrist_r');
         else if (selectedBone.name === 'wrist_l') updateIK('shoulder_l', 'elbow_l', 'wrist_l');
         else if (selectedBone.name === 'ankle_r') updateIK('hips', 'knee_r', 'ankle_r');
         else if (selectedBone.name === 'ankle_l') updateIK('hips', 'knee_l', 'ankle_l');
-        else if (selectedBone.name.includes('elbow') || selectedBone.name.includes('knee')) {
-          // Lock intermediate joints from free translation
-          if (selectedBone.userData.restPosition) selectedBone.position.copy(selectedBone.userData.restPosition);
-        } else if (selectedBone.name !== 'hips') {
-          // Prevent other bones from stretching
-          if (selectedBone.userData.restPosition) selectedBone.position.copy(selectedBone.userData.restPosition);
+        else if (selectedBone.name !== 'hips' && selectedBone.userData.restPosition) {
+          selectedBone.position.copy(selectedBone.userData.restPosition);
         }
       }
 
@@ -184,14 +183,28 @@
 
     scene.add(transformControls);
 
-    scene.add(new THREE.AmbientLight(0xffffff, 1.3));
-    const hemiLight = new THREE.HemisphereLight(0xffffff, 0x555566, 1.1);
+    // --- PROFESSIONAL 3-POINT STUDIO LIGHTING SETUP ---
+    const ambientLight = new THREE.AmbientLight(0xffffff, 0.8);
+    scene.add(ambientLight);
+
+    const hemiLight = new THREE.HemisphereLight(0xffffff, 0x444455, 0.9);
     hemiLight.position.set(0, 20, 0);
     scene.add(hemiLight);
 
-    const mainDirLight = new THREE.DirectionalLight(0xffffff, 1.5);
-    mainDirLight.position.set(5, 10, 7);
-    scene.add(mainDirLight);
+    // Key Light (Main soft light from top-front-right)
+    const keyLight = new THREE.DirectionalLight(0xffffff, 1.4);
+    keyLight.position.set(4, 8, 5);
+    scene.add(keyLight);
+
+    // Fill Light (Soft light from left to fill shadows)
+    const fillLight = new THREE.DirectionalLight(0x88bbff, 0.7);
+    fillLight.position.set(-5, 4, 3);
+    scene.add(fillLight);
+
+    // Rim/Back Light (For sharp edge definition like Prisma 3D)
+    const rimLight = new THREE.DirectionalLight(0xffeedd, 1.0);
+    rimLight.position.set(0, 5, -6);
+    scene.add(rimLight);
 
     const gridHelper = new THREE.GridHelper(10, 20, 0x5a5a68, 0x3d3d48);
     gridHelper.position.y = -0.01;
@@ -202,24 +215,22 @@
 
     renderer.domElement.addEventListener('pointerdown', onSceneClick);
 
-    showToast("Engine Ready");
+    showToast("Engine Ready (Pro Lighting Active)");
     startRenderLoop();
   }
 
-  // 1, 2, 3 & 4. Full-Body Limb IK Solver with Bone Length Locking, Root Decoupling & Pole Vector Control
   function updateIK(rootName, midName, endName) {
     const root = bonesMap[rootName];
     const mid = bonesMap[midName];
     const end = bonesMap[endName];
     if (!root || !mid || !end) return;
 
-    // 3. Decouple Root from End-Effectors: Store root absolute world position to pin it in space
     const pRoot = new THREE.Vector3();
     root.getWorldPosition(pRoot);
 
     characterGroup.updateMatrixWorld(true);
     const pEnd = new THREE.Vector3();
-    end.getWorldPosition(pEnd); // Target position from TransformControls drag
+    end.getWorldPosition(pEnd);
 
     const l1 = mid.userData.restPosition ? mid.userData.restPosition.length() : 0.3;
     const l2 = end.userData.restPosition ? end.userData.restPosition.length() : 0.3;
@@ -229,7 +240,6 @@
     const dir = pEnd.clone().sub(pRoot);
     let dist = dir.length();
 
-    // 2. Lock Bone Lengths & Distance Clamping
     if (dist > maxLen) {
       dist = maxLen;
       dir.normalize().multiplyScalar(dist);
@@ -240,20 +250,10 @@
       pEnd.copy(pRoot).add(dir);
     }
 
-    // 4. Pole Vector Control for correct anatomical bending direction
-    const poleTarget = pRoot.clone().add(new THREE.Vector3(0, 0, -1).multiplyScalar(l1));
-    if (rootName.includes('shoulder')) {
-      poleTarget.add(new THREE.Vector3(0, -0.5, -0.5));
-    } else if (rootName.includes('hips')) {
-      poleTarget.add(new THREE.Vector3(0, -0.5, 0.5));
-    }
-
-    // Solve joint rotations via analytical trigonometry and lookAt matching
     root.lookAt(pEnd);
     mid.position.copy(mid.userData.restPosition);
     end.position.copy(end.userData.restPosition);
 
-    // Pin root world position explicitly to ensure zero body floating/lifting
     const currentRootWorld = new THREE.Vector3();
     root.getWorldPosition(currentRootWorld);
     if (!currentRootWorld.equals(pRoot)) {
@@ -339,6 +339,14 @@
 
     activeModel = loadedObject;
 
+    // Enhance loaded materials for realistic shading
+    activeModel.traverse(child => {
+      if (child.isMesh && child.material) {
+        child.material.roughness = 0.6;
+        child.material.metalness = 0.1;
+      }
+    });
+
     characterGroup.position.set(0, 0, 0);
     characterGroup.rotation.set(0, 0, 0);
     characterGroup.scale.set(1, 1, 1);
@@ -359,7 +367,7 @@
     characterGroup.add(activeModel);
     transformControls.detach();
 
-    showToast("Model Loaded! Tap 'Auto Rig'");
+    showToast("Model Loaded with Pro Shading!");
   }
 
   function clearRig() {
@@ -569,6 +577,8 @@
 
       const newMaterial = oldMesh.material.clone();
       newMaterial.skinning = true;
+      newMaterial.roughness = 0.6;
+      newMaterial.metalness = 0.1;
 
       const skinnedMesh = new THREE.SkinnedMesh(geometry, newMaterial);
       skinnedMesh.bind(activeSkeleton, oldMesh.matrixWorld);
@@ -598,7 +608,7 @@
     if (bonesList.length > 0) selectBone(bonesList[0]);
 
     setMode('rotate');
-    showToast("Rigging Done! Full IK & Root Pinning Active");
+    showToast("Rigging Done! Pro Lighting Active");
   }
 
   function startRenderLoop() {
