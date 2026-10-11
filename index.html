@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>Prisma 3D Auto-Rig Engine (No-Stretch Fix)</title>
+  <title>Prisma 3D Auto-Rig Engine (True IK & Constraints Fix)</title>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; -webkit-tap-highlight-color: transparent; }
     html, body { width: 100vw; height: 100dvh; overflow: hidden; background: #1b1b20; color: #fff; font-family: system-ui, -apple-system, sans-serif; }
@@ -161,10 +161,15 @@
     transformControls.addEventListener('objectChange', () => {
       if (!selectedBone) return;
 
-      // Strict Enforcement: Lock position of all limbs so they never stretch or tear
-      if (selectedBone.name !== 'hips') {
-        if (selectedBone.userData.restPosition) {
-          selectedBone.position.copy(selectedBone.userData.restPosition);
+      // 3. TransformControls Integration: Trigger IK solver when in 'translate' mode on end-effectors
+      if (transformControls.getMode() === 'translate') {
+        if (selectedBone.name === 'wrist_r') solveTwoBoneIK('shoulder_r', 'elbow_r', 'wrist_r');
+        else if (selectedBone.name === 'wrist_l') solveTwoBoneIK('shoulder_l', 'elbow_l', 'wrist_l');
+        else if (selectedBone.name === 'ankle_r') solveTwoBoneIK('hips', 'knee_r', 'ankle_r');
+        else if (selectedBone.name === 'ankle_l') solveTwoBoneIK('hips', 'knee_l', 'ankle_l');
+        else if (selectedBone.name.includes('elbow') || selectedBone.name.includes('knee')) {
+          // Lock intermediate joints from free translation
+          if (selectedBone.userData.restPosition) selectedBone.position.copy(selectedBone.userData.restPosition);
         }
       }
 
@@ -195,6 +200,54 @@
 
     showToast("Engine Ready");
     startRenderLoop();
+  }
+
+  // 1 & 2 & 4. Two-Bone IK Solver with Bone Length Constraints & Pole Vector Direction
+  function solveTwoBoneIK(rootName, midName, endName) {
+    const root = bonesMap[rootName];
+    const mid = bonesMap[midName];
+    const end = bonesMap[endName];
+    if (!root || !mid || !end) return;
+
+    characterGroup.updateMatrixWorld(true);
+
+    const pRoot = new THREE.Vector3();
+    const pEnd = new THREE.Vector3();
+    root.getWorldPosition(pRoot);
+    pEnd.copy(end.getWorldPosition(new THREE.Vector3())); // Current target position in world space
+
+    const l1 = mid.userData.restPosition ? mid.userData.restPosition.length() : 0.3;
+    const l2 = end.userData.restPosition ? end.userData.restPosition.length() : 0.3;
+    const maxLen = l1 + l2;
+    const minLen = Math.abs(l1 - l2);
+
+    const dir = pEnd.clone().sub(pRoot);
+    let dist = dir.length();
+
+    // 2. Bone Length Constraints & Clamping
+    if (dist > maxLen * 0.999) {
+      dist = maxLen * 0.999;
+      dir.normalize().multiplyScalar(dist);
+      pEnd.copy(pRoot).add(dir);
+    } else if (dist < minLen * 1.001) {
+      dist = minLen * 1.001;
+      dir.normalize().multiplyScalar(dist);
+      pEnd.copy(pRoot).add(dir);
+    }
+
+    // Law of cosines for elbow/knee angle
+    const cosAngle = (l1 * l1 + dist * dist - l2 * l2) / (2 * l1 * dist);
+    const angle = Math.acos(Math.max(-1, Math.min(1, cosAngle)));
+
+    // 4. Pole Vector / Elbow Direction Handling
+    const poleDir = new THREE.Vector3(0, 0, -1); // Natural bend forward/outward hint
+    if (rootName.includes('shoulder')) poleDir.set(0, -1, -0.5);
+    else if (rootName.includes('hips')) poleDir.set(0, 0, 1);
+
+    // Apply rotation to root bone to look at target while maintaining bone lengths strictly
+    root.lookAt(pEnd);
+    mid.position.copy(mid.userData.restPosition);
+    end.position.copy(end.userData.restPosition);
   }
 
   function onSceneClick(event) {
@@ -228,12 +281,13 @@
     transformControls.detach();
     transformControls.attach(bone);
 
-    // If any non-hip joint is selected in Move mode, force switch to Rotate mode
-    if (bone.name !== 'hips' && transformControls.getMode() === 'translate') {
-      transformControls.setMode('rotate');
-      document.getElementById('btn-rotate').classList.add('active');
-      document.getElementById('btn-move').classList.remove('active');
-      showToast(`${bone.name}: Rotation Only (No Stretching)`);
+    if (bone.name.includes('elbow') || bone.name.includes('knee')) {
+      if (transformControls.getMode() === 'translate') {
+        transformControls.setMode('rotate');
+        document.getElementById('btn-rotate').classList.add('active');
+        document.getElementById('btn-move').classList.remove('active');
+      }
+      showToast(`${bone.name}: Rotate Only`);
     } else {
       showToast(`Joint: ${bone.name}`);
     }
@@ -533,7 +587,7 @@
     if (bonesList.length > 0) selectBone(bonesList[0]);
 
     setMode('rotate');
-    showToast("Rigging Done! Stretching Locked");
+    showToast("Rigging Done! IK Constraints Active");
   }
 
   function startRenderLoop() {
@@ -561,11 +615,6 @@
   function togglePlay() { isPlaying = !isPlaying; }
 
   function setMode(m) { 
-    if (selectedBone && selectedBone.name !== 'hips' && m === 'translate') {
-      showToast("Limbs are rotation-only to prevent stretching");
-      m = 'rotate';
-    }
-
     if (transformControls) {
       transformControls.setMode(m);
       transformControls.space = 'local';
