@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>Prisma 3D Auto-Rig Engine (Real Natural IK Arm Move)</title>
+  <title>Prisma 3D Auto-Rig Engine (World Space IK Fix)</title>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; -webkit-tap-highlight-color: transparent; }
     html, body { width: 100vw; height: 100dvh; overflow: hidden; background: #1b1b20; color: #fff; font-family: system-ui, -apple-system, sans-serif; }
@@ -152,7 +152,7 @@
     transformControls = new THREE.TransformControls(camera, renderer.domElement);
     transformControls.size = 0.55; 
     transformControls.setMode('rotate');
-    transformControls.space = 'local';
+    transformControls.space = 'world'; // Fixed to world space to prevent glitching/offset mismatch
 
     transformControls.addEventListener('dragging-changed', (e) => { 
       orbitControls.enabled = !e.value; 
@@ -161,19 +161,19 @@
     transformControls.addEventListener('objectChange', () => {
       if (!selectedBone) return;
 
-      // Ensure intermediate joints (Elbow & Knee) never unbind or translate off position
+      // Lock intermediate joints from translation offset drift
       if (selectedBone.name.includes('elbow') || selectedBone.name.includes('knee')) {
         if (selectedBone.userData.restPosition) {
           selectedBone.position.copy(selectedBone.userData.restPosition);
         }
       }
 
-      // Smooth Natural IK calculation when moving Wrist or Ankle
+      // Stable World-Space 2-Bone IK Logic for Limbs
       if (transformControls.getMode() === 'translate') {
-        if (selectedBone.name === 'wrist_r') solveTwoBoneIK('shoulder_r', 'elbow_r', 'wrist_r');
-        else if (selectedBone.name === 'wrist_l') solveTwoBoneIK('shoulder_l', 'elbow_l', 'wrist_l');
-        else if (selectedBone.name === 'ankle_r') solveTwoBoneIK('hips', 'knee_r', 'ankle_r');
-        else if (selectedBone.name === 'ankle_l') solveTwoBoneIK('hips', 'knee_l', 'ankle_l');
+        if (selectedBone.name === 'wrist_r') solveStableIK('shoulder_r', 'elbow_r', 'wrist_r');
+        else if (selectedBone.name === 'wrist_l') solveStableIK('shoulder_l', 'elbow_l', 'wrist_l');
+        else if (selectedBone.name === 'ankle_r') solveStableIK('hips', 'knee_r', 'ankle_r');
+        else if (selectedBone.name === 'ankle_l') solveStableIK('hips', 'knee_l', 'ankle_l');
       }
 
       if (activeSkeleton) {
@@ -205,8 +205,8 @@
     startRenderLoop();
   }
 
-  // 2-Bone Analytical IK Solver (Prevents stretching, forces elbow to flex smoothly toward shoulder)
-  function solveTwoBoneIK(rootName, midName, endName) {
+  // Stable World-Space IK calculation preventing reverse/glitched flipping
+  function solveStableIK(rootName, midName, endName) {
     const root = bonesMap[rootName];
     const mid = bonesMap[midName];
     const end = bonesMap[endName];
@@ -215,11 +215,9 @@
     characterGroup.updateMatrixWorld(true);
 
     const pRoot = new THREE.Vector3();
-    const pMid = new THREE.Vector3();
     const pEnd = new THREE.Vector3();
 
     root.getWorldPosition(pRoot);
-    mid.getWorldPosition(pMid);
     end.getWorldPosition(pEnd);
 
     const l1 = mid.userData.restPosition ? mid.userData.restPosition.length() : 0.3;
@@ -236,11 +234,9 @@
       targetPos.copy(pRoot).add(dir);
     }
 
-    // Lock position to maintain exact length
     mid.position.copy(mid.userData.restPosition);
     end.position.copy(end.userData.restPosition);
 
-    // Orient parent bone toward target to create realistic elbow flexing
     root.lookAt(targetPos);
   }
 
@@ -581,7 +577,7 @@
     if (bonesList.length > 0) selectBone(bonesList[0]);
 
     setMode('rotate');
-    showToast("Rigging Done! Natural IK Move Ready");
+    showToast("Rigging Done! World-Space IK Active");
   }
 
   function startRenderLoop() {
@@ -616,7 +612,7 @@
 
     if (transformControls) {
       transformControls.setMode(m);
-      transformControls.space = 'local';
+      transformControls.space = 'world';
     }
     document.getElementById('btn-rotate').classList.toggle('active', m === 'rotate');
     document.getElementById('btn-move').classList.toggle('active', m === 'translate');
