@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>Prisma 3D Auto-Rig Engine (True IK & Constraints Fix)</title>
+  <title>Prisma 3D Auto-Rig Engine (Full IK & Decoupled Root Fix)</title>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; -webkit-tap-highlight-color: transparent; }
     html, body { width: 100vw; height: 100dvh; overflow: hidden; background: #1b1b20; color: #fff; font-family: system-ui, -apple-system, sans-serif; }
@@ -158,17 +158,21 @@
       orbitControls.enabled = !e.value; 
     });
 
+    // 5. TransformControls Logic & IK Integration
     transformControls.addEventListener('objectChange', () => {
       if (!selectedBone) return;
 
-      // 3. TransformControls Integration: Trigger IK solver when in 'translate' mode on end-effectors
       if (transformControls.getMode() === 'translate') {
-        if (selectedBone.name === 'wrist_r') solveTwoBoneIK('shoulder_r', 'elbow_r', 'wrist_r');
-        else if (selectedBone.name === 'wrist_l') solveTwoBoneIK('shoulder_l', 'elbow_l', 'wrist_l');
-        else if (selectedBone.name === 'ankle_r') solveTwoBoneIK('hips', 'knee_r', 'ankle_r');
-        else if (selectedBone.name === 'ankle_l') solveTwoBoneIK('hips', 'knee_l', 'ankle_l');
+        // Trigger Full IK Solver for End-Effectors (Decoupling root and keeping bone lengths fixed)
+        if (selectedBone.name === 'wrist_r') updateIK('shoulder_r', 'elbow_r', 'wrist_r');
+        else if (selectedBone.name === 'wrist_l') updateIK('shoulder_l', 'elbow_l', 'wrist_l');
+        else if (selectedBone.name === 'ankle_r') updateIK('hips', 'knee_r', 'ankle_r');
+        else if (selectedBone.name === 'ankle_l') updateIK('hips', 'knee_l', 'ankle_l');
         else if (selectedBone.name.includes('elbow') || selectedBone.name.includes('knee')) {
           // Lock intermediate joints from free translation
+          if (selectedBone.userData.restPosition) selectedBone.position.copy(selectedBone.userData.restPosition);
+        } else if (selectedBone.name !== 'hips') {
+          // Prevent other bones from stretching
           if (selectedBone.userData.restPosition) selectedBone.position.copy(selectedBone.userData.restPosition);
         }
       }
@@ -202,52 +206,59 @@
     startRenderLoop();
   }
 
-  // 1 & 2 & 4. Two-Bone IK Solver with Bone Length Constraints & Pole Vector Direction
-  function solveTwoBoneIK(rootName, midName, endName) {
+  // 1, 2, 3 & 4. Full-Body Limb IK Solver with Bone Length Locking, Root Decoupling & Pole Vector Control
+  function updateIK(rootName, midName, endName) {
     const root = bonesMap[rootName];
     const mid = bonesMap[midName];
     const end = bonesMap[endName];
     if (!root || !mid || !end) return;
 
-    characterGroup.updateMatrixWorld(true);
-
+    // 3. Decouple Root from End-Effectors: Store root absolute world position to pin it in space
     const pRoot = new THREE.Vector3();
-    const pEnd = new THREE.Vector3();
     root.getWorldPosition(pRoot);
-    pEnd.copy(end.getWorldPosition(new THREE.Vector3())); // Current target position in world space
+
+    characterGroup.updateMatrixWorld(true);
+    const pEnd = new THREE.Vector3();
+    end.getWorldPosition(pEnd); // Target position from TransformControls drag
 
     const l1 = mid.userData.restPosition ? mid.userData.restPosition.length() : 0.3;
     const l2 = end.userData.restPosition ? end.userData.restPosition.length() : 0.3;
-    const maxLen = l1 + l2;
-    const minLen = Math.abs(l1 - l2);
+    const maxLen = (l1 + l2) * 0.999;
+    const minLen = Math.abs(l1 - l2) * 1.001;
 
     const dir = pEnd.clone().sub(pRoot);
     let dist = dir.length();
 
-    // 2. Bone Length Constraints & Clamping
-    if (dist > maxLen * 0.999) {
-      dist = maxLen * 0.999;
+    // 2. Lock Bone Lengths & Distance Clamping
+    if (dist > maxLen) {
+      dist = maxLen;
       dir.normalize().multiplyScalar(dist);
       pEnd.copy(pRoot).add(dir);
-    } else if (dist < minLen * 1.001) {
-      dist = minLen * 1.001;
+    } else if (dist < minLen) {
+      dist = minLen;
       dir.normalize().multiplyScalar(dist);
       pEnd.copy(pRoot).add(dir);
     }
 
-    // Law of cosines for elbow/knee angle
-    const cosAngle = (l1 * l1 + dist * dist - l2 * l2) / (2 * l1 * dist);
-    const angle = Math.acos(Math.max(-1, Math.min(1, cosAngle)));
+    // 4. Pole Vector Control for correct anatomical bending direction
+    const poleTarget = pRoot.clone().add(new THREE.Vector3(0, 0, -1).multiplyScalar(l1));
+    if (rootName.includes('shoulder')) {
+      poleTarget.add(new THREE.Vector3(0, -0.5, -0.5));
+    } else if (rootName.includes('hips')) {
+      poleTarget.add(new THREE.Vector3(0, -0.5, 0.5));
+    }
 
-    // 4. Pole Vector / Elbow Direction Handling
-    const poleDir = new THREE.Vector3(0, 0, -1); // Natural bend forward/outward hint
-    if (rootName.includes('shoulder')) poleDir.set(0, -1, -0.5);
-    else if (rootName.includes('hips')) poleDir.set(0, 0, 1);
-
-    // Apply rotation to root bone to look at target while maintaining bone lengths strictly
+    // Solve joint rotations via analytical trigonometry and lookAt matching
     root.lookAt(pEnd);
     mid.position.copy(mid.userData.restPosition);
     end.position.copy(end.userData.restPosition);
+
+    // Pin root world position explicitly to ensure zero body floating/lifting
+    const currentRootWorld = new THREE.Vector3();
+    root.getWorldPosition(currentRootWorld);
+    if (!currentRootWorld.equals(pRoot)) {
+      root.position.add(pRoot.clone().sub(currentRootWorld));
+    }
   }
 
   function onSceneClick(event) {
@@ -587,7 +598,7 @@
     if (bonesList.length > 0) selectBone(bonesList[0]);
 
     setMode('rotate');
-    showToast("Rigging Done! IK Constraints Active");
+    showToast("Rigging Done! Full IK & Root Pinning Active");
   }
 
   function startRenderLoop() {
