@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>Prisma 3D Auto-Rig Engine (Stable Selection & Gizmo Fix)</title>
+  <title>Prisma 3D Auto-Rig Engine (Dedicated IK Target Handles Fix)</title>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; -webkit-tap-highlight-color: transparent; }
     html, body { width: 100vw; height: 100dvh; overflow: hidden; background: #1b1b20; color: #fff; font-family: system-ui, -apple-system, sans-serif; }
@@ -104,6 +104,7 @@
   let isPlaying = false, currentTime = 0, duration = 5.0;
 
   let bonesMap = {};
+  let ikTargetsMap = {}; // Separate handles for smooth IK dragging
   let boneHelpers = [];
   let selectedBone = null;
   let activeSkeleton = null;
@@ -153,26 +154,27 @@
     orbitControls.enableDamping = true;
     orbitControls.target.set(0, 1.0, 0);
 
-    // 3. Optimized TransformControls with Larger Size and Always-On-Top Depth Test
     transformControls = new THREE.TransformControls(camera, renderer.domElement);
-    transformControls.size = 0.75; // Increased size to prevent mouse slipping
+    transformControls.size = 0.75; 
     transformControls.setMode('rotate');
     transformControls.space = 'local';
 
-    // 1 & 2. Lock Selection during active dragging to completely prevent raycaster/flicker conflicts
     transformControls.addEventListener('dragging-changed', (e) => { 
       orbitControls.enabled = !e.value; 
     });
 
+    // 100% Stable Target Dummy IK Event Binding
     transformControls.addEventListener('objectChange', () => {
       if (!selectedBone) return;
 
-      if (transformControls.getMode() === 'translate') {
-        if (selectedBone.name === 'wrist_r') updateIK('shoulder_r', 'elbow_r', 'wrist_r');
-        else if (selectedBone.name === 'wrist_l') updateIK('shoulder_l', 'elbow_l', 'wrist_l');
-        else if (selectedBone.name === 'ankle_r') updateIK('hips', 'knee_r', 'ankle_r');
-        else if (selectedBone.name === 'ankle_l') updateIK('hips', 'knee_l', 'ankle_l');
-        else if (selectedBone.name !== 'hips' && selectedBone.userData.restPosition) {
+      const ctrlObj = transformControls.object;
+
+      // If dragging an IK target dummy, solve IK and update bone chain
+      if (ctrlObj && ctrlObj.userData.isIKTarget) {
+        const chain = ctrlObj.userData.chain; // [root, mid, end]
+        solveTargetIK(chain[0], chain[1], chain[2], ctrlObj);
+      } else if (transformControls.getMode() === 'translate') {
+        if (selectedBone.name !== 'hips' && selectedBone.userData.restPosition) {
           selectedBone.position.copy(selectedBone.userData.restPosition);
         }
       }
@@ -209,15 +211,55 @@
     characterGroup = new THREE.Group();
     scene.add(characterGroup);
 
-    // Pointer event with strict Selection Lock check
     renderer.domElement.addEventListener('pointerdown', onSceneClick);
 
-    showToast("Engine Ready (Anti-Flicker Fix Active)");
+    showToast("Engine Ready (IK Target Dummies Active)");
     startRenderLoop();
   }
 
+  // Stable Target-Based IK Solver
+  function solveTargetIK(root, mid, end, targetObj) {
+    characterGroup.updateMatrixWorld(true);
+
+    const pRoot = new THREE.Vector3();
+    root.getWorldPosition(pRoot);
+
+    const pTarget = targetObj.position.clone(); // Target dummy's world/scene position
+
+    const l1 = mid.userData.restPosition ? mid.userData.restPosition.length() : 0.3;
+    const l2 = end.userData.restPosition ? end.userData.restPosition.length() : 0.3;
+    const maxLen = (l1 + l2) * 0.999;
+    const minLen = Math.abs(l1 - l2) * 1.001;
+
+    const dir = pTarget.clone().sub(pRoot);
+    let dist = dir.length();
+
+    if (dist > maxLen) {
+      dist = maxLen;
+      dir.normalize().multiplyScalar(dist);
+      pTarget.copy(pRoot).add(dir);
+      targetObj.position.copy(pTarget);
+    } else if (dist < minLen) {
+      dist = minLen;
+      dir.normalize().multiplyScalar(dist);
+      pTarget.copy(pRoot).add(dir);
+      targetObj.position.copy(pTarget);
+    }
+
+    // Orient root toward target dummy
+    root.lookAt(pTarget);
+    mid.position.copy(mid.userData.restPosition);
+    end.position.copy(end.userData.restPosition);
+
+    // Keep root perfectly pinned
+    const currentRootWorld = new THREE.Vector3();
+    root.getWorldPosition(currentRootWorld);
+    if (!currentRootWorld.equals(pRoot)) {
+      root.position.add(pRoot.clone().sub(currentRootWorld));
+    }
+  }
+
   function onSceneClick(event) {
-    // 1 & 2. Block raycaster selection completely if user is actively dragging gizmo
     if (transformControls.dragging || transformControls.hovered) return;
     if (boneHelpers.length === 0) return;
 
@@ -230,26 +272,46 @@
     const raycaster = new THREE.Raycaster();
     raycaster.setFromCamera(mouse, camera);
 
-    const intersects = raycaster.intersectObjects(boneHelpers, false);
+    // Check intersection with bone helpers OR IK target dummies
+    const interactables = [...boneHelpers, ...Object.values(ikTargetsMap)];
+    const intersects = raycaster.intersectObjects(interactables, false);
 
     if (intersects.length > 0) {
-      selectBone(intersects[0].object.userData.bone);
+      const hitObj = intersects[0].object;
+      if (hitObj.userData.isIKTarget) {
+        selectIKTarget(hitObj);
+      } else if (hitObj.userData.bone) {
+        selectBone(hitObj.userData.bone);
+      }
     }
   }
 
   function selectBone(bone) {
-    // Prevent re-selecting while dragging
     if (transformControls.dragging) return;
-
     selectedBone = bone;
-    boneHelpers.forEach(h => h.material.color.setHex(0x007aff));
 
+    boneHelpers.forEach(h => h.material.color.setHex(0x007aff));
     if (bone.userData.helper) {
       bone.userData.helper.material.color.setHex(0xff9500);
     }
 
     transformControls.detach();
     transformControls.attach(bone);
+
+    // If bone has an associated IK target dummy, attach to target dummy when in Translate mode
+    const boneId = bone.name;
+    let targetKey = null;
+    if (boneId === 'wrist_r') targetKey = 'r_arm';
+    else if (boneId === 'wrist_l') targetKey = 'l_arm';
+    else if (boneId === 'ankle_r') targetKey = 'r_leg';
+    else if (boneId === 'ankle_l') targetKey = 'l_leg';
+
+    if (targetKey && ikTargetsMap[targetKey] && transformControls.getMode() === 'translate') {
+      transformControls.detach();
+      transformControls.attach(ikTargetsMap[targetKey]);
+      showToast(`${boneId} IK Target: Move Mode Active`);
+      return;
+    }
 
     if (bone.name.includes('elbow') || bone.name.includes('knee')) {
       if (transformControls.getMode() === 'translate') {
@@ -263,46 +325,11 @@
     }
   }
 
-  function updateIK(rootName, midName, endName) {
-    const root = bonesMap[rootName];
-    const mid = bonesMap[midName];
-    const end = bonesMap[endName];
-    if (!root || !mid || !end) return;
-
-    const pRoot = new THREE.Vector3();
-    root.getWorldPosition(pRoot);
-
-    characterGroup.updateMatrixWorld(true);
-    const pEnd = new THREE.Vector3();
-    end.getWorldPosition(pEnd);
-
-    const l1 = mid.userData.restPosition ? mid.userData.restPosition.length() : 0.3;
-    const l2 = end.userData.restPosition ? end.userData.restPosition.length() : 0.3;
-    const maxLen = (l1 + l2) * 0.999;
-    const minLen = Math.abs(l1 - l2) * 1.001;
-
-    const dir = pEnd.clone().sub(pRoot);
-    let dist = dir.length();
-
-    if (dist > maxLen) {
-      dist = maxLen;
-      dir.normalize().multiplyScalar(dist);
-      pEnd.copy(pRoot).add(dir);
-    } else if (dist < minLen) {
-      dist = minLen;
-      dir.normalize().multiplyScalar(dist);
-      pEnd.copy(pRoot).add(dir);
-    }
-
-    root.lookAt(pEnd);
-    mid.position.copy(mid.userData.restPosition);
-    end.position.copy(end.userData.restPosition);
-
-    const currentRootWorld = new THREE.Vector3();
-    root.getWorldPosition(currentRootWorld);
-    if (!currentRootWorld.equals(pRoot)) {
-      root.position.add(pRoot.clone().sub(currentRootWorld));
-    }
+  function selectIKTarget(targetObj) {
+    if (transformControls.dragging) return;
+    transformControls.detach();
+    transformControls.attach(targetObj);
+    showToast(`${targetObj.name} IK Target Active`);
   }
 
   function triggerImport() { document.getElementById('file-input').click(); }
@@ -373,8 +400,10 @@
   function clearRig() {
     transformControls.detach();
     boneHelpers.forEach(h => scene.remove(h));
+    Object.values(ikTargetsMap).forEach(t => scene.remove(t));
 
     bonesMap = {};
+    ikTargetsMap = {};
     boneHelpers = [];
     selectedBone = null;
     activeSkeleton = null;
@@ -589,7 +618,7 @@
       }
     });
 
-    // 3. Render Joint Spheres Only with Always-On-Top Depth Test
+    // 3. Render Joint Spheres Only
     defaultJoints.forEach(j => {
       const bone = bonesMap[j.id];
 
@@ -604,11 +633,38 @@
       boneHelpers.push(handle);
     });
 
+    // 4. Create Dedicated IK Target Dummies for Limbs (Wrist & Ankle)
+    const targetConfigs = [
+      { key: 'r_arm', root: 'shoulder_r', mid: 'elbow_r', end: 'wrist_r' },
+      { key: 'l_arm', root: 'shoulder_l', mid: 'elbow_l', end: 'wrist_l' },
+      { key: 'r_leg', root: 'hips', mid: 'knee_r', end: 'ankle_r' },
+      { key: 'l_leg', root: 'hips', mid: 'knee_l', end: 'ankle_l' }
+    ];
+
+    targetConfigs.forEach(cfg => {
+      const endBone = bonesMap[cfg.end];
+      if (!endBone) return;
+
+      const worldPos = new THREE.Vector3();
+      endBone.getWorldPosition(worldPos);
+
+      const targetGeo = new THREE.SphereGeometry(0.045, 16, 16);
+      const targetMat = new THREE.MeshBasicMaterial({ color: 0xff3b30, depthTest: false, depthWrite: false, transparent: true, opacity: 0.8 });
+      const targetMesh = new THREE.Mesh(targetGeo, targetMat);
+      targetMesh.position.copy(worldPos);
+      targetMesh.renderOrder = 1000;
+      targetMesh.name = `${cfg.end}_Target`;
+      targetMesh.userData = { isIKTarget: true, chain: [bonesMap[cfg.root], bonesMap[cfg.mid], endBone] };
+
+      scene.add(targetMesh);
+      ikTargetsMap[cfg.key] = targetMesh;
+    });
+
     closeRigOverlay();
     if (bonesList.length > 0) selectBone(bonesList[0]);
 
     setMode('rotate');
-    showToast("Rigging Done! Selection Locked & Stable");
+    showToast("Rigging Done! IK Dummies Active");
   }
 
   function startRenderLoop() {
