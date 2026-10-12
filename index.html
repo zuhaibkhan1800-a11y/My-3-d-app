@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>Prisma 3D Auto-Rig Engine (Pro Lighting & Shading Fix)</title>
+  <title>Prisma 3D Auto-Rig Engine (Stable Selection & Gizmo Fix)</title>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; -webkit-tap-highlight-color: transparent; }
     html, body { width: 100vw; height: 100dvh; overflow: hidden; background: #1b1b20; color: #fff; font-family: system-ui, -apple-system, sans-serif; }
@@ -145,7 +145,6 @@
     renderer.setSize(container.clientWidth, container.clientHeight);
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
     
-    // Professional 3D Shading & Tone Mapping (Prisma 3D style)
     renderer.outputEncoding = THREE.sRGBEncoding;
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
     renderer.toneMappingExposure = 1.2;
@@ -154,11 +153,13 @@
     orbitControls.enableDamping = true;
     orbitControls.target.set(0, 1.0, 0);
 
+    // 3. Optimized TransformControls with Larger Size and Always-On-Top Depth Test
     transformControls = new THREE.TransformControls(camera, renderer.domElement);
-    transformControls.size = 0.55; 
+    transformControls.size = 0.75; // Increased size to prevent mouse slipping
     transformControls.setMode('rotate');
     transformControls.space = 'local';
 
+    // 1 & 2. Lock Selection during active dragging to completely prevent raycaster/flicker conflicts
     transformControls.addEventListener('dragging-changed', (e) => { 
       orbitControls.enabled = !e.value; 
     });
@@ -183,25 +184,20 @@
 
     scene.add(transformControls);
 
-    // --- PROFESSIONAL 3-POINT STUDIO LIGHTING SETUP ---
-    const ambientLight = new THREE.AmbientLight(0xffffff, 0.8);
-    scene.add(ambientLight);
-
+    // Studio Lighting Setup
+    scene.add(new THREE.AmbientLight(0xffffff, 0.8));
     const hemiLight = new THREE.HemisphereLight(0xffffff, 0x444455, 0.9);
     hemiLight.position.set(0, 20, 0);
     scene.add(hemiLight);
 
-    // Key Light (Main soft light from top-front-right)
     const keyLight = new THREE.DirectionalLight(0xffffff, 1.4);
     keyLight.position.set(4, 8, 5);
     scene.add(keyLight);
 
-    // Fill Light (Soft light from left to fill shadows)
     const fillLight = new THREE.DirectionalLight(0x88bbff, 0.7);
     fillLight.position.set(-5, 4, 3);
     scene.add(fillLight);
 
-    // Rim/Back Light (For sharp edge definition like Prisma 3D)
     const rimLight = new THREE.DirectionalLight(0xffeedd, 1.0);
     rimLight.position.set(0, 5, -6);
     scene.add(rimLight);
@@ -213,10 +209,58 @@
     characterGroup = new THREE.Group();
     scene.add(characterGroup);
 
+    // Pointer event with strict Selection Lock check
     renderer.domElement.addEventListener('pointerdown', onSceneClick);
 
-    showToast("Engine Ready (Pro Lighting Active)");
+    showToast("Engine Ready (Anti-Flicker Fix Active)");
     startRenderLoop();
+  }
+
+  function onSceneClick(event) {
+    // 1 & 2. Block raycaster selection completely if user is actively dragging gizmo
+    if (transformControls.dragging || transformControls.hovered) return;
+    if (boneHelpers.length === 0) return;
+
+    const rect = renderer.domElement.getBoundingClientRect();
+    const mouse = new THREE.Vector2(
+      ((event.clientX - rect.left) / rect.width) * 2 - 1,
+      -((event.clientY - rect.top) / rect.height) * 2 + 1
+    );
+
+    const raycaster = new THREE.Raycaster();
+    raycaster.setFromCamera(mouse, camera);
+
+    const intersects = raycaster.intersectObjects(boneHelpers, false);
+
+    if (intersects.length > 0) {
+      selectBone(intersects[0].object.userData.bone);
+    }
+  }
+
+  function selectBone(bone) {
+    // Prevent re-selecting while dragging
+    if (transformControls.dragging) return;
+
+    selectedBone = bone;
+    boneHelpers.forEach(h => h.material.color.setHex(0x007aff));
+
+    if (bone.userData.helper) {
+      bone.userData.helper.material.color.setHex(0xff9500);
+    }
+
+    transformControls.detach();
+    transformControls.attach(bone);
+
+    if (bone.name.includes('elbow') || bone.name.includes('knee')) {
+      if (transformControls.getMode() === 'translate') {
+        transformControls.setMode('rotate');
+        document.getElementById('btn-rotate').classList.add('active');
+        document.getElementById('btn-move').classList.remove('active');
+      }
+      showToast(`${bone.name}: Rotate Only`);
+    } else {
+      showToast(`Joint: ${bone.name}`);
+    }
   }
 
   function updateIK(rootName, midName, endName) {
@@ -261,49 +305,6 @@
     }
   }
 
-  function onSceneClick(event) {
-    if (transformControls.dragging || transformControls.hovered) return;
-    if (boneHelpers.length === 0) return;
-
-    const rect = renderer.domElement.getBoundingClientRect();
-    const mouse = new THREE.Vector2(
-      ((event.clientX - rect.left) / rect.width) * 2 - 1,
-      -((event.clientY - rect.top) / rect.height) * 2 + 1
-    );
-
-    const raycaster = new THREE.Raycaster();
-    raycaster.setFromCamera(mouse, camera);
-
-    const intersects = raycaster.intersectObjects(boneHelpers, false);
-
-    if (intersects.length > 0) {
-      selectBone(intersects[0].object.userData.bone);
-    }
-  }
-
-  function selectBone(bone) {
-    selectedBone = bone;
-    boneHelpers.forEach(h => h.material.color.setHex(0x007aff));
-
-    if (bone.userData.helper) {
-      bone.userData.helper.material.color.setHex(0xff9500);
-    }
-
-    transformControls.detach();
-    transformControls.attach(bone);
-
-    if (bone.name.includes('elbow') || bone.name.includes('knee')) {
-      if (transformControls.getMode() === 'translate') {
-        transformControls.setMode('rotate');
-        document.getElementById('btn-rotate').classList.add('active');
-        document.getElementById('btn-move').classList.remove('active');
-      }
-      showToast(`${bone.name}: Rotate Only`);
-    } else {
-      showToast(`Joint: ${bone.name}`);
-    }
-  }
-
   function triggerImport() { document.getElementById('file-input').click(); }
 
   document.getElementById('file-input').addEventListener('change', (e) => {
@@ -339,7 +340,6 @@
 
     activeModel = loadedObject;
 
-    // Enhance loaded materials for realistic shading
     activeModel.traverse(child => {
       if (child.isMesh && child.material) {
         child.material.roughness = 0.6;
@@ -367,7 +367,7 @@
     characterGroup.add(activeModel);
     transformControls.detach();
 
-    showToast("Model Loaded with Pro Shading!");
+    showToast("Model Loaded Successfully!");
   }
 
   function clearRig() {
@@ -589,12 +589,12 @@
       }
     });
 
-    // 3. Render Joint Spheres Only
+    // 3. Render Joint Spheres Only with Always-On-Top Depth Test
     defaultJoints.forEach(j => {
       const bone = bonesMap[j.id];
 
       const sphereGeo = new THREE.SphereGeometry(0.035, 16, 16);
-      const sphereMat = new THREE.MeshBasicMaterial({ color: 0x007aff, depthTest: false });
+      const sphereMat = new THREE.MeshBasicMaterial({ color: 0x007aff, depthTest: false, depthWrite: false });
       const handle = new THREE.Mesh(sphereGeo, sphereMat);
       handle.renderOrder = 999;
       handle.userData = { bone: bone };
@@ -608,7 +608,7 @@
     if (bonesList.length > 0) selectBone(bonesList[0]);
 
     setMode('rotate');
-    showToast("Rigging Done! Pro Lighting Active");
+    showToast("Rigging Done! Selection Locked & Stable");
   }
 
   function startRenderLoop() {
