@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>Prisma 3D Auto-Rig Engine (Hard-Parent Strategy Fix)</title>
+  <title>Prisma 3D Auto-Rig Engine (Zoom & Hard-Parent Fixed)</title>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; -webkit-tap-highlight-color: transparent; }
     html, body { width: 100vw; height: 100dvh; overflow: hidden; background: #1b1b20; color: #fff; font-family: system-ui, -apple-system, sans-serif; }
@@ -16,15 +16,7 @@
     #viewport { flex: 1; position: relative; background: #2d2d35; overflow: hidden; }
     #canvas3d { width: 100%; height: 100%; display: block; touch-action: none; }
 
-    #rig-overlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); display: none; z-index: 100; pointer-events: none; }
-    #center-guide { position: absolute; left: 50%; top: 0; bottom: 0; width: 2px; background: rgba(0, 122, 255, 0.8); transform: translateX(-50%); pointer-events: none; }
-
-    #joints-container { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; }
-    .joint-node { position: absolute; width: 24px; height: 24px; border-radius: 50%; border: 2px solid #ffffff; background: #ff9500; transform: translate(-50%, -50%); cursor: pointer; touch-action: none; z-index: 101; box-shadow: 0 0 10px rgba(0,0,0,0.8); pointer-events: auto; }
-    .joint-node.head { background: #30d158; }
-    .joint-node.hip { background: #ff3b30; }
-
-    #rig-tools-bar { position: absolute; bottom: 18px; left: 50%; transform: translateX(-50%); display: flex; gap: 10px; background: rgba(34, 34, 40, 0.95); padding: 8px 16px; border-radius: 30px; border: 1px solid #444450; backdrop-filter: blur(8px); z-index: 102; pointer-events: auto; }
+    #rig-tools-bar { position: absolute; bottom: 18px; left: 50%; transform: translateX(-50%); display: flex; gap: 10px; background: rgba(34, 34, 40, 0.95); padding: 8px 16px; border-radius: 30px; border: 1px solid #444450; backdrop-filter: blur(8px); z-index: 102; pointer-events: auto; display: none; }
     .rig-btn { background: #32323c; border: none; color: #fff; padding: 8px 18px; border-radius: 20px; font-size: 11px; font-weight: bold; cursor: pointer; }
     .rig-btn.apply { background: #30d158; color: #000; }
 
@@ -63,13 +55,9 @@
   <div id="viewport">
     <canvas id="canvas3d"></canvas>
 
-    <div id="rig-overlay">
-      <div id="center-guide"></div>
-      <div id="joints-container"></div>
-      <div id="rig-tools-bar">
-        <button class="rig-btn" onclick="closeRigOverlay()">Cancel</button>
-        <button class="rig-btn apply" onclick="applyAutoRigging()">✓ Apply Rig</button>
-      </div>
+    <div id="rig-tools-bar">
+      <button class="rig-btn" onclick="closeRigOverlay()">Cancel</button>
+      <button class="rig-btn apply" onclick="applyAutoRigging()">✓ Apply Rig</button>
     </div>
 
     <div id="toast">Ready</div>
@@ -106,25 +94,26 @@
   let bonesMap = {};
   let ikTargetsMap = {}; 
   let boneHelpers = [];
-  let debugLinesMap = {}; // Visual debugging lines
+  let rigNodes3D = []; // 3D spheres for auto-rigging phase
+  let isRiggingMode = false;
   let selectedBone = null;
   let activeSkeleton = null;
 
   const defaultJoints = [
-    { id: 'hips', name: 'Hips', x: 50, y: 52, parent: null, class: 'hip' },
-    { id: 'spine', name: 'Spine', x: 50, y: 38, parent: 'hips', class: '' },
-    { id: 'neck', name: 'Neck', x: 50, y: 24, parent: 'spine', class: '' },
-    { id: 'head', name: 'Head', x: 50, y: 16, parent: 'neck', class: 'head' },
-    { id: 'shoulder_r', name: 'R Shoulder', x: 38, y: 28, parent: 'spine', class: '', pair: 'shoulder_l' },
-    { id: 'elbow_r', name: 'R Elbow', x: 25, y: 28, parent: 'shoulder_r', class: '', pair: 'elbow_l' },
-    { id: 'wrist_r', name: 'R Wrist', x: 12, y: 28, parent: 'elbow_r', class: '', pair: 'wrist_l' },
-    { id: 'shoulder_l', name: 'L Shoulder', x: 62, y: 28, parent: 'spine', class: '', pair: 'shoulder_r' },
-    { id: 'elbow_l', name: 'L Elbow', x: 75, y: 28, parent: 'shoulder_l', class: '', pair: 'elbow_r' },
-    { id: 'wrist_l', name: 'L Wrist', x: 88, y: 28, parent: 'elbow_l', class: '', pair: 'wrist_r' },
-    { id: 'knee_r', name: 'R Knee', x: 42, y: 72, parent: 'hips', class: '', pair: 'knee_l' },
-    { id: 'ankle_r', name: 'R Ankle', x: 42, y: 90, parent: 'knee_r', class: '', pair: 'ankle_l' },
-    { id: 'knee_l', name: 'L Knee', x: 58, y: 72, parent: 'hips', class: '', pair: 'knee_r' },
-    { id: 'ankle_l', name: 'L Ankle', x: 58, y: 90, parent: 'knee_l', class: '', pair: 'ankle_r' }
+    { id: 'hips', name: 'Hips', x: 0, y: 0.1, z: 0, parent: null, class: 'hip' },
+    { id: 'spine', name: 'Spine', x: 0, y: 0.35, z: 0, parent: 'hips', class: '' },
+    { id: 'neck', name: 'Neck', x: 0, y: 0.65, z: 0, parent: 'spine', class: '' },
+    { id: 'head', name: 'Head', x: 0, y: 0.8, z: 0, parent: 'neck', class: 'head' },
+    { id: 'shoulder_r', name: 'R Shoulder', x: -0.2, y: 0.55, z: 0, parent: 'spine', class: '', pair: 'shoulder_l' },
+    { id: 'elbow_r', name: 'R Elbow', x: -0.4, y: 0.55, z: 0, parent: 'shoulder_r', class: '', pair: 'elbow_l' },
+    { id: 'wrist_r', name: 'R Wrist', x: -0.6, y: 0.55, z: 0, parent: 'elbow_r', class: '', pair: 'wrist_l' },
+    { id: 'shoulder_l', name: 'L Shoulder', x: 0.2, y: 0.55, z: 0, parent: 'spine', class: '', pair: 'shoulder_r' },
+    { id: 'elbow_l', name: 'L Elbow', x: 0.4, y: 0.55, z: 0, parent: 'shoulder_l', class: '', pair: 'elbow_r' },
+    { id: 'wrist_l', name: 'L Wrist', x: 0.6, y: 0.55, z: 0, parent: 'elbow_l', class: '', pair: 'wrist_r' },
+    { id: 'knee_r', name: 'R Knee', x: -0.1, y: -0.3, z: 0, parent: 'hips', class: '', pair: 'knee_l' },
+    { id: 'ankle_r', name: 'R Ankle', x: -0.1, y: -0.7, z: 0, parent: 'knee_r', class: '', pair: 'ankle_l' },
+    { id: 'knee_l', name: 'L Knee', x: 0.1, y: -0.3, z: 0, parent: 'hips', class: '', pair: 'knee_r' },
+    { id: 'ankle_l', name: 'L Ankle', x: 0.1, y: -0.7, z: 0, parent: 'knee_l', class: '', pair: 'ankle_r' }
   ];
 
   function showToast(msg) {
@@ -157,51 +146,45 @@
 
     transformControls = new THREE.TransformControls(camera, renderer.domElement);
     transformControls.size = 0.75; 
-    transformControls.setMode('rotate');
-    transformControls.space = 'local';
+    transformControls.setMode('translate');
+    transformControls.space = 'world';
 
     transformControls.addEventListener('dragging-changed', (e) => { 
       orbitControls.enabled = !e.value; 
-    });
 
-    // Hard-Parent Drag Start / Drag End Logic
-    transformControls.addEventListener('dragging-changed', (event) => {
-      const isDragging = event.value;
-      const activeObj = transformControls.object;
+      if (!isRiggingMode) {
+        const isDragging = e.value;
+        const activeObj = transformControls.object;
 
-      if (activeObj && activeObj.userData.isIKTarget) {
-        const boneName = activeObj.userData.boneName;
-        const bone = bonesMap[boneName];
+        if (activeObj && activeObj.userData.isIKTarget) {
+          const boneName = activeObj.userData.boneName;
+          const bone = bonesMap[boneName];
 
-        if (isDragging) {
-          // Drag Start: Detach from bone, attach to scene maintaining world position
-          if (bone) {
-            const worldPos = new THREE.Vector3();
-            activeObj.getWorldPosition(worldPos);
-            scene.attach(activeObj);
-            activeObj.position.copy(worldPos);
-          }
-        } else {
-          // Drag End: Re-attach handle back to the wrist/ankle bone
-          if (bone) {
-            bone.add(activeObj);
-            activeObj.position.set(0, 0, 0); // Zero local offset
+          if (isDragging) {
+            if (bone) {
+              const worldPos = new THREE.Vector3();
+              activeObj.getWorldPosition(worldPos);
+              scene.attach(activeObj);
+              activeObj.position.copy(worldPos);
+            }
+          } else {
+            if (bone) {
+              bone.add(activeObj);
+              activeObj.position.set(0, 0, 0);
+            }
           }
         }
       }
     });
 
     transformControls.addEventListener('objectChange', () => {
+      if (isRiggingMode) return;
       if (!selectedBone) return;
 
       const ctrlObj = transformControls.object;
       if (ctrlObj && ctrlObj.userData.isIKTarget && transformControls.dragging) {
         const chain = ctrlObj.userData.chain; 
         solveTargetIK(chain[0], chain[1], chain[2], ctrlObj);
-      } else if (transformControls.getMode() === 'translate') {
-        if (selectedBone.name !== 'hips' && selectedBone.userData.restPosition) {
-          selectedBone.position.copy(selectedBone.userData.restPosition);
-        }
       }
 
       if (activeSkeleton) {
@@ -237,7 +220,7 @@
 
     renderer.domElement.addEventListener('pointerdown', onSceneClick);
 
-    showToast("Engine Ready (Hard-Parent Active)");
+    showToast("Engine Ready");
     startRenderLoop();
   }
 
@@ -282,6 +265,7 @@
   }
 
   function onSceneClick(event) {
+    if (isRiggingMode) return;
     if (transformControls.dragging || transformControls.hovered) return;
     if (boneHelpers.length === 0) return;
 
@@ -327,7 +311,6 @@
       const targetObj = ikTargetsMap[targetKey];
       
       if (transformControls.getMode() === 'translate') {
-        // Detach temporarily for translation
         const worldPos = new THREE.Vector3();
         targetObj.getWorldPosition(worldPos);
         scene.attach(targetObj);
@@ -436,11 +419,11 @@
     transformControls.detach();
     boneHelpers.forEach(h => scene.remove(h));
     Object.values(ikTargetsMap).forEach(t => scene.remove(t));
-    Object.values(debugLinesMap).forEach(l => scene.remove(l));
+    rigNodes3D.forEach(n => scene.remove(n));
 
     bonesMap = {};
     ikTargetsMap = {};
-    debugLinesMap = {};
+    rigNodes3D = [];
     boneHelpers = [];
     selectedBone = null;
     activeSkeleton = null;
@@ -450,113 +433,50 @@
     if (!activeModel) { showToast("Import a 3D Model First!"); return; }
 
     resetCamera();
+    clearRig();
+    isRiggingMode = true;
 
-    const overlay = document.getElementById('rig-overlay');
-    const container = document.getElementById('joints-container');
-    container.innerHTML = '';
-    overlay.style.display = 'block';
+    document.getElementById('rig-tools-bar').style.display = 'flex';
 
+    // Create 3D draggable nodes for auto-rigging phase (fixes zoom/scale issue completely)
     defaultJoints.forEach(j => {
-      const node = document.createElement('div');
-      node.className = `joint-node ${j.class}`;
-      node.style.left = `${j.x}%`;
-      node.style.top = `${j.y}%`;
-      node.dataset.id = j.id;
-      if (j.pair) node.dataset.pair = j.pair;
+      const sphereGeo = new THREE.SphereGeometry(0.04, 16, 16);
+      const color = j.class === 'hip' ? 0xff3b30 : j.class === 'head' ? 0x30d158 : 0xff9500;
+      const sphereMat = new THREE.MeshBasicMaterial({ color: color, depthTest: false });
+      const node = new THREE.Mesh(sphereGeo, sphereMat);
+      node.position.set(j.x, j.y + 0.9, j.z);
+      node.renderOrder = 999;
+      node.userData = { id: j.id, pair: j.pair };
 
-      makeNodeDraggable(node);
-      container.appendChild(node);
+      scene.add(node);
+      rigNodes3D.push(node);
     });
 
-    showToast("Align Joints Front View");
-  }
+    if (rigNodes3D.length > 0) {
+      transformControls.attach(rigNodes3D[0]);
+    }
 
-  function makeNodeDraggable(elm) {
-    let active = false, initialX, initialY;
-
-    elm.addEventListener('pointerdown', (e) => {
-      e.stopPropagation();
-      active = true;
-      initialX = e.clientX - elm.offsetLeft;
-      initialY = e.clientY - elm.offsetTop;
-      orbitControls.enabled = false; 
-    });
-
-    window.addEventListener('pointermove', (e) => {
-      if (active) {
-        e.preventDefault();
-        const container = document.getElementById('joints-container');
-        const cWidth = container.clientWidth;
-
-        let newLeft = e.clientX - initialX;
-        let newTop = e.clientY - initialY;
-
-        elm.style.left = newLeft + 'px';
-        elm.style.top = newTop + 'px';
-
-        const pairId = elm.dataset.pair;
-        if (pairId) {
-          const pairNode = container.querySelector(`[data-id="${pairId}"]`);
-          if (pairNode) {
-            const centerX = cWidth / 2;
-            const distFromCenter = newLeft - centerX;
-            const mirroredLeft = centerX - distFromCenter;
-
-            pairNode.style.left = mirroredLeft + 'px';
-            pairNode.style.top = newTop + 'px';
-          }
-        }
-      }
-    });
-
-    window.addEventListener('pointerup', () => { 
-      if(active) {
-        active = false; 
-        orbitControls.enabled = true;
-      }
-    });
+    showToast("Align 3D Rig Spheres to Model");
   }
 
   function closeRigOverlay() {
-    const overlay = document.getElementById('rig-overlay');
-    if (overlay) overlay.style.display = 'none';
+    isRiggingMode = false;
+    document.getElementById('rig-tools-bar').style.display = 'none';
+    transformControls.detach();
+    rigNodes3D.forEach(n => scene.remove(n));
+    rigNodes3D = [];
     orbitControls.enabled = true;
   }
 
   function applyAutoRigging() {
     if (!activeModel) { closeRigOverlay(); return; }
 
-    clearRig();
-
-    const container = document.getElementById('joints-container');
-    const nodes = container.querySelectorAll('.joint-node');
-    const rect = container.getBoundingClientRect();
-
-    const raycaster = new THREE.Raycaster();
-    const mouse = new THREE.Vector2();
     const calculatedWorldPositions = {};
-
-    const modelBox = new THREE.Box3().setFromObject(activeModel);
-    const modelCenterZ = modelBox.getCenter(new THREE.Vector3()).z;
-
-    nodes.forEach(node => {
-      const id = node.dataset.id;
-      const nodeRect = node.getBoundingClientRect();
-      const x = nodeRect.left + nodeRect.width / 2;
-      const y = nodeRect.top + nodeRect.height / 2;
-
-      mouse.x = ((x - rect.left) / rect.width) * 2 - 1;
-      mouse.y = -((y - rect.top) / rect.height) * 2 + 1;
-
-      raycaster.setFromCamera(mouse, camera);
-
-      let targetPos = new THREE.Vector3();
-      const plane = new THREE.Plane(new THREE.Vector3(0, 0, 1), -modelCenterZ);
-      raycaster.ray.intersectPlane(plane, targetPos);
-      
-      targetPos.z = modelCenterZ;
-      calculatedWorldPositions[id] = targetPos;
+    rigNodes3D.forEach(node => {
+      calculatedWorldPositions[node.userData.id] = node.position.clone();
     });
+
+    closeRigOverlay();
 
     const bonesList = [];
     const boneIndexMap = {};
@@ -668,7 +588,6 @@
       boneHelpers.push(handle);
     });
 
-    // 1. Initial Parenting Strategy: Hard-parent IK Handle directly to the Bone
     const targetConfigs = [
       { key: 'r_arm', root: 'shoulder_r', mid: 'elbow_r', end: 'wrist_r' },
       { key: 'l_arm', root: 'shoulder_l', mid: 'elbow_l', end: 'wrist_l' },
@@ -686,52 +605,24 @@
       const targetMat = new THREE.MeshBasicMaterial({ color: 0xff3b30, depthTest: false, depthWrite: false, transparent: true, opacity: 0.9 });
       const targetMesh = new THREE.Mesh(targetGeo, targetMat);
       
-      targetMesh.position.set(0, 0, 0); // Local (0,0,0) guarantee
+      targetMesh.position.set(0, 0, 0); 
       targetMesh.renderOrder = 1000;
       targetMesh.name = `${cfg.end}_Target`;
       targetMesh.userData = { isIKTarget: true, boneName: cfg.end, chain: [rootBone, midBone, endBone] };
 
-      // Hard-parent to wrist/ankle bone
       endBone.add(targetMesh);
       ikTargetsMap[cfg.key] = targetMesh;
-
-      // 4. Visual Debugging Line connecting Bone center to IK Handle
-      const lineGeo = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(), new THREE.Vector3()]);
-      const lineMat = new THREE.LineBasicMaterial({ color: 0xffff00, depthTest: false });
-      const debugLine = new THREE.Line(lineGeo, lineMat);
-      debugLine.renderOrder = 998;
-      scene.add(debugLine);
-      debugLinesMap[cfg.key] = { line: debugLine, bone: endBone, target: targetMesh };
     });
 
-    closeRigOverlay();
     if (bonesList.length > 0) selectBone(bonesList[0]);
 
     setMode('rotate');
-    showToast("Rigging Done! Hard-Parenting Active");
+    showToast("Rigging Applied Successfully!");
   }
 
   function startRenderLoop() {
     requestAnimationFrame(startRenderLoop);
     orbitControls.update();
-
-    // Update Visual Debugging Lines
-    for (let key in debugLinesMap) {
-      const item = debugLinesMap[key];
-      if (item.bone && item.target) {
-        characterGroup.updateMatrixWorld(true);
-        const pBone = new THREE.Vector3();
-        const pTarget = new THREE.Vector3();
-        item.bone.getWorldPosition(pBone);
-        item.target.getWorldPosition(pTarget);
-
-        const positions = item.line.geometry.attributes.position.array;
-        positions[0] = pBone.x; positions[1] = pBone.y; positions[2] = pBone.z;
-        positions[3] = pTarget.x; positions[4] = pTarget.y; positions[5] = pTarget.z;
-        item.line.geometry.attributes.position.needsUpdate = true;
-      }
-    }
-
     renderer.render(scene, camera);
     drawTimelineCanvas();
   }
@@ -756,7 +647,7 @@
   function setMode(m) { 
     if (transformControls) {
       transformControls.setMode(m);
-      transformControls.space = 'local';
+      transformControls.space = 'world';
     }
     document.getElementById('btn-rotate').classList.toggle('active', m === 'rotate');
     document.getElementById('btn-move').classList.toggle('active', m === 'translate');
