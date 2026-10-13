@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>Prisma 3D Auto-Rig Engine (Perfect IK Handle Sync)</title>
+  <title>Prisma 3D Auto-Rig Engine (Perfect IK Handle Parenting Fix)</title>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; -webkit-tap-highlight-color: transparent; }
     html, body { width: 100vw; height: 100dvh; overflow: hidden; background: #1b1b20; color: #fff; font-family: system-ui, -apple-system, sans-serif; }
@@ -209,7 +209,7 @@
 
     renderer.domElement.addEventListener('pointerdown', onSceneClick);
 
-    showToast("Engine Ready (Precise Snapping)");
+    showToast("Engine Ready (Precise Parenting Fix)");
     startRenderLoop();
   }
 
@@ -219,7 +219,7 @@
     const pRoot = new THREE.Vector3();
     root.getWorldPosition(pRoot);
 
-    const pTarget = targetObj.position.clone();
+    const pTarget = targetObj.getWorldPosition(new THREE.Vector3());
 
     const l1 = mid.userData.restPosition ? mid.userData.restPosition.length() : 0.3;
     const l2 = end.userData.restPosition ? end.userData.restPosition.length() : 0.3;
@@ -233,11 +233,14 @@
       dist = maxLen;
       dir.normalize().multiplyScalar(dist);
       pTarget.copy(pRoot).add(dir);
+      // Update target world position safely via parent scene
+      scene.attach(targetObj);
       targetObj.position.copy(pTarget);
     } else if (dist < minLen) {
       dist = minLen;
       dir.normalize().multiplyScalar(dist);
       pTarget.copy(pRoot).add(dir);
+      scene.attach(targetObj);
       targetObj.position.copy(pTarget);
     }
 
@@ -295,16 +298,19 @@
     else if (boneId === 'ankle_l') targetKey = 'l_leg';
 
     if (targetKey && ikTargetsMap[targetKey]) {
-      characterGroup.updateMatrixWorld(true);
-      const boneWorldPos = new THREE.Vector3();
-      bone.getWorldPosition(boneWorldPos);
-      ikTargetsMap[targetKey].position.copy(boneWorldPos);
-
+      const targetObj = ikTargetsMap[targetKey];
+      
       if (transformControls.getMode() === 'translate') {
+        // Unparent from bone to scene when user actively grabs and moves the target handle
+        scene.attach(targetObj);
         transformControls.detach();
-        transformControls.attach(ikTargetsMap[targetKey]);
+        transformControls.attach(targetObj);
         showToast(`${boneId} IK Target: Move Mode Active`);
         return;
+      } else {
+        // Keep target parented/locked to bone during rotate mode
+        bone.add(targetObj);
+        targetObj.position.set(0, 0, 0);
       }
     }
 
@@ -325,6 +331,7 @@
 
   function selectIKTarget(targetObj) {
     if (transformControls.dragging) return;
+    scene.attach(targetObj);
     transformControls.detach();
     transformControls.attach(targetObj);
     showToast(`${targetObj.name} IK Target Active`);
@@ -479,7 +486,7 @@
   }
 
   function closeRigOverlay() {
-    document.getElementById('rig-overlay').style.display = 'none';
+    document.getElementById('rig-overlay'].style.display = 'none';
     orbitControls.enabled = true;
   }
 
@@ -637,20 +644,20 @@
 
     targetConfigs.forEach(cfg => {
       const endBone = bonesMap[cfg.end];
+      const rootBone = bonesMap[cfg.root];
+      const midBone = bonesMap[cfg.mid];
       if (!endBone) return;
-
-      const worldPos = new THREE.Vector3();
-      endBone.getWorldPosition(worldPos);
 
       const targetGeo = new THREE.SphereGeometry(0.045, 16, 16);
       const targetMat = new THREE.MeshBasicMaterial({ color: 0xff3b30, depthTest: false, depthWrite: false, transparent: true, opacity: 0.8 });
       const targetMesh = new THREE.Mesh(targetGeo, targetMat);
-      targetMesh.position.copy(worldPos);
+      targetMesh.position.set(0, 0, 0); // Zero offset inside bone local space
       targetMesh.renderOrder = 1000;
       targetMesh.name = `${cfg.end}_Target`;
-      targetMesh.userData = { isIKTarget: true, chain: [bonesMap[cfg.root], bonesMap[cfg.mid], endBone] };
+      targetMesh.userData = { isIKTarget: true, chain: [rootBone, midBone, endBone] };
 
-      scene.add(targetMesh);
+      // Parent target directly to the wrist/ankle bone so it follows perfectly with zero offset
+      endBone.add(targetMesh);
       ikTargetsMap[cfg.key] = targetMesh;
     });
 
@@ -658,27 +665,12 @@
     if (bonesList.length > 0) selectBone(bonesList[0]);
 
     setMode('rotate');
-    showToast("Rigging Done! Perfect Handle Alignment");
+    showToast("Rigging Done! Exact Bone Parenting Active");
   }
 
   function startRenderLoop() {
     requestAnimationFrame(startRenderLoop);
     orbitControls.update();
-
-    // Continuously sync IK targets to bones when not dragging
-    if (!transformControls.dragging) {
-      for (let key in ikTargetsMap) {
-        let boneName = (key === 'r_arm') ? 'wrist_r' : (key === 'l_arm') ? 'wrist_l' : (key === 'r_leg') ? 'ankle_r' : 'ankle_l';
-        let bone = bonesMap[boneName];
-        if (bone && ikTargetsMap[key] !== transformControls.object) {
-          characterGroup.updateMatrixWorld(true);
-          let wPos = new THREE.Vector3();
-          bone.getWorldPosition(wPos);
-          ikTargetsMap[key].position.copy(wPos);
-        }
-      }
-    }
-
     renderer.render(scene, camera);
     drawTimelineCanvas();
   }
@@ -725,3 +717,5 @@
 </script>
 </body>
 </html>
+
+  
