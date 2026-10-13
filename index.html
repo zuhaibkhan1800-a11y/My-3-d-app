@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>Prisma 3D Auto-Rig Engine (3D Zoom-Sync Rigging)</title>
+  <title>Prisma 3D Auto-Rig Engine (Direct Touch 3D Rigging)</title>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; -webkit-tap-highlight-color: transparent; }
     html, body { width: 100vw; height: 100dvh; overflow: hidden; background: #1b1b20; color: #fff; font-family: system-ui, -apple-system, sans-serif; }
@@ -94,10 +94,16 @@
   let bonesMap = {};
   let ikTargetsMap = {}; 
   let boneHelpers = [];
-  let rigNodes3D = []; // 3D Spheres for auto-rigging
+  let rigNodes3D = []; 
   let isRiggingMode = false;
   let selectedBone = null;
   let activeSkeleton = null;
+  
+  // Direct touch dragging variables for 3D rig nodes
+  let draggedRigNode = null;
+  let dragPlane = new THREE.Plane();
+  let raycaster = new THREE.Raycaster();
+  let mouseCoord = new THREE.Vector2();
 
   const defaultJoints = [
     { id: 'hips', name: 'Hips', x: 0, y: 0.1, z: 0, parent: null, class: 'hip' },
@@ -178,18 +184,7 @@
     });
 
     transformControls.addEventListener('objectChange', () => {
-      if (isRiggingMode) {
-        // Handle symmetry mirroring if needed during 3D node dragging
-        const activeObj = transformControls.object;
-        if (activeObj && activeObj.userData.pairNode) {
-          const pair = activeObj.userData.pairNode;
-          pair.position.x = -activeObj.position.x;
-          pair.position.y = activeObj.position.y;
-          pair.position.z = activeObj.position.z;
-        }
-        return;
-      }
-
+      if (isRiggingMode) return;
       if (!selectedBone) return;
 
       const ctrlObj = transformControls.object;
@@ -229,10 +224,66 @@
     characterGroup = new THREE.Group();
     scene.add(characterGroup);
 
-    renderer.domElement.addEventListener('pointerdown', onSceneClick);
+    // Event listeners for direct touch & mouse dragging during rigging mode
+    const domElem = renderer.domElement;
+    domElem.addEventListener('pointerdown', onPointerDown);
+    domElem.addEventListener('pointermove', onPointerMove);
+    domElem.addEventListener('pointerup', onPointerUp);
 
-    showToast("Engine Ready (3D Zoom Sync)");
+    showToast("Engine Ready (Direct Finger Dragging)");
     startRenderLoop();
+  }
+
+  function onPointerDown(event) {
+    if (!isRiggingMode) {
+      onSceneClick(event);
+      return;
+    }
+
+    const rect = renderer.domElement.getBoundingClientRect();
+    mouseCoord.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+    mouseCoord.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+
+    raycaster.setFromCamera(mouseCoord, camera);
+    const intersects = raycaster.intersectObjects(rigNodes3D, false);
+
+    if (intersects.length > 0) {
+      draggedRigNode = intersects[0].object;
+      orbitControls.enabled = false; // Disable camera movement while dragging node
+
+      // Setup drag plane facing the camera
+      dragPlane.setFromNormalAndCoplanarPoint(camera.getWorldDirection(new THREE.Vector3()).negate(), draggedRigNode.position);
+      showToast(`Dragging ${draggedRigNode.userData.id}`);
+    }
+  }
+
+  function onPointerMove(event) {
+    if (!isRiggingMode || !draggedRigNode) return;
+
+    const rect = renderer.domElement.getBoundingClientRect();
+    mouseCoord.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+    mouseCoord.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+
+    raycaster.setFromCamera(mouseCoord, camera);
+    const targetPos = new THREE.Vector3();
+    if (raycaster.ray.intersectPlane(dragPlane, targetPos)) {
+      draggedRigNode.position.copy(targetPos);
+
+      // Mirror symmetry update for paired nodes
+      if (draggedRigNode.userData.pairNode) {
+        const pair = draggedRigNode.userData.pairNode;
+        pair.position.x = -targetPos.x;
+        pair.position.y = targetPos.y;
+        pair.position.z = targetPos.z;
+      }
+    }
+  }
+
+  function onPointerUp() {
+    if (isRiggingMode && draggedRigNode) {
+      draggedRigNode = null;
+      orbitControls.enabled = true; // Re-enable camera orbit
+    }
   }
 
   function solveTargetIK(root, mid, end, targetObj) {
@@ -277,6 +328,7 @@
 
   function onSceneClick(event) {
     if (transformControls.dragging || transformControls.hovered) return;
+    if (boneHelpers.length === 0) return;
 
     const rect = renderer.domElement.getBoundingClientRect();
     const mouse = new THREE.Vector2(
@@ -286,17 +338,6 @@
 
     const raycaster = new THREE.Raycaster();
     raycaster.setFromCamera(mouse, camera);
-
-    if (isRiggingMode) {
-      const intersects = raycaster.intersectObjects(rigNodes3D, false);
-      if (intersects.length > 0) {
-        transformControls.attach(intersects[0].object);
-        showToast("Rig Node Selected");
-      }
-      return;
-    }
-
-    if (boneHelpers.length === 0) return;
 
     const interactables = [...boneHelpers, ...Object.values(ikTargetsMap)];
     const intersects = raycaster.intersectObjects(interactables, false);
@@ -458,15 +499,13 @@
 
     document.getElementById('rig-tools-bar').style.display = 'flex';
 
-    // Create 3D interactive spheres for Auto-Rigging (perfect zoom sync)
     const nodeMap = {};
     defaultJoints.forEach(j => {
-      const sphereGeo = new THREE.SphereGeometry(0.045, 16, 16);
+      const sphereGeo = new THREE.SphereGeometry(0.05, 16, 16);
       const color = j.class === 'hip' ? 0xff3b30 : j.class === 'head' ? 0x30d158 : 0xff9500;
       const sphereMat = new THREE.MeshBasicMaterial({ color: color, depthTest: false });
       const node = new THREE.Mesh(sphereGeo, sphereMat);
       
-      // Position joints relative to model center
       node.position.set(j.x, j.y + 0.9, j.z);
       node.renderOrder = 999;
       node.userData = { id: j.id };
@@ -476,26 +515,18 @@
       nodeMap[j.id] = node;
     });
 
-    // Link pairs for mirroring
     defaultJoints.forEach(j => {
       if (j.pair && nodeMap[j.id] && nodeMap[j.pair]) {
         nodeMap[j.id].userData.pairNode = nodeMap[j.pair];
       }
     });
 
-    if (rigNodes3D.length > 0) {
-      transformControls.setMode('translate');
-      transformControls.space = 'world';
-      transformControls.attach(rigNodes3D[0]);
-    }
-
-    showToast("Align 3D Rig Nodes to Model");
+    showToast("Touch & Drag Rig Nodes Directly");
   }
 
   function closeRigOverlay() {
     isRiggingMode = false;
     document.getElementById('rig-tools-bar').style.display = 'none';
-    transformControls.detach();
     rigNodes3D.forEach(n => scene.remove(n));
     rigNodes3D = [];
     orbitControls.enabled = true;
@@ -702,4 +733,3 @@
 </script>
 </body>
 </html>
-
