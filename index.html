@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>Prisma 3D Auto-Rig Engine (Direct Touch 3D Rigging)</title>
+  <title>Prisma 3D Auto-Rig Engine (Pole Vector Elbow Fix)</title>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; -webkit-tap-highlight-color: transparent; }
     html, body { width: 100vw; height: 100dvh; overflow: hidden; background: #1b1b20; color: #fff; font-family: system-ui, -apple-system, sans-serif; }
@@ -93,13 +93,13 @@
 
   let bonesMap = {};
   let ikTargetsMap = {}; 
+  let poleTargetsMap = {}; // Pole vectors for natural elbow/knee bending
   let boneHelpers = [];
   let rigNodes3D = []; 
   let isRiggingMode = false;
   let selectedBone = null;
   let activeSkeleton = null;
   
-  // Direct touch dragging variables for 3D rig nodes
   let draggedRigNode = null;
   let dragPlane = new THREE.Plane();
   let raycaster = new THREE.Raycaster();
@@ -190,7 +190,8 @@
       const ctrlObj = transformControls.object;
       if (ctrlObj && ctrlObj.userData.isIKTarget && transformControls.dragging) {
         const chain = ctrlObj.userData.chain; 
-        solveTargetIK(chain[0], chain[1], chain[2], ctrlObj);
+        const pole = ctrlObj.userData.poleTarget;
+        solveTwoBoneIKWithPole(chain[0], chain[1], chain[2], ctrlObj, pole);
       }
 
       if (activeSkeleton) {
@@ -224,69 +225,17 @@
     characterGroup = new THREE.Group();
     scene.add(characterGroup);
 
-    // Event listeners for direct touch & mouse dragging during rigging mode
     const domElem = renderer.domElement;
     domElem.addEventListener('pointerdown', onPointerDown);
     domElem.addEventListener('pointermove', onPointerMove);
     domElem.addEventListener('pointerup', onPointerUp);
 
-    showToast("Engine Ready (Direct Finger Dragging)");
+    showToast("Engine Ready (Pole Vector Enabled)");
     startRenderLoop();
   }
 
-  function onPointerDown(event) {
-    if (!isRiggingMode) {
-      onSceneClick(event);
-      return;
-    }
-
-    const rect = renderer.domElement.getBoundingClientRect();
-    mouseCoord.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
-    mouseCoord.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
-
-    raycaster.setFromCamera(mouseCoord, camera);
-    const intersects = raycaster.intersectObjects(rigNodes3D, false);
-
-    if (intersects.length > 0) {
-      draggedRigNode = intersects[0].object;
-      orbitControls.enabled = false; // Disable camera movement while dragging node
-
-      // Setup drag plane facing the camera
-      dragPlane.setFromNormalAndCoplanarPoint(camera.getWorldDirection(new THREE.Vector3()).negate(), draggedRigNode.position);
-      showToast(`Dragging ${draggedRigNode.userData.id}`);
-    }
-  }
-
-  function onPointerMove(event) {
-    if (!isRiggingMode || !draggedRigNode) return;
-
-    const rect = renderer.domElement.getBoundingClientRect();
-    mouseCoord.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
-    mouseCoord.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
-
-    raycaster.setFromCamera(mouseCoord, camera);
-    const targetPos = new THREE.Vector3();
-    if (raycaster.ray.intersectPlane(dragPlane, targetPos)) {
-      draggedRigNode.position.copy(targetPos);
-
-      // Mirror symmetry update for paired nodes
-      if (draggedRigNode.userData.pairNode) {
-        const pair = draggedRigNode.userData.pairNode;
-        pair.position.x = -targetPos.x;
-        pair.position.y = targetPos.y;
-        pair.position.z = targetPos.z;
-      }
-    }
-  }
-
-  function onPointerUp() {
-    if (isRiggingMode && draggedRigNode) {
-      draggedRigNode = null;
-      orbitControls.enabled = true; // Re-enable camera orbit
-    }
-  }
-
-  function solveTargetIK(root, mid, end, targetObj) {
+  // Enhanced Two-Bone IK Solver with Pole Vector Support for Natural Bending
+  function solveTwoBoneIKWithPole(root, mid, end, targetObj, poleTarget) {
     characterGroup.updateMatrixWorld(true);
 
     const pRoot = new THREE.Vector3();
@@ -315,7 +264,25 @@
       targetObj.position.copy(pTarget);
     }
 
+    // Apply root orientation towards target with Pole Vector plane constraint
     root.lookAt(pTarget);
+
+    if (poleTarget) {
+      const pPole = new THREE.Vector3();
+      poleTarget.getWorldPosition(pPole);
+
+      // Compute bending plane normal using cross-product with pole vector
+      const normal = new THREE.Vector3().subVectors(pPole, pRoot).normalize();
+      const boneDir = new THREE.Vector3().subVectors(pTarget, pRoot).normalize();
+      const perp = new THREE.Vector3().crossVectors(boneDir, normal).normalize();
+
+      if (perp.lengthSq() > 0.0001) {
+        const up = new THREE.Vector3().crossVectors(perp, boneDir).normalize();
+        const m = new THREE.Matrix4().makeBasis(perp, up, boneDir.negate());
+        root.quaternion.setFromRotationMatrix(m);
+      }
+    }
+
     mid.position.copy(mid.userData.restPosition);
     end.position.copy(end.userData.restPosition);
 
@@ -323,6 +290,55 @@
     root.getWorldPosition(currentRootWorld);
     if (!currentRootWorld.equals(pRoot)) {
       root.position.add(pRoot.clone().sub(currentRootWorld));
+    }
+  }
+
+  function onPointerDown(event) {
+    if (!isRiggingMode) {
+      onSceneClick(event);
+      return;
+    }
+
+    const rect = renderer.domElement.getBoundingClientRect();
+    mouseCoord.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+    mouseCoord.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+
+    raycaster.setFromCamera(mouseCoord, camera);
+    const intersects = raycaster.intersectObjects(rigNodes3D, false);
+
+    if (intersects.length > 0) {
+      draggedRigNode = intersects[0].object;
+      orbitControls.enabled = false;
+      dragPlane.setFromNormalAndCoplanarPoint(camera.getWorldDirection(new THREE.Vector3()).negate(), draggedRigNode.position);
+      showToast(`Dragging ${draggedRigNode.userData.id}`);
+    }
+  }
+
+  function onPointerMove(event) {
+    if (!isRiggingMode || !draggedRigNode) return;
+
+    const rect = renderer.domElement.getBoundingClientRect();
+    mouseCoord.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+    mouseCoord.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+
+    raycaster.setFromCamera(mouseCoord, camera);
+    const targetPos = new THREE.Vector3();
+    if (raycaster.ray.intersectPlane(dragPlane, targetPos)) {
+      draggedRigNode.position.copy(targetPos);
+
+      if (draggedRigNode.userData.pairNode) {
+        const pair = draggedRigNode.userData.pairNode;
+        pair.position.x = -targetPos.x;
+        pair.position.y = targetPos.y;
+        pair.position.z = targetPos.z;
+      }
+    }
+  }
+
+  function onPointerUp() {
+    if (isRiggingMode && draggedRigNode) {
+      draggedRigNode = null;
+      orbitControls.enabled = true;
     }
   }
 
@@ -480,10 +496,12 @@
     transformControls.detach();
     boneHelpers.forEach(h => scene.remove(h));
     Object.values(ikTargetsMap).forEach(t => scene.remove(t));
+    Object.values(poleTargetsMap).forEach(p => scene.remove(p));
     rigNodes3D.forEach(n => scene.remove(n));
 
     bonesMap = {};
     ikTargetsMap = {};
+    poleTargetsMap = {};
     rigNodes3D = [];
     boneHelpers = [];
     selectedBone = null;
@@ -652,11 +670,33 @@
       boneHelpers.push(handle);
     });
 
+    // Initialize Pole Targets for natural elbow/knee bending plane constraints
+    const poleConfigs = [
+      { key: 'r_arm', shoulder: 'shoulder_r', offset: new THREE.Vector3(-0.5, 0, 0.5) },
+      { key: 'l_arm', shoulder: 'shoulder_l', offset: new THREE.Vector3(0.5, 0, 0.5) }
+    ];
+
+    poleConfigs.forEach(cfg => {
+      const shoulderBone = bonesMap[cfg.shoulder];
+      if (!shoulderBone) return;
+
+      const poleGeo = new THREE.SphereGeometry(0.025, 12, 12);
+      const poleMat = new THREE.MeshBasicMaterial({ color: 0x00ffcc, depthTest: false, transparent: true, opacity: 0.6 });
+      const poleMesh = new THREE.Mesh(poleGeo, poleMat);
+
+      const shoulderWorldPos = new THREE.Vector3();
+      shoulderBone.getWorldPosition(shoulderWorldPos);
+      poleMesh.position.copy(shoulderWorldPos.add(cfg.offset));
+      
+      scene.add(poleMesh);
+      poleTargetsMap[cfg.key] = poleMesh;
+    });
+
     const targetConfigs = [
-      { key: 'r_arm', root: 'shoulder_r', mid: 'elbow_r', end: 'wrist_r' },
-      { key: 'l_arm', root: 'shoulder_l', mid: 'elbow_l', end: 'wrist_l' },
-      { key: 'r_leg', root: 'hips', mid: 'knee_r', end: 'ankle_r' },
-      { key: 'l_leg', root: 'hips', mid: 'knee_l', end: 'ankle_l' }
+      { key: 'r_arm', root: 'shoulder_r', mid: 'elbow_r', end: 'wrist_r', pole: poleTargetsMap['r_arm'] },
+      { key: 'l_arm', root: 'shoulder_l', mid: 'elbow_l', end: 'wrist_l', pole: poleTargetsMap['l_arm'] },
+      { key: 'r_leg', root: 'hips', mid: 'knee_r', end: 'ankle_r', pole: null },
+      { key: 'l_leg', root: 'hips', mid: 'knee_l', end: 'ankle_l', pole: null }
     ];
 
     targetConfigs.forEach(cfg => {
@@ -672,7 +712,7 @@
       targetMesh.position.set(0, 0, 0); 
       targetMesh.renderOrder = 1000;
       targetMesh.name = `${cfg.end}_Target`;
-      targetMesh.userData = { isIKTarget: true, boneName: cfg.end, chain: [rootBone, midBone, endBone] };
+      targetMesh.userData = { isIKTarget: true, boneName: cfg.end, chain: [rootBone, midBone, endBone], poleTarget: cfg.pole };
 
       endBone.add(targetMesh);
       ikTargetsMap[cfg.key] = targetMesh;
@@ -681,7 +721,7 @@
     if (bonesList.length > 0) selectBone(bonesList[0]);
 
     setMode('rotate');
-    showToast("Rigging Applied Successfully!");
+    showToast("Rigging Applied with Pole Vectors!");
   }
 
   function startRenderLoop() {
