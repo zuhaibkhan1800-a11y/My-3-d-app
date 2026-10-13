@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>Prisma 3D Auto-Rig Engine (Perfect IK Handle Parenting Fix)</title>
+  <title>Prisma 3D Auto-Rig Engine (Fixed & Stable)</title>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; -webkit-tap-highlight-color: transparent; }
     html, body { width: 100vw; height: 100dvh; overflow: hidden; background: #1b1b20; color: #fff; font-family: system-ui, -apple-system, sans-serif; }
@@ -209,7 +209,7 @@
 
     renderer.domElement.addEventListener('pointerdown', onSceneClick);
 
-    showToast("Engine Ready (Precise Parenting Fix)");
+    showToast("Engine Ready (Fixed)");
     startRenderLoop();
   }
 
@@ -233,7 +233,6 @@
       dist = maxLen;
       dir.normalize().multiplyScalar(dist);
       pTarget.copy(pRoot).add(dir);
-      // Update target world position safely via parent scene
       scene.attach(targetObj);
       targetObj.position.copy(pTarget);
     } else if (dist < minLen) {
@@ -301,14 +300,12 @@
       const targetObj = ikTargetsMap[targetKey];
       
       if (transformControls.getMode() === 'translate') {
-        // Unparent from bone to scene when user actively grabs and moves the target handle
         scene.attach(targetObj);
         transformControls.detach();
         transformControls.attach(targetObj);
         showToast(`${boneId} IK Target: Move Mode Active`);
         return;
       } else {
-        // Keep target parented/locked to bone during rotate mode
         bone.add(targetObj);
         targetObj.position.set(0, 0, 0);
       }
@@ -486,7 +483,8 @@
   }
 
   function closeRigOverlay() {
-    document.getElementById('rig-overlay'].style.display = 'none';
+    const overlay = document.getElementById('rig-overlay');
+    if (overlay) overlay.style.display = 'none';
     orbitControls.enabled = true;
   }
 
@@ -651,12 +649,11 @@
       const targetGeo = new THREE.SphereGeometry(0.045, 16, 16);
       const targetMat = new THREE.MeshBasicMaterial({ color: 0xff3b30, depthTest: false, depthWrite: false, transparent: true, opacity: 0.8 });
       const targetMesh = new THREE.Mesh(targetGeo, targetMat);
-      targetMesh.position.set(0, 0, 0); // Zero offset inside bone local space
+      targetMesh.position.set(0, 0, 0); 
       targetMesh.renderOrder = 1000;
       targetMesh.name = `${cfg.end}_Target`;
       targetMesh.userData = { isIKTarget: true, chain: [rootBone, midBone, endBone] };
 
-      // Parent target directly to the wrist/ankle bone so it follows perfectly with zero offset
       endBone.add(targetMesh);
       ikTargetsMap[cfg.key] = targetMesh;
     });
@@ -665,7 +662,7 @@
     if (bonesList.length > 0) selectBone(bonesList[0]);
 
     setMode('rotate');
-    showToast("Rigging Done! Exact Bone Parenting Active");
+    showToast("Rigging Done Successfully!");
   }
 
   function startRenderLoop() {
@@ -717,5 +714,3 @@
 </script>
 </body>
 </html>
-
-  
