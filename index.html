@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>Prisma 3D Auto-Rig Engine (Pole Vector Elbow Fix)</title>
+  <title>Prisma 3D Auto-Rig Engine (Smooth Touch Offset Fix)</title>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; -webkit-tap-highlight-color: transparent; }
     html, body { width: 100vw; height: 100dvh; overflow: hidden; background: #1b1b20; color: #fff; font-family: system-ui, -apple-system, sans-serif; }
@@ -93,17 +93,20 @@
 
   let bonesMap = {};
   let ikTargetsMap = {}; 
-  let poleTargetsMap = {}; // Pole vectors for natural elbow/knee bending
+  let poleTargetsMap = {}; 
   let boneHelpers = [];
   let rigNodes3D = []; 
   let isRiggingMode = false;
   let selectedBone = null;
   let activeSkeleton = null;
   
+  // Smooth Touch Dragging Variables
   let draggedRigNode = null;
   let dragPlane = new THREE.Plane();
   let raycaster = new THREE.Raycaster();
   let mouseCoord = new THREE.Vector2();
+  let planeIntersect = new THREE.Vector3();
+  let dragOffset = new THREE.Vector3();
 
   const defaultJoints = [
     { id: 'hips', name: 'Hips', x: 0, y: 0.1, z: 0, parent: null, class: 'hip' },
@@ -230,11 +233,10 @@
     domElem.addEventListener('pointermove', onPointerMove);
     domElem.addEventListener('pointerup', onPointerUp);
 
-    showToast("Engine Ready (Pole Vector Enabled)");
+    showToast("Engine Ready (Smooth Touch Offset Fixed)");
     startRenderLoop();
   }
 
-  // Enhanced Two-Bone IK Solver with Pole Vector Support for Natural Bending
   function solveTwoBoneIKWithPole(root, mid, end, targetObj, poleTarget) {
     characterGroup.updateMatrixWorld(true);
 
@@ -264,14 +266,12 @@
       targetObj.position.copy(pTarget);
     }
 
-    // Apply root orientation towards target with Pole Vector plane constraint
     root.lookAt(pTarget);
 
     if (poleTarget) {
       const pPole = new THREE.Vector3();
       poleTarget.getWorldPosition(pPole);
 
-      // Compute bending plane normal using cross-product with pole vector
       const normal = new THREE.Vector3().subVectors(pPole, pRoot).normalize();
       const boneDir = new THREE.Vector3().subVectors(pTarget, pRoot).normalize();
       const perp = new THREE.Vector3().crossVectors(boneDir, normal).normalize();
@@ -309,7 +309,14 @@
     if (intersects.length > 0) {
       draggedRigNode = intersects[0].object;
       orbitControls.enabled = false;
+
+      // Setup drag plane facing camera through node position
       dragPlane.setFromNormalAndCoplanarPoint(camera.getWorldDirection(new THREE.Vector3()).negate(), draggedRigNode.position);
+      
+      // Calculate precise offset so node doesn't snap to center on touch
+      raycaster.ray.intersectPlane(dragPlane, planeIntersect);
+      dragOffset.copy(draggedRigNode.position).sub(planeIntersect);
+
       showToast(`Dragging ${draggedRigNode.userData.id}`);
     }
   }
@@ -322,15 +329,16 @@
     mouseCoord.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
 
     raycaster.setFromCamera(mouseCoord, camera);
-    const targetPos = new THREE.Vector3();
-    if (raycaster.ray.intersectPlane(dragPlane, targetPos)) {
-      draggedRigNode.position.copy(targetPos);
+    const hitPoint = new THREE.Vector3();
+    if (raycaster.ray.intersectPlane(dragPlane, hitPoint)) {
+      // Smoothly move node considering initial touch offset
+      draggedRigNode.position.copy(hitPoint.add(dragOffset));
 
       if (draggedRigNode.userData.pairNode) {
         const pair = draggedRigNode.userData.pairNode;
-        pair.position.x = -targetPos.x;
-        pair.position.y = targetPos.y;
-        pair.position.z = targetPos.z;
+        pair.position.x = -draggedRigNode.position.x;
+        pair.position.y = draggedRigNode.position.y;
+        pair.position.z = draggedRigNode.position.z;
       }
     }
   }
@@ -539,7 +547,7 @@
       }
     });
 
-    showToast("Touch & Drag Rig Nodes Directly");
+    showToast("Touch & Drag Rig Nodes Smoothly");
   }
 
   function closeRigOverlay() {
@@ -670,7 +678,6 @@
       boneHelpers.push(handle);
     });
 
-    // Initialize Pole Targets for natural elbow/knee bending plane constraints
     const poleConfigs = [
       { key: 'r_arm', shoulder: 'shoulder_r', offset: new THREE.Vector3(-0.5, 0, 0.5) },
       { key: 'l_arm', shoulder: 'shoulder_l', offset: new THREE.Vector3(0.5, 0, 0.5) }
@@ -721,7 +728,7 @@
     if (bonesList.length > 0) selectBone(bonesList[0]);
 
     setMode('rotate');
-    showToast("Rigging Applied with Pole Vectors!");
+    showToast("Rigging Applied Successfully!");
   }
 
   function startRenderLoop() {
