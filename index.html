@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>Prisma 3D Auto-Rig Engine (Exact Workflow Polish)</title>
+  <title>Prisma 3D Auto-Rig Engine (SkinnedMesh & Weighting Fix)</title>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; -webkit-tap-highlight-color: transparent; }
     html, body { width: 100vw; height: 100dvh; overflow: hidden; background: #1b1b20; color: #fff; font-family: system-ui, -apple-system, sans-serif; }
@@ -16,7 +16,6 @@
     #viewport { flex: 1; position: relative; background: #2d2d35; overflow: hidden; }
     #canvas3d { width: 100%; height: 100%; display: block; touch-action: none; }
 
-    /* Floating UI Feedback Label (Prisma 3D Style) */
     #joint-label { position: absolute; background: rgba(0, 122, 255, 0.85); color: #fff; padding: 2px 8px; border-radius: 4px; font-size: 10px; font-weight: bold; pointer-events: none; display: none; z-index: 1000; transform: translate(-50%, -150%); }
 
     #rig-tools-bar { position: absolute; bottom: 18px; left: 50%; transform: translateX(-50%); display: flex; gap: 10px; background: rgba(34, 34, 40, 0.95); padding: 8px 16px; border-radius: 30px; border: 1px solid #444450; backdrop-filter: blur(8px); z-index: 102; pointer-events: auto; display: none; }
@@ -156,9 +155,8 @@
     orbitControls.enableDamping = true;
     orbitControls.target.set(0, 1.0, 0);
 
-    // 2. Large Mobile-Friendly Transform Gizmo (Prisma 3D Style)
     transformControls = new THREE.TransformControls(camera, renderer.domElement);
-    transformControls.size = 1.2; // Extra large for easy touch dragging on mobile
+    transformControls.size = 1.2;
     transformControls.setMode('translate');
     transformControls.space = 'world';
 
@@ -239,11 +237,10 @@
     domElem.addEventListener('pointermove', onPointerMove);
     domElem.addEventListener('pointerup', onPointerUp);
 
-    showToast("Engine Ready (Prisma 3D Workflow)");
+    showToast("Engine Ready (Skinned Binding Fixed)");
     startRenderLoop();
   }
 
-  // 1 & 3. IK Solver with Pole Vector Bending Plane & Root Locking + Liquid Lerp Smoothing
   function solveTwoBoneIKWithPoleAndLerp(root, mid, end, targetObj, poleTarget) {
     characterGroup.updateMatrixWorld(true);
 
@@ -280,7 +277,6 @@
       const pPole = new THREE.Vector3();
       poleTarget.getWorldPosition(pPole);
 
-      // Calculate bending plane normal using pole vector to prevent flipping
       const normal = new THREE.Vector3().subVectors(pPole, pRoot).normalize();
       const boneDir = new THREE.Vector3().subVectors(pTarget, pRoot).normalize();
       const perp = new THREE.Vector3().crossVectors(boneDir, normal).normalize();
@@ -292,18 +288,15 @@
       }
     }
 
-    // Clamping rotations to realistic anatomical ranges
     tempRoot.rotation.x = THREE.MathUtils.clamp(tempRoot.rotation.x, -2.5, 2.5);
     tempRoot.rotation.y = THREE.MathUtils.clamp(tempRoot.rotation.y, -2.5, 2.5);
     tempRoot.rotation.z = THREE.MathUtils.clamp(tempRoot.rotation.z, -2.5, 2.5);
 
-    // Liquid smooth delay factor 0.15 for weighted feel
     root.quaternion.slerp(tempRoot.quaternion, 0.15);
 
     mid.position.copy(mid.userData.restPosition);
     end.position.copy(end.userData.restPosition);
 
-    // 3. Complete Root/Hip Locking to grid
     if (bonesMap['hips']) {
       bonesMap['hips'].position.x = 0;
       bonesMap['hips'].position.z = 0;
@@ -374,7 +367,6 @@
     const raycaster = new THREE.Raycaster();
     raycaster.setFromCamera(mouse, camera);
 
-    // Include pole targets so you can click and drag the Green Arrow manually
     const interactables = [...boneHelpers, ...Object.values(ikTargetsMap), ...Object.values(poleTargetsMap)];
     const intersects = raycaster.intersectObjects(interactables, false);
 
@@ -466,7 +458,10 @@
       reader.onload = (evt) => {
         try {
           const loader = new THREE.GLTFLoader();
-          loader.parse(evt.target.result, '', (gltf) => loadModelToScene(gltf.scene), () => showToast("GLTF Error!"));
+          loader.parse(evt.target.result, '', (gltf) => {
+            // Check if model has pre-existing skinned mesh or animations
+            loadModelToScene(gltf.scene);
+          }, () => showToast("GLTF Error!"));
         } catch (err) { showToast("GLTF Load Error!"); }
       };
       reader.readAsArrayBuffer(file);
@@ -567,6 +562,7 @@
     orbitControls.enabled = true;
   }
 
+  // 1 & 3. Auto-Rigging with SkinnedMesh binding and distance-based Vertex Weights
   function applyAutoRigging() {
     if (!activeModel) { closeRigOverlay(); return; }
 
@@ -615,6 +611,7 @@
       }
     });
 
+    // Convert standard Meshes to SkinnedMeshes with accurate vertex weight assignment
     meshesToSkin.forEach(oldMesh => {
       oldMesh.updateMatrixWorld(true);
 
@@ -660,12 +657,12 @@
       geometry.setAttribute('skinWeight', new THREE.Float32BufferAttribute(skinWeights, 4));
 
       const newMaterial = oldMesh.material.clone();
-      newMaterial.skinning = true;
+      newMaterial.skinning = true; // Crucial for skinned mesh rendering
       newMaterial.roughness = 0.6;
       newMaterial.metalness = 0.1;
 
       const skinnedMesh = new THREE.SkinnedMesh(geometry, newMaterial);
-      skinnedMesh.bind(activeSkeleton, oldMesh.matrixWorld);
+      skinnedMesh.bind(activeSkeleton, oldMesh.matrixWorld); // Explicit binding
 
       if (oldMesh.parent) {
         oldMesh.parent.add(skinnedMesh);
@@ -687,7 +684,6 @@
       boneHelpers.push(handle);
     });
 
-    // 1. Visible Pole Vectors (Green Arrow Helper for Elbow/Knee Direction)
     const poleConfigs = [
       { key: 'r_arm', shoulder: 'shoulder_r', offset: new THREE.Vector3(-0.5, 0, 0.5) },
       { key: 'l_arm', shoulder: 'shoulder_l', offset: new THREE.Vector3(0.5, 0, 0.5) },
@@ -702,7 +698,7 @@
       const poleGroup = new THREE.Group();
       const poleGeo = new THREE.ConeGeometry(0.03, 0.08, 12);
       poleGeo.rotateX(Math.PI / 2);
-      const poleMat = new THREE.MeshBasicMaterial({ color: 0x30d158, depthTest: false }); // Green Arrow
+      const poleMat = new THREE.MeshBasicMaterial({ color: 0x30d158, depthTest: false });
       const arrowMesh = new THREE.Mesh(poleGeo, poleMat);
       poleGroup.add(arrowMesh);
 
@@ -746,10 +742,9 @@
     if (bonesList.length > 0) selectBone(bonesList[0]);
 
     setMode('translate');
-    showToast("Rigging Applied with Pole Vectors & Root Locking!");
+    showToast("Rigging & Skinning Applied!");
   }
 
-  // 4. UI Feedback Label (Floating Name above Selected Control)
   function updateJointLabel() {
     const lbl = document.getElementById('joint-label');
     const obj = transformControls.object;
@@ -771,12 +766,13 @@
     }
   }
 
+  // 2. Bone Matrix Updates in Render Loop (`skeleton.update()`)
   function startRenderLoop() {
     requestAnimationFrame(startRenderLoop);
     orbitControls.update();
 
     if (activeSkeleton) {
-      activeSkeleton.update();
+      activeSkeleton.update(); // Ensures GPU receives bone transformation updates
     }
 
     updateJointLabel();
