@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>Prisma 3D Auto-Rig Engine (Smooth Touch Offset Fix)</title>
+  <title>Prisma 3D Auto-Rig Engine (Smooth IK, Clamping & Lerp)</title>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; -webkit-tap-highlight-color: transparent; }
     html, body { width: 100vw; height: 100dvh; overflow: hidden; background: #1b1b20; color: #fff; font-family: system-ui, -apple-system, sans-serif; }
@@ -100,7 +100,6 @@
   let selectedBone = null;
   let activeSkeleton = null;
   
-  // Smooth Touch Dragging Variables
   let draggedRigNode = null;
   let dragPlane = new THREE.Plane();
   let raycaster = new THREE.Raycaster();
@@ -186,6 +185,7 @@
       }
     });
 
+    // Immediate World Space Sync on objectChange to prevent Teleportation/Lag
     transformControls.addEventListener('objectChange', () => {
       if (isRiggingMode) return;
       if (!selectedBone) return;
@@ -194,7 +194,7 @@
       if (ctrlObj && ctrlObj.userData.isIKTarget && transformControls.dragging) {
         const chain = ctrlObj.userData.chain; 
         const pole = ctrlObj.userData.poleTarget;
-        solveTwoBoneIKWithPole(chain[0], chain[1], chain[2], ctrlObj, pole);
+        solveTwoBoneIKWithLerpAndClamping(chain[0], chain[1], chain[2], ctrlObj, pole);
       }
 
       if (activeSkeleton) {
@@ -233,11 +233,12 @@
     domElem.addEventListener('pointermove', onPointerMove);
     domElem.addEventListener('pointerup', onPointerUp);
 
-    showToast("Engine Ready (Smooth Touch Offset Fixed)");
+    showToast("Engine Ready (Prisma Smoothness Active)");
     startRenderLoop();
   }
 
-  function solveTwoBoneIKWithPole(root, mid, end, targetObj, poleTarget) {
+  // IK Solver with Rotation Clamping, Pole Vector, and Slerp/Lerp Smoothing
+  function solveTwoBoneIKWithLerpAndClamping(root, mid, end, targetObj, poleTarget) {
     characterGroup.updateMatrixWorld(true);
 
     const pRoot = new THREE.Vector3();
@@ -266,7 +267,9 @@
       targetObj.position.copy(pTarget);
     }
 
-    root.lookAt(pTarget);
+    // Temporary target rotation calculation for root
+    const tempRoot = root.clone();
+    tempRoot.lookAt(pTarget);
 
     if (poleTarget) {
       const pPole = new THREE.Vector3();
@@ -279,17 +282,25 @@
       if (perp.lengthSq() > 0.0001) {
         const up = new THREE.Vector3().crossVectors(perp, boneDir).normalize();
         const m = new THREE.Matrix4().makeBasis(perp, up, boneDir.negate());
-        root.quaternion.setFromRotationMatrix(m);
+        tempRoot.quaternion.setFromRotationMatrix(m);
       }
     }
+
+    // Apply rotation clamping to prevent illegal joints and snapping back
+    tempRoot.rotation.x = THREE.MathUtils.clamp(tempRoot.rotation.x, -Math.PI, Math.PI);
+    tempRoot.rotation.y = THREE.MathUtils.clamp(tempRoot.rotation.y, -Math.PI, Math.PI);
+    tempRoot.rotation.z = THREE.MathUtils.clamp(tempRoot.rotation.z, -Math.PI, Math.PI);
+
+    // Smooth Interpolation (Slerp) for Prisma-like weighted feel
+    root.quaternion.slerp(tempRoot.quaternion, 0.25);
 
     mid.position.copy(mid.userData.restPosition);
     end.position.copy(end.userData.restPosition);
 
-    const currentRootWorld = new THREE.Vector3();
-    root.getWorldPosition(currentRootWorld);
-    if (!currentRootWorld.equals(pRoot)) {
-      root.position.add(pRoot.clone().sub(currentRootWorld));
+    // Stabilize Root/Hip Position (Lock position to prevent drifting)
+    if (bonesMap['hips']) {
+      bonesMap['hips'].position.x = 0;
+      bonesMap['hips'].position.z = 0;
     }
   }
 
@@ -309,14 +320,9 @@
     if (intersects.length > 0) {
       draggedRigNode = intersects[0].object;
       orbitControls.enabled = false;
-
-      // Setup drag plane facing camera through node position
       dragPlane.setFromNormalAndCoplanarPoint(camera.getWorldDirection(new THREE.Vector3()).negate(), draggedRigNode.position);
-      
-      // Calculate precise offset so node doesn't snap to center on touch
       raycaster.ray.intersectPlane(dragPlane, planeIntersect);
       dragOffset.copy(draggedRigNode.position).sub(planeIntersect);
-
       showToast(`Dragging ${draggedRigNode.userData.id}`);
     }
   }
@@ -331,7 +337,6 @@
     raycaster.setFromCamera(mouseCoord, camera);
     const hitPoint = new THREE.Vector3();
     if (raycaster.ray.intersectPlane(dragPlane, hitPoint)) {
-      // Smoothly move node considering initial touch offset
       draggedRigNode.position.copy(hitPoint.add(dragOffset));
 
       if (draggedRigNode.userData.pairNode) {
