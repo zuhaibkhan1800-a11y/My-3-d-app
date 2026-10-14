@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>Prisma 3D Auto-Rig Engine (Final Working Fix)</title>
+  <title>Prisma 3D Auto-Rig Engine (Final Polish)</title>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; -webkit-tap-highlight-color: transparent; }
     html, body { width: 100vw; height: 100dvh; overflow: hidden; background: #1b1b20; color: #fff; font-family: system-ui, -apple-system, sans-serif; }
@@ -15,6 +15,9 @@
 
     #viewport { flex: 1; position: relative; background: #2d2d35; overflow: hidden; }
     #canvas3d { width: 100%; height: 100%; display: block; touch-action: none; }
+
+    /* Floating UI Label for Selected Control */
+    #joint-label { position: absolute; background: rgba(0, 122, 255, 0.85); color: #fff; padding: 2px 8px; border-radius: 4px; font-size: 10px; font-weight: bold; pointer-events: none; display: none; z-index: 1000; transform: translate(-50%, -150%); }
 
     #rig-tools-bar { position: absolute; bottom: 18px; left: 50%; transform: translateX(-50%); display: flex; gap: 10px; background: rgba(34, 34, 40, 0.95); padding: 8px 16px; border-radius: 30px; border: 1px solid #444450; backdrop-filter: blur(8px); z-index: 102; pointer-events: auto; display: none; }
     .rig-btn { background: #32323c; border: none; color: #fff; padding: 8px 18px; border-radius: 20px; font-size: 11px; font-weight: bold; cursor: pointer; }
@@ -54,6 +57,7 @@
 
   <div id="viewport">
     <canvas id="canvas3d"></canvas>
+    <div id="joint-label">label</div>
 
     <div id="rig-tools-bar">
       <button class="rig-btn" onclick="closeRigOverlay()">Cancel</button>
@@ -152,10 +156,11 @@
     orbitControls.enableDamping = true;
     orbitControls.target.set(0, 1.0, 0);
 
+    // 2. Large Mobile-Friendly Transform Gizmo (Prisma 3D Style)
     transformControls = new THREE.TransformControls(camera, renderer.domElement);
-    transformControls.size = 0.75; 
-    transformControls.setMode('rotate');
-    transformControls.space = 'local';
+    transformControls.size = 1.2; // Significantly increased for touch screens
+    transformControls.setMode('translate');
+    transformControls.space = 'world';
 
     transformControls.addEventListener('dragging-changed', (e) => { 
       orbitControls.enabled = !e.value; 
@@ -187,15 +192,14 @@
 
     transformControls.addEventListener('objectChange', () => {
       if (isRiggingMode) return;
-      if (!selectedBone) return;
-
       const ctrlObj = transformControls.object;
-      if (ctrlObj && ctrlObj.userData.isIKTarget) {
+      if (!ctrlObj) return;
+
+      if (ctrlObj.userData.isIKTarget) {
         const chain = ctrlObj.userData.chain; 
         const pole = ctrlObj.userData.poleTarget;
-        
         if (chain && chain.length === 3) {
-          solveTwoBoneIKWithLerpAndClamping(chain[0], chain[1], chain[2], ctrlObj, pole);
+          solveTwoBoneIKWithLerp(chain[0], chain[1], chain[2], ctrlObj, pole);
         }
       }
 
@@ -235,11 +239,12 @@
     domElem.addEventListener('pointermove', onPointerMove);
     domElem.addEventListener('pointerup', onPointerUp);
 
-    showToast("Engine Ready");
+    showToast("Engine Ready (Prisma 3D Polish)");
     startRenderLoop();
   }
 
-  function solveTwoBoneIKWithLerpAndClamping(root, mid, end, targetObj, poleTarget) {
+  // 3. Liquid Smoothness (Linear Interpolation / Slerp with 0.15 factor)
+  function solveTwoBoneIKWithLerp(root, mid, end, targetObj, poleTarget) {
     characterGroup.updateMatrixWorld(true);
 
     const pRoot = new THREE.Vector3();
@@ -279,18 +284,20 @@
       const boneDir = new THREE.Vector3().subVectors(pTarget, pRoot).normalize();
       const perp = new THREE.Vector3().crossVectors(boneDir, normal).normalize();
 
-      if (perp.lengthSq() > 0.0001) {
+      if (perp.lengthSq> 0.0001) {
         const up = new THREE.Vector3().crossVectors(perp, boneDir).normalize();
         const m = new THREE.Matrix4().makeBasis(perp, up, boneDir.negate());
         tempRoot.quaternion.setFromRotationMatrix(m);
       }
     }
 
-    tempRoot.rotation.x = THREE.MathUtils.clamp(tempRoot.rotation.x, -Math.PI, Math.PI);
-    tempRoot.rotation.y = THREE.MathUtils.clamp(tempRoot.rotation.y, -Math.PI, Math.PI);
-    tempRoot.rotation.z = THREE.MathUtils.clamp(tempRoot.rotation.z, -Math.PI, Math.PI);
+    // Apply strict joint rotation clamping to prevent unnatural flipping
+    tempRoot.rotation.x = THREE.MathUtils.clamp(tempRoot.rotation.x, -2.5, 2.5);
+    tempRoot.rotation.y = THREE.MathUtils.clamp(tempRoot.rotation.y, -2.5, 2.5);
+    tempRoot.rotation.z = THREE.MathUtils.clamp(tempRoot.rotation.z, -2.5, 2.5);
 
-    root.quaternion.slerp(tempRoot.quaternion, 0.25);
+    // Liquid smooth delay factor 0.15
+    root.quaternion.slerp(tempRoot.quaternion, 0.15);
 
     mid.position.copy(mid.userData.restPosition);
     end.position.copy(end.userData.restPosition);
@@ -365,37 +372,38 @@
     const raycaster = new THREE.Raycaster();
     raycaster.setFromCamera(mouse, camera);
 
-    const interactables = [...boneHelpers, ...Object.values(ikTargetsMap)];
+    // Include pole targets in interactive select list so users can drag green arrows manually
+    const interactables = [...boneHelpers, ...Object.values(ikTargetsMap), ...Object.values(poleTargetsMap)];
     const intersects = raycaster.intersectObjects(interactables, false);
 
     if (intersects.length > 0) {
       const hitObj = intersects[0].object;
-      if (hitObj.userData.isIKTarget) {
-        selectIKTarget(hitObj);
+      if (hitObj.userData.isIKTarget || hitObj.userData.isPoleTarget) {
+        selectTargetOrPole(hitObj);
       } else if (hitObj.userData.bone) {
         selectBone(hitObj.userData.bone);
       }
     }
   }
 
-  function selectIKTarget(targetObj) {
+  function selectTargetOrPole(targetObj) {
     if (transformControls.dragging) return;
     
-    const boneName = targetObj.userData.boneName;
-    const bone = bonesMap[boneName];
-
-    if (bone) {
-      characterGroup.updateMatrixWorld(true);
-      const boneWorldPos = new THREE.Vector3();
-      bone.getWorldPosition(boneWorldPos);
-
-      scene.attach(targetObj);
-      targetObj.position.copy(boneWorldPos);
+    if (targetObj.userData.boneName) {
+      const boneName = targetObj.userData.boneName;
+      const bone = bonesMap[boneName];
+      if (bone) {
+        characterGroup.updateMatrixWorld(true);
+        const boneWorldPos = new THREE.Vector3();
+        bone.getWorldPosition(boneWorldPos);
+        scene.attach(targetObj);
+        targetObj.position.copy(boneWorldPos);
+      }
     }
 
     transformControls.detach();
     transformControls.attach(targetObj);
-    showToast(`${targetObj.name} IK Target Active`);
+    showToast(`${targetObj.name} Selected`);
   }
 
   function selectBone(bone) {
@@ -416,7 +424,6 @@
 
     if (targetKey && ikTargetsMap[targetKey]) {
       const targetObj = ikTargetsMap[targetKey];
-      
       if (transformControls.getMode() === 'translate') {
         const worldPos = new THREE.Vector3();
         targetObj.getWorldPosition(worldPos);
@@ -425,24 +432,14 @@
 
         transformControls.detach();
         transformControls.attach(targetObj);
-        showToast(`${boneId} IK Target: Move Mode Active`);
+        showToast(`${boneId} IK Target Active`);
         return;
       }
     }
 
     transformControls.detach();
     transformControls.attach(bone);
-
-    if (bone.name.includes('elbow') || bone.name.includes('knee')) {
-      if (transformControls.getMode() === 'translate') {
-        transformControls.setMode('rotate');
-        document.getElementById('btn-rotate').classList.add('active');
-        document.getElementById('btn-move').classList.remove('active');
-      }
-      showToast(`${bone.name}: Rotate Only`);
-    } else {
-      showToast(`Joint: ${bone.name}`);
-    }
+    showToast(`Joint: ${bone.name}`);
   }
 
   function triggerImport() { document.getElementById('file-input').click(); }
@@ -688,6 +685,7 @@
       boneHelpers.push(handle);
     });
 
+    // 1. Visible Pole Vectors (Green Arrow / Sphere Helper for Elbow Direction)
     const poleConfigs = [
       { key: 'r_arm', shoulder: 'shoulder_r', offset: new THREE.Vector3(-0.5, 0, 0.5) },
       { key: 'l_arm', shoulder: 'shoulder_l', offset: new THREE.Vector3(0.5, 0, 0.5) }
@@ -697,16 +695,22 @@
       const shoulderBone = bonesMap[cfg.shoulder];
       if (!shoulderBone) return;
 
-      const poleGeo = new THREE.SphereGeometry(0.025, 12, 12);
-      const poleMat = new THREE.MeshBasicMaterial({ color: 0x00ffcc, depthTest: false, transparent: true, opacity: 0.6 });
-      const poleMesh = new THREE.Mesh(poleGeo, poleMat);
+      const poleGroup = new THREE.Group();
+      const poleGeo = new THREE.ConeGeometry(0.03, 0.08, 12);
+      poleGeo.rotateX(Math.PI / 2);
+      const poleMat = new THREE.MeshBasicMaterial({ color: 0x30d158, depthTest: false }); // Green arrow
+      const arrowMesh = new THREE.Mesh(poleGeo, poleMat);
+      poleGroup.add(arrowMesh);
 
       const shoulderWorldPos = new THREE.Vector3();
       shoulderBone.getWorldPosition(shoulderWorldPos);
-      poleMesh.position.copy(shoulderWorldPos.add(cfg.offset));
+      poleGroup.position.copy(shoulderWorldPos.add(cfg.offset));
+      poleGroup.renderOrder = 1001;
+      poleGroup.name = `${cfg.key}_pole`;
+      poleGroup.userData = { isPoleTarget: true };
       
-      scene.add(poleMesh);
-      poleTargetsMap[cfg.key] = poleMesh;
+      scene.add(poleGroup);
+      poleTargetsMap[cfg.key] = poleGroup;
     });
 
     const targetConfigs = [
@@ -737,8 +741,30 @@
 
     if (bonesList.length > 0) selectBone(bonesList[0]);
 
-    setMode('rotate');
-    showToast("Rigging Applied Successfully!");
+    setMode('translate');
+    showToast("Rigging Applied with Pole Vectors!");
+  }
+
+  // 4. UI Labels (Floating name above selected control)
+  function updateJointLabel() {
+    const lbl = document.getElementById('joint-label');
+    const obj = transformControls.object;
+
+    if (transformControls.dragging && obj) {
+      const tempV = new THREE.Vector3();
+      obj.getWorldPosition(tempV);
+      tempV.project(camera);
+
+      const x = (tempV.x *  .5 + .5) * renderer.domElement.clientWidth;
+      const y = (-(tempV.y * .5) + .5) * renderer.domElement.clientHeight;
+
+      lbl.style.display = 'block';
+      lbl.style.left = `${x}px`;
+      lbl.style.top = `${y}px`;
+      lbl.innerText = obj.name || obj.userData.id || 'Control';
+    } else {
+      lbl.style.display = 'none';
+    }
   }
 
   function startRenderLoop() {
@@ -749,6 +775,7 @@
       activeSkeleton.update();
     }
 
+    updateJointLabel();
     renderer.render(scene, camera);
     drawTimelineCanvas();
   }
@@ -773,7 +800,7 @@
   function setMode(m) { 
     if (transformControls) {
       transformControls.setMode(m);
-      transformControls.space = 'local';
+      transformControls.space = 'world';
     }
     document.getElementById('btn-rotate').classList.toggle('active', m === 'rotate');
     document.getElementById('btn-move').classList.toggle('active', m === 'translate');
