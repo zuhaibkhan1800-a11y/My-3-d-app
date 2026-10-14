@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>Prisma 3D Auto-Rig Engine (Final Polish)</title>
+  <title>Prisma 3D Auto-Rig Engine (Exact Workflow Polish)</title>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; -webkit-tap-highlight-color: transparent; }
     html, body { width: 100vw; height: 100dvh; overflow: hidden; background: #1b1b20; color: #fff; font-family: system-ui, -apple-system, sans-serif; }
@@ -16,7 +16,7 @@
     #viewport { flex: 1; position: relative; background: #2d2d35; overflow: hidden; }
     #canvas3d { width: 100%; height: 100%; display: block; touch-action: none; }
 
-    /* Floating UI Label for Selected Control */
+    /* Floating UI Feedback Label (Prisma 3D Style) */
     #joint-label { position: absolute; background: rgba(0, 122, 255, 0.85); color: #fff; padding: 2px 8px; border-radius: 4px; font-size: 10px; font-weight: bold; pointer-events: none; display: none; z-index: 1000; transform: translate(-50%, -150%); }
 
     #rig-tools-bar { position: absolute; bottom: 18px; left: 50%; transform: translateX(-50%); display: flex; gap: 10px; background: rgba(34, 34, 40, 0.95); padding: 8px 16px; border-radius: 30px; border: 1px solid #444450; backdrop-filter: blur(8px); z-index: 102; pointer-events: auto; display: none; }
@@ -158,7 +158,7 @@
 
     // 2. Large Mobile-Friendly Transform Gizmo (Prisma 3D Style)
     transformControls = new THREE.TransformControls(camera, renderer.domElement);
-    transformControls.size = 1.2; // Significantly increased for touch screens
+    transformControls.size = 1.2; // Extra large for easy touch dragging on mobile
     transformControls.setMode('translate');
     transformControls.space = 'world';
 
@@ -199,7 +199,7 @@
         const chain = ctrlObj.userData.chain; 
         const pole = ctrlObj.userData.poleTarget;
         if (chain && chain.length === 3) {
-          solveTwoBoneIKWithLerp(chain[0], chain[1], chain[2], ctrlObj, pole);
+          solveTwoBoneIKWithPoleAndLerp(chain[0], chain[1], chain[2], ctrlObj, pole);
         }
       }
 
@@ -239,12 +239,12 @@
     domElem.addEventListener('pointermove', onPointerMove);
     domElem.addEventListener('pointerup', onPointerUp);
 
-    showToast("Engine Ready (Prisma 3D Polish)");
+    showToast("Engine Ready (Prisma 3D Workflow)");
     startRenderLoop();
   }
 
-  // 3. Liquid Smoothness (Linear Interpolation / Slerp with 0.15 factor)
-  function solveTwoBoneIKWithLerp(root, mid, end, targetObj, poleTarget) {
+  // 1 & 3. IK Solver with Pole Vector Bending Plane & Root Locking + Liquid Lerp Smoothing
+  function solveTwoBoneIKWithPoleAndLerp(root, mid, end, targetObj, poleTarget) {
     characterGroup.updateMatrixWorld(true);
 
     const pRoot = new THREE.Vector3();
@@ -280,28 +280,30 @@
       const pPole = new THREE.Vector3();
       poleTarget.getWorldPosition(pPole);
 
+      // Calculate bending plane normal using pole vector to prevent flipping
       const normal = new THREE.Vector3().subVectors(pPole, pRoot).normalize();
       const boneDir = new THREE.Vector3().subVectors(pTarget, pRoot).normalize();
       const perp = new THREE.Vector3().crossVectors(boneDir, normal).normalize();
 
-      if (perp.lengthSq> 0.0001) {
+      if (perp.lengthSq() > 0.0001) {
         const up = new THREE.Vector3().crossVectors(perp, boneDir).normalize();
         const m = new THREE.Matrix4().makeBasis(perp, up, boneDir.negate());
         tempRoot.quaternion.setFromRotationMatrix(m);
       }
     }
 
-    // Apply strict joint rotation clamping to prevent unnatural flipping
+    // Clamping rotations to realistic anatomical ranges
     tempRoot.rotation.x = THREE.MathUtils.clamp(tempRoot.rotation.x, -2.5, 2.5);
     tempRoot.rotation.y = THREE.MathUtils.clamp(tempRoot.rotation.y, -2.5, 2.5);
     tempRoot.rotation.z = THREE.MathUtils.clamp(tempRoot.rotation.z, -2.5, 2.5);
 
-    // Liquid smooth delay factor 0.15
+    // Liquid smooth delay factor 0.15 for weighted feel
     root.quaternion.slerp(tempRoot.quaternion, 0.15);
 
     mid.position.copy(mid.userData.restPosition);
     end.position.copy(end.userData.restPosition);
 
+    // 3. Complete Root/Hip Locking to grid
     if (bonesMap['hips']) {
       bonesMap['hips'].position.x = 0;
       bonesMap['hips'].position.z = 0;
@@ -372,7 +374,7 @@
     const raycaster = new THREE.Raycaster();
     raycaster.setFromCamera(mouse, camera);
 
-    // Include pole targets in interactive select list so users can drag green arrows manually
+    // Include pole targets so you can click and drag the Green Arrow manually
     const interactables = [...boneHelpers, ...Object.values(ikTargetsMap), ...Object.values(poleTargetsMap)];
     const intersects = raycaster.intersectObjects(interactables, false);
 
@@ -685,26 +687,28 @@
       boneHelpers.push(handle);
     });
 
-    // 1. Visible Pole Vectors (Green Arrow / Sphere Helper for Elbow Direction)
+    // 1. Visible Pole Vectors (Green Arrow Helper for Elbow/Knee Direction)
     const poleConfigs = [
       { key: 'r_arm', shoulder: 'shoulder_r', offset: new THREE.Vector3(-0.5, 0, 0.5) },
-      { key: 'l_arm', shoulder: 'shoulder_l', offset: new THREE.Vector3(0.5, 0, 0.5) }
+      { key: 'l_arm', shoulder: 'shoulder_l', offset: new THREE.Vector3(0.5, 0, 0.5) },
+      { key: 'r_leg', hips: 'hips', offset: new THREE.Vector3(-0.2, -0.5, 0.5) },
+      { key: 'l_leg', hips: 'hips', offset: new THREE.Vector3(0.2, -0.5, 0.5) }
     ];
 
     poleConfigs.forEach(cfg => {
-      const shoulderBone = bonesMap[cfg.shoulder];
-      if (!shoulderBone) return;
+      const refBone = bonesMap[cfg.shoulder || cfg.hips];
+      if (!refBone) return;
 
       const poleGroup = new THREE.Group();
       const poleGeo = new THREE.ConeGeometry(0.03, 0.08, 12);
       poleGeo.rotateX(Math.PI / 2);
-      const poleMat = new THREE.MeshBasicMaterial({ color: 0x30d158, depthTest: false }); // Green arrow
+      const poleMat = new THREE.MeshBasicMaterial({ color: 0x30d158, depthTest: false }); // Green Arrow
       const arrowMesh = new THREE.Mesh(poleGeo, poleMat);
       poleGroup.add(arrowMesh);
 
-      const shoulderWorldPos = new THREE.Vector3();
-      shoulderBone.getWorldPosition(shoulderWorldPos);
-      poleGroup.position.copy(shoulderWorldPos.add(cfg.offset));
+      const refWorldPos = new THREE.Vector3();
+      refBone.getWorldPosition(refWorldPos);
+      poleGroup.position.copy(refWorldPos.add(cfg.offset));
       poleGroup.renderOrder = 1001;
       poleGroup.name = `${cfg.key}_pole`;
       poleGroup.userData = { isPoleTarget: true };
@@ -716,8 +720,8 @@
     const targetConfigs = [
       { key: 'r_arm', root: 'shoulder_r', mid: 'elbow_r', end: 'wrist_r', pole: poleTargetsMap['r_arm'] },
       { key: 'l_arm', root: 'shoulder_l', mid: 'elbow_l', end: 'wrist_l', pole: poleTargetsMap['l_arm'] },
-      { key: 'r_leg', root: 'hips', mid: 'knee_r', end: 'ankle_r', pole: null },
-      { key: 'l_leg', root: 'hips', mid: 'knee_l', end: 'ankle_l', pole: null }
+      { key: 'r_leg', root: 'hips', mid: 'knee_r', end: 'ankle_r', pole: poleTargetsMap['r_leg'] },
+      { key: 'l_leg', root: 'hips', mid: 'knee_l', end: 'ankle_l', pole: poleTargetsMap['l_leg'] }
     ];
 
     targetConfigs.forEach(cfg => {
@@ -742,10 +746,10 @@
     if (bonesList.length > 0) selectBone(bonesList[0]);
 
     setMode('translate');
-    showToast("Rigging Applied with Pole Vectors!");
+    showToast("Rigging Applied with Pole Vectors & Root Locking!");
   }
 
-  // 4. UI Labels (Floating name above selected control)
+  // 4. UI Feedback Label (Floating Name above Selected Control)
   function updateJointLabel() {
     const lbl = document.getElementById('joint-label');
     const obj = transformControls.object;
@@ -755,8 +759,8 @@
       obj.getWorldPosition(tempV);
       tempV.project(camera);
 
-      const x = (tempV.x *  .5 + .5) * renderer.domElement.clientWidth;
-      const y = (-(tempV.y * .5) + .5) * renderer.domElement.clientHeight;
+      const x = (tempV.x * 0.5 + 0.5) * renderer.domElement.clientWidth;
+      const y = (-(tempV.y * 0.5) + 0.5) * renderer.domElement.clientHeight;
 
       lbl.style.display = 'block';
       lbl.style.left = `${x}px`;
