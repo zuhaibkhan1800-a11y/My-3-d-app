@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>Prisma 3D Auto-Rig Engine (Hardcoded IK Chains & Clamped Solver)</title>
+  <title>Prisma 3D Auto-Rig Engine (Clean Minimalist UI)</title>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; -webkit-tap-highlight-color: transparent; }
     html, body { width: 100vw; height: 100dvh; overflow: hidden; background: #1b1b20; color: #fff; font-family: system-ui, -apple-system, sans-serif; }
@@ -103,7 +103,6 @@
   let selectedBone = null;
   let activeSkeleton = null;
   let selectionRing = null;
-  let debugLines = {};
   
   let draggedRigNode = null;
   let dragPlane = new THREE.Plane();
@@ -192,9 +191,10 @@
 
     scene.add(transformControls);
 
-    const ringGeo = new THREE.RingGeometry(0.05, 0.06, 32);
+    // Clean thin selection ring matching minimalist aesthetic
+    const ringGeo = new THREE.RingGeometry(0.045, 0.05, 32);
     ringGeo.rotateX(Math.PI / 2);
-    const ringMat = new THREE.MeshBasicMaterial({ color: 0xffffff, side: THREE.DoubleSide, depthTest: false, transparent: true, opacity: 0.9 });
+    const ringMat = new THREE.MeshBasicMaterial({ color: 0xffffff, side: THREE.DoubleSide, depthTest: false, transparent: true, opacity: 0.8 });
     selectionRing = new THREE.Mesh(ringGeo, ringMat);
     selectionRing.visible = false;
     scene.add(selectionRing);
@@ -228,11 +228,11 @@
     domElem.addEventListener('pointermove', onPointerMove);
     domElem.addEventListener('pointerup', onPointerUp);
 
-    showToast("Engine Ready (Hardcoded IK Chains)");
+    showToast("Engine Ready (Clean Prisma-Style UI)");
     startRenderLoop();
   }
 
-  // 2. Fixed Bone Stretching with Hard Distance Clamping
+  // Strict bone length clamping without rubber stretching
   function solveTwoBoneIKWithClamping(root, mid, end, targetObj, poleTarget) {
     characterGroup.updateMatrixWorld(true);
 
@@ -244,7 +244,7 @@
 
     const l1 = mid.userData.restPosition ? mid.userData.restPosition.length() : 0.3;
     const l2 = end.userData.restPosition ? end.userData.restPosition.length() : 0.3;
-    const maxReach = l1 + l2; // Strict max reach limit
+    const maxReach = l1 + l2; 
     const minReach = Math.abs(l1 - l2);
 
     const dist = pRoot.distanceTo(pTarget);
@@ -269,7 +269,7 @@
       const boneDir = new THREE.Vector3().subVectors(pTarget, pRoot).normalize();
       const perp = new THREE.Vector3().crossVectors(boneDir, normal).normalize();
 
-      if (perp.lengthSq() > 0.0001) {
+      if (perp.lengthSq> 0.0001) {
         const up = new THREE.Vector3().crossVectors(perp, boneDir).normalize();
         const m = new THREE.Matrix4().makeBasis(perp, up, boneDir.negate());
         tempRoot.quaternion.setFromRotationMatrix(m);
@@ -355,12 +355,12 @@
     const raycaster = new THREE.Raycaster();
     raycaster.setFromCamera(mouse, camera);
 
-    const interactables = [...boneHelpers, ...Object.values(ikTargetsMap), ...Object.values(poleTargetsMap)];
+    const interactables = [...boneHelpers, ...Object.values(ikTargetsMap)];
     const intersects = raycaster.intersectObjects(interactables, false);
 
     if (intersects.length > 0) {
       const hitObj = intersects[0].object;
-      if (hitObj.userData.isIKTarget || hitObj.userData.isPoleTarget) {
+      if (hitObj.userData.isIKTarget) {
         selectTargetOrPole(hitObj);
       } else if (hitObj.userData.bone) {
         selectBone(hitObj.userData.bone);
@@ -384,7 +384,7 @@
       targetObj.getWorldPosition(selectionRing.position);
     }
 
-    showToast(`${targetObj.name} Selected`);
+    showToast(`Target Selected`);
   }
 
   function selectBone(bone) {
@@ -400,7 +400,7 @@
     const currentMode = transformControls.getMode();
 
     if (isNonMovable && currentMode === 'translate') {
-      showToast(`${bone.name} translation is locked! Switch to Rotate mode.`);
+      showToast(`${bone.name} translation locked! Switch to Rotate mode.`);
       transformControls.detach();
       if (selectionRing) selectionRing.visible = false;
       return;
@@ -414,7 +414,7 @@
       transformControls.setMode('rotate');
       document.getElementById('btn-rotate').classList.add('active');
       document.getElementById('btn-move').classList.remove('active');
-      showToast(`${bone.name}: Rotation Only (Translation Locked)`);
+      showToast(`${bone.name}: Rotation Mode (FK)`);
     } else {
       showToast(`Joint: ${bone.name}`);
     }
@@ -496,9 +496,6 @@
     Object.values(ikTargetsMap).forEach(t => scene.remove(t));
     Object.values(poleTargetsMap).forEach(p => scene.remove(p));
     rigNodes3D.forEach(n => scene.remove(n));
-    
-    Object.values(debugLines).forEach(line => scene.remove(line));
-    debugLines = {};
 
     if (selectionRing) selectionRing.visible = false;
 
@@ -550,7 +547,7 @@
       }
     });
 
-    showToast("Touch & Drag Rig Nodes Smoothly");
+    showToast("Touch & Drag Rig Nodes");
   }
 
   function closeRigOverlay() {
@@ -561,7 +558,6 @@
     orbitControls.enabled = true;
   }
 
-  // 1 & 3. Explicitly Defined IK Chains and Correct Bone Hierarchy Parenting
   function applyAutoRigging() {
     if (!activeModel) { closeRigOverlay(); return; }
 
@@ -583,7 +579,6 @@
       boneIndexMap[j.id] = index;
     });
 
-    // Explicit Hierarchy Building
     defaultJoints.forEach(j => {
       const bone = bonesMap[j.id];
       const worldPos = calculatedWorldPositions[j.id];
@@ -683,17 +678,16 @@
       handle.renderOrder = 999;
       handle.userData = { bone: bone };
 
+      bone.add(handle);
       if (nonMovableJoints.includes(j.id)) {
-        bone.add(handle);
         handle.position.set(0, 0, 0);
-      } else {
-        bone.add(handle);
       }
 
       bone.userData.helper = handle;
       boneHelpers.push(handle);
     });
 
+    // Invisible Pole Targets (working in background without visual clutter)
     const poleConfigs = [
       { key: 'r_arm', shoulder: 'shoulder_r', offset: new THREE.Vector3(-0.5, 0, 0.5) },
       { key: 'l_arm', shoulder: 'shoulder_l', offset: new THREE.Vector3(0.5, 0, 0.5) },
@@ -706,24 +700,15 @@
       if (!refBone) return;
 
       const poleGroup = new THREE.Group();
-      const poleGeo = new THREE.ConeGeometry(0.03, 0.08, 12);
-      poleGeo.rotateX(Math.PI / 2);
-      const poleMat = new THREE.MeshBasicMaterial({ color: 0x30d158, depthTest: false });
-      const arrowMesh = new THREE.Mesh(poleGeo, poleMat);
-      poleGroup.add(arrowMesh);
-
       const refWorldPos = new THREE.Vector3();
       refBone.getWorldPosition(refWorldPos);
       poleGroup.position.copy(refWorldPos.add(cfg.offset));
-      poleGroup.renderOrder = 1001;
-      poleGroup.name = `${cfg.key}_pole`;
-      poleGroup.userData = { isPoleTarget: true };
+      poleGroup.visible = false; // COMPLETELY HIDDEN (Prisma clean style)
       
       scene.add(poleGroup);
       poleTargetsMap[cfg.key] = poleGroup;
     });
 
-    // Explicitly Mapped IK Chains [shoulder/hip, elbow/knee, wrist/ankle]
     const targetConfigs = [
       { key: 'r_arm', root: bonesMap['shoulder_r'], mid: bonesMap['elbow_r'], end: bonesMap['wrist_r'], pole: poleTargetsMap['r_arm'] },
       { key: 'l_arm', root: bonesMap['shoulder_l'], mid: bonesMap['elbow_l'], end: bonesMap['wrist_l'], pole: poleTargetsMap['l_arm'] },
@@ -735,8 +720,9 @@
       const endBone = cfg.end;
       if (!endBone) return;
 
-      const targetGeo = new THREE.SphereGeometry(0.045, 16, 16);
-      const targetMat = new THREE.MeshBasicMaterial({ color: 0xff3b30, depthTest: false, depthWrite: false, transparent: true, opacity: 0.9 });
+      // Clean, subtle IK target sphere
+      const targetGeo = new THREE.SphereGeometry(0.04, 16, 16);
+      const targetMat = new THREE.MeshBasicMaterial({ color: 0xff3b30, depthTest: false, depthWrite: false, transparent: true, opacity: 0.8 });
       const targetMesh = new THREE.Mesh(targetGeo, targetMat);
       
       characterGroup.updateMatrixWorld(true);
@@ -751,19 +737,12 @@
       targetMesh.userData = { isIKTarget: true, boneName: endBone.name, chain: [cfg.root, cfg.mid, cfg.end], poleTarget: cfg.pole };
 
       ikTargetsMap[cfg.key] = targetMesh;
-
-      const lineGeo = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(), new THREE.Vector3()]);
-      const lineMat = new THREE.LineBasicMaterial({ color: 0xffff00, depthTest: false, transparent: true, opacity: 0.5 });
-      const debugLine = new THREE.Line(lineGeo, lineMat);
-      debugLine.renderOrder = 998;
-      scene.add(debugLine);
-      debugLines[endBone.name] = { line: debugLine, bone: endBone, target: targetMesh };
     });
 
     if (bonesList.length > 0) selectBone(bonesList[0]);
 
     setMode('translate');
-    showToast("Rigging Applied with Explicit IK Chains!");
+    showToast("Rig Applied Successfully!");
   }
 
   function updateJointLabel() {
@@ -787,7 +766,6 @@
     }
   }
 
-  // 4. Skeleton Update in Render Loop for Skin Deformation
   function startRenderLoop() {
     requestAnimationFrame(startRenderLoop);
     orbitControls.update();
@@ -802,22 +780,10 @@
     }
 
     if (activeSkeleton) {
-      activeSkeleton.update(); // Essential for GPU mesh deformation
+      activeSkeleton.update();
     }
 
     characterGroup.updateMatrixWorld(true);
-    for (const key in debugLines) {
-      const data = debugLines[key];
-      const bPos = new THREE.Vector3();
-      const tPos = new THREE.Vector3();
-      data.bone.getWorldPosition(bPos);
-      data.target.getWorldPosition(tPos);
-
-      const positions = data.line.geometry.attributes.position;
-      positions.setXYZ(0, bPos.x, bPos.y, bPos.z);
-      positions.setXYZ(1, tPos.x, tPos.y, tPos.z);
-      positions.needsUpdate = true;
-    }
 
     if (selectionRing && transformControls.object) {
       transformControls.object.getWorldPosition(selectionRing.position);
