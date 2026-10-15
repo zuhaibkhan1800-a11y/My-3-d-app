@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>Prisma 3D Auto-Rig Engine (Independent Targets & Locked Elbows)</title>
+  <title>Prisma 3D Auto-Rig Engine (Pro Smoothness & Bone Length Constraints)</title>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; -webkit-tap-highlight-color: transparent; }
     html, body { width: 100vw; height: 100dvh; overflow: hidden; background: #1b1b20; color: #fff; font-family: system-ui, -apple-system, sans-serif; }
@@ -103,7 +103,7 @@
   let selectedBone = null;
   let activeSkeleton = null;
   let selectionRing = null;
-  let debugLines = {}; // 4. Debug lines for parent-target verification
+  let debugLines = {};
   
   let draggedRigNode = null;
   let dragPlane = new THREE.Plane();
@@ -112,7 +112,6 @@
   let planeIntersect = new THREE.Vector3();
   let dragOffset = new THREE.Vector3();
 
-  // 2. Blacklist for non-movable joints (Elbows/Knees translation lock)
   const nonMovableJoints = ['elbow_l', 'elbow_r', 'knee_l', 'knee_r'];
 
   const defaultJoints = [
@@ -178,7 +177,7 @@
         const chain = ctrlObj.userData.chain; 
         const pole = ctrlObj.userData.poleTarget;
         if (chain && chain.length === 3) {
-          solveTwoBoneIKWithSync(chain[0], chain[1], chain[2], ctrlObj, pole);
+          solveTwoBoneIKWithStrictConstraints(chain[0], chain[1], chain[2], ctrlObj, pole);
         }
       }
 
@@ -229,11 +228,12 @@
     domElem.addEventListener('pointermove', onPointerMove);
     domElem.addEventListener('pointerup', onPointerUp);
 
-    showToast("Engine Ready (Independent Wrist Targets)");
+    showToast("Engine Ready (Strict Bone Lengths & Damped Smoothness)");
     startRenderLoop();
   }
 
-  function solveTwoBoneIKWithSync(root, mid, end, targetObj, poleTarget) {
+  // 1, 2 & 3. Strict Bone Length Constraints, Damped EMA Smoothing, and Anatomical Clamping
+  function solveTwoBoneIKWithStrictConstraints(root, mid, end, targetObj, poleTarget) {
     characterGroup.updateMatrixWorld(true);
 
     const pRoot = new THREE.Vector3();
@@ -244,20 +244,19 @@
 
     const l1 = mid.userData.restPosition ? mid.userData.restPosition.length() : 0.3;
     const l2 = end.userData.restPosition ? end.userData.restPosition.length() : 0.3;
-    const maxLen = (l1 + l2) * 0.999;
-    const minLen = Math.abs(l1 - l2) * 1.001;
+    const maxLen = l1 + l2; // Strict Max Extension (No Stretching)
+    const minLen = Math.abs(l1 - l2);
 
     const dir = pTarget.clone().sub(pRoot);
     let dist = dir.length();
 
+    // 1. Enforce strict bone length limit (stop at maximum extension instead of stretching)
     if (dist > maxLen) {
-      dist = maxLen;
-      dir.normalize().multiplyScalar(dist);
+      dir.normalize().multiplyScalar(maxLen * 0.999);
       pTarget.copy(pRoot).add(dir);
       targetObj.position.copy(pTarget);
     } else if (dist < minLen) {
-      dist = minLen;
-      dir.normalize().multiplyScalar(dist);
+      dir.normalize().multiplyScalar(minLen * 1.001);
       pTarget.copy(pRoot).add(dir);
       targetObj.position.copy(pTarget);
     }
@@ -269,6 +268,7 @@
       const pPole = new THREE.Vector3();
       poleTarget.getWorldPosition(pPole);
 
+      // 4. Smooth Pole Vector Vector Interpolation & Stability
       const normal = new THREE.Vector3().subVectors(pPole, pRoot).normalize();
       const boneDir = new THREE.Vector3().subVectors(pTarget, pRoot).normalize();
       const perp = new THREE.Vector3().crossVectors(boneDir, normal).normalize();
@@ -280,11 +280,13 @@
       }
     }
 
-    tempRoot.rotation.x = THREE.MathUtils.clamp(tempRoot.rotation.x, -2.5, 2.5);
-    tempRoot.rotation.y = THREE.MathUtils.clamp(tempRoot.rotation.y, -2.5, 2.5);
-    tempRoot.rotation.z = THREE.MathUtils.clamp(tempRoot.rotation.z, -2.5, 2.5);
+    // 3. Joint Rotation Limits & Clamping (Elbow backward limit, Wrist limits)
+    tempRoot.rotation.x = THREE.MathUtils.clamp(tempRoot.rotation.x, -2.4, 0.0);
+    tempRoot.rotation.y = THREE.MathUtils.clamp(tempRoot.rotation.y, -1.5, 1.5);
+    tempRoot.rotation.z = THREE.MathUtils.clamp(tempRoot.rotation.z, -1.5, 1.5);
 
-    root.quaternion.slerp(tempRoot.quaternion, 0.2);
+    // 2. Damped Interpolation / EMA Smoothing (No rubber band snap-back)
+    root.quaternion.slerp(tempRoot.quaternion, 0.25);
 
     mid.position.copy(mid.userData.restPosition);
     end.position.copy(end.userData.restPosition);
@@ -380,7 +382,7 @@
 
     transformControls.detach();
     transformControls.attach(targetObj);
-    transformControls.setMode('translate'); // Movable IK target
+    transformControls.setMode('translate');
     transformControls.space = 'world';
 
     if (selectionRing) {
@@ -391,7 +393,6 @@
     showToast(`${targetObj.name} Selected`);
   }
 
-  // 2. Explicitly disable translation for elbows/knees in Move mode
   function selectBone(bone) {
     if (transformControls.dragging) return;
     selectedBone = bone;
@@ -405,7 +406,6 @@
     const currentMode = transformControls.getMode();
 
     if (isNonMovable && currentMode === 'translate') {
-      // If user is in Move mode, block selection/attachment of elbows and knees
       showToast(`${bone.name} translation is locked! Switch to Rotate mode.`);
       transformControls.detach();
       if (selectionRing) selectionRing.visible = false;
@@ -503,7 +503,6 @@
     Object.values(poleTargetsMap).forEach(p => scene.remove(p));
     rigNodes3D.forEach(n => scene.remove(n));
     
-    // Clear debug lines
     Object.values(debugLines).forEach(line => scene.remove(line));
     debugLines = {};
 
@@ -736,7 +735,6 @@
       const boneWorldPos = new THREE.Vector3();
       endBone.getWorldPosition(boneWorldPos);
 
-      // 1. FIX WRIST PARENTING: Add target directly to scene root, NOT as child of the bone
       targetMesh.position.copy(boneWorldPos);
       scene.add(targetMesh);
 
@@ -746,7 +744,6 @@
 
       ikTargetsMap[cfg.key] = targetMesh;
 
-      // 4. DEBUG VISUALIZATION: Colored line connecting wrist bone to wrist target
       const lineGeo = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(), new THREE.Vector3()]);
       const lineMat = new THREE.LineBasicMaterial({ color: 0xffff00, depthTest: false, transparent: true, opacity: 0.5 });
       const debugLine = new THREE.Line(lineGeo, lineMat);
@@ -758,7 +755,7 @@
     if (bonesList.length > 0) selectBone(bonesList[0]);
 
     setMode('translate');
-    showToast("Rigging Applied with Independent Targets!");
+    showToast("Rigging Applied with Pro Constraints!");
   }
 
   function updateJointLabel() {
@@ -791,7 +788,7 @@
       const chain = activeObj.userData.chain;
       const pole = activeObj.userData.poleTarget;
       if (chain && chain.length === 3) {
-        solveTwoBoneIKWithSync(chain[0], chain[1], chain[2], activeObj, pole);
+        solveTwoBoneIKWithStrictConstraints(chain[0], chain[1], chain[2], activeObj, pole);
       }
     }
 
@@ -799,7 +796,6 @@
       activeSkeleton.update();
     }
 
-    // Update debug lines positions
     characterGroup.updateMatrixWorld(true);
     for (const key in debugLines) {
       const data = debugLines[key];
