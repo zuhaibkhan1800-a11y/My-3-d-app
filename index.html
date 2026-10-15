@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>Prisma 3D Auto-Rig Engine (Explicit IK & Clamped Solver)</title>
+  <title>Prisma 3D Auto-Rig Engine (Rigid Two-Bone IK Fix)</title>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; -webkit-tap-highlight-color: transparent; }
     html, body { width: 100vw; height: 100dvh; overflow: hidden; background: #1b1b20; color: #fff; font-family: system-ui, -apple-system, sans-serif; }
@@ -110,7 +110,6 @@
   let planeIntersect = new THREE.Vector3();
   let dragOffset = new THREE.Vector3();
 
-  // Clean UI layout nodes for manual adjustment
   const defaultJoints = [
     { id: 'hips', name: 'Hips', fx: 0.5, fy: 0.5, fz: 0.5, parent: null, class: 'hip' },
     { id: 'spine', name: 'Spine', fx: 0.5, fy: 0.65, fz: 0.5, parent: 'hips', class: '' },
@@ -169,7 +168,7 @@
       if (ctrlObj.userData.isIKTarget) {
         const chain = ctrlObj.userData.chain; 
         if (chain && chain.length === 3) {
-          solveTwoBoneIKWithClamping(chain[0], chain[1], chain[2], ctrlObj);
+          solveRigidTwoBoneIK(chain[0], chain[1], chain[2], ctrlObj);
         }
       }
 
@@ -178,7 +177,7 @@
       }
 
       if (activeSkeleton) {
-        activeSkeleton.update(); // Requirement 4: Update Skeleton Matrices
+        activeSkeleton.update();
       }
     });
 
@@ -224,33 +223,65 @@
     startRenderLoop();
   }
 
-  // Requirement 2: Clamped Solver Logic & Explicit Chain Handling
-  function solveTwoBoneIKWithClamping(bone1, bone2, bone3, targetObj) {
+  // True Rigid Two-Bone IK Solver (Law of Cosines - No Rubber Stretching, Prisma 3D style)
+  function solveRigidTwoBoneIK(rootBone, midBone, endBone, targetObj) {
     characterGroup.updateMatrixWorld(true);
 
     const rootPos = new THREE.Vector3();
-    bone1.getWorldPosition(rootPos);
+    rootBone.getWorldPosition(rootPos);
 
     const targetPos = new THREE.Vector3();
     targetObj.getWorldPosition(targetPos);
 
-    const dist = rootPos.distanceTo(targetPos);
-    const maxReach = bone2.position.length() + bone3.position.length();
+    // Fixed rigid bone lengths from rest position
+    const l1 = midBone.userData.restLength || midBone.position.length();
+    const l2 = endBone.userData.restLength || endBone.position.length();
+    const maxReach = l1 + l2;
+    const minReach = Math.abs(l1 - l2);
 
-    if (dist > maxReach) {
-      // Clamp target position to max reach (eliminates rubber stretching effect)
+    let dist = rootPos.distanceTo(targetPos);
+    if (dist > maxReach * 0.999) {
+      dist = maxReach * 0.999;
       const dir = targetPos.clone().sub(rootPos).normalize();
-      targetPos.copy(rootPos).add(dir.multiplyScalar(maxReach * 0.999));
+      targetPos.copy(rootPos).add(dir.multiplyScalar(dist));
+      targetObj.position.copy(targetPos);
+    } else if (dist < minReach * 1.001) {
+      dist = minReach * 1.001;
+      const dir = targetPos.clone().sub(rootPos).normalize();
+      targetPos.copy(rootPos).add(dir.multiplyScalar(dist));
       targetObj.position.copy(targetPos);
     }
 
-    const tempRoot = bone1.clone();
-    tempRoot.lookAt(targetPos);
-    tempRoot.rotation.x = THREE.MathUtils.clamp(tempRoot.rotation.x, -2.4, 0.0);
-    tempRoot.rotation.y = THREE.MathUtils.clamp(tempRoot.rotation.y, -1.5, 1.5);
-    tempRoot.rotation.z = THREE.MathUtils.clamp(tempRoot.rotation.z, -1.5, 1.5);
+    // Law of Cosines for accurate rigid joint angles
+    const cosAngle1 = (l1 * l1 + dist * dist - l2 * l2) / (2 * l1 * dist);
+    const angle1 = Math.acos(Math.max(-1, Math.min(1, cosAngle1)));
 
-    bone1.quaternion.slerp(tempRoot.quaternion, 0.4);
+    const dirToTarget = targetPos.clone().sub(rootPos).normalize();
+    
+    // Choose natural bending axis (bend outward/forward)
+    const bendAxis = new THREE.Vector3(0, 0, 1);
+    if (rootBone.name.includes('r') || rootBone.name.includes('l')) {
+      bendAxis.set(0, -1, 0);
+    }
+
+    const m = new THREE.Matrix4();
+    m.lookAt(rootPos, targetPos, bendAxis);
+    const targetQuat = new THREE.Quaternion().setFromRotationMatrix(m);
+
+    // Apply rotation to root bone
+    rootBone.quaternion.copy(targetQuat);
+
+    // Position and rotate mid bone rigidly without stretching
+    const cosAngleMid = (l1 * l1 + l2 * l2 - dist * dist) / (2 * l1 * l2);
+    const angleMid = Math.acos(Math.max(-1, Math.min(1, cosAngleMid)));
+    const bendAngle = Math.PI - angleMid;
+
+    midBone.rotation.set(0, 0, 0);
+    if (rootBone.name.includes('arm')) {
+      midBone.rotation.z = -bendAngle;
+    } else {
+      midBone.rotation.x = bendAngle;
+    }
 
     if (activeSkeleton) {
       activeSkeleton.update();
@@ -524,7 +555,6 @@
     orbitControls.enabled = true;
   }
 
-  // Requirement 1 & 3: Explicit IK Chain Configuration & Verified Hierarchy Parenting
   function applyAutoRigging() {
     if (!activeModel) { closeRigOverlay(); return; }
 
@@ -551,7 +581,6 @@
       fullBonePositions['knee_l'] = intermediateCalc(calculatedWorldPositions['hips'], calculatedWorldPositions['ankle_l'], 0.5);
     }
 
-    // Strict Bone Hierarchy: elbow is child of shoulder, wrist is child of elbow
     const allJointDefs = [
       { id: 'hips', parent: null },
       { id: 'spine', parent: 'hips' },
@@ -589,11 +618,11 @@
         const parentWorldPos = fullBonePositions[j.parent];
         const offset = worldPos.clone().sub(parentWorldPos);
         bone.position.copy(offset);
-        bone.userData.restPosition = offset.clone();
+        bone.userData.restLength = offset.length();
       } else {
         characterGroup.add(bone);
         bone.position.copy(worldPos);
-        bone.userData.restPosition = worldPos.clone();
+        bone.userData.restLength = worldPos.length();
       }
     });
 
@@ -685,7 +714,6 @@
       boneHelpers.push(handle);
     });
 
-    // Explicitly Mapped IK Chains as requested
     const leftArmChain = [bonesMap['shoulder_l'], bonesMap['elbow_l'], bonesMap['wrist_l']];
     const rightArmChain = [bonesMap['shoulder_r'], bonesMap['elbow_r'], bonesMap['wrist_r']];
     const rightLegChain = [bonesMap['hips'], bonesMap['knee_r'], bonesMap['ankle_r']];
@@ -755,12 +783,12 @@
     if (activeObj && activeObj.userData.isIKTarget) {
       const chain = activeObj.userData.chain;
       if (chain && chain.length === 3) {
-        solveTwoBoneIKWithClamping(chain[0], chain[1], chain[2], activeObj);
+        solveRigidTwoBoneIK(chain[0], chain[1], chain[2], activeObj);
       }
     }
 
     if (activeSkeleton) {
-      activeSkeleton.update(); // Requirement 4: Update Skeleton Matrices per frame
+      activeSkeleton.update();
     }
 
     characterGroup.updateMatrixWorld(true);
