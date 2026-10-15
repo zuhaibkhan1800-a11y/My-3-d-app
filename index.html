@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>Prisma 3D Auto-Rig Engine (Clean Minimalist UI)</title>
+  <title>Prisma 3D Auto-Rig Engine (Perfect Alignment Fix)</title>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; -webkit-tap-highlight-color: transparent; }
     html, body { width: 100vw; height: 100dvh; overflow: hidden; background: #1b1b20; color: #fff; font-family: system-ui, -apple-system, sans-serif; }
@@ -113,21 +113,22 @@
 
   const nonMovableJoints = ['elbow_l', 'elbow_r', 'knee_l', 'knee_r'];
 
+  // Normalized proportional ratios based on character bounding box bounds (0.0 to 1.0)
   const defaultJoints = [
-    { id: 'hips', name: 'Hips', relX: 0.0, relY: 0.05, relZ: 0, parent: null, class: 'hip' },
-    { id: 'spine', name: 'Spine', relX: 0.0, relY: 0.30, relZ: 0, parent: 'hips', class: '' },
-    { id: 'neck', name: 'Neck', relX: 0.0, relY: 0.70, relZ: 0, parent: 'spine', class: '' },
-    { id: 'head', name: 'Head', relX: 0.0, relY: 0.88, relZ: 0, parent: 'neck', class: 'head' },
-    { id: 'shoulder_r', name: 'R Shoulder', relX: -0.18, relY: 0.62, relZ: 0, parent: 'spine', class: '', pair: 'shoulder_l' },
-    { id: 'elbow_r', name: 'R Elbow', relX: -0.42, relY: 0.62, relZ: 0, parent: 'shoulder_r', class: '', pair: 'elbow_l' },
-    { id: 'wrist_r', name: 'R Wrist', relX: -0.65, relY: 0.62, relZ: 0, parent: 'elbow_r', class: '', pair: 'wrist_l' },
-    { id: 'shoulder_l', name: 'L Shoulder', relX: 0.18, relY: 0.62, relZ: 0, parent: 'spine', class: '', pair: 'shoulder_r' },
-    { id: 'elbow_l', name: 'L Elbow', relX: 0.42, relY: 0.62, relZ: 0, parent: 'shoulder_l', class: '', pair: 'elbow_r' },
-    { id: 'wrist_l', name: 'L Wrist', relX: 0.65, relY: 0.62, relZ: 0, parent: 'elbow_l', class: '', pair: 'wrist_r' },
-    { id: 'knee_r', name: 'R Knee', relX: -0.09, relY: -0.25, relZ: 0, parent: 'hips', class: '', pair: 'knee_l' },
-    { id: 'ankle_r', name: 'R Ankle', relX: -0.09, relY: -0.65, relZ: 0, parent: 'knee_r', class: '', pair: 'ankle_l' },
-    { id: 'knee_l', name: 'L Knee', relX: 0.09, relY: -0.25, relZ: 0, parent: 'hips', class: '', pair: 'knee_r' },
-    { id: 'ankle_l', name: 'L Ankle', relX: 0.09, relY: -0.65, relZ: 0, parent: 'knee_l', class: '', pair: 'ankle_r' }
+    { id: 'hips', name: 'Hips', fx: 0.5, fy: 0.5, fz: 0.5, parent: null, class: 'hip' },
+    { id: 'spine', name: 'Spine', fx: 0.5, fy: 0.65, fz: 0.5, parent: 'hips', class: '' },
+    { id: 'neck', name: 'Neck', fx: 0.5, fy: 0.85, fz: 0.5, parent: 'spine', class: '' },
+    { id: 'head', name: 'Head', fx: 0.5, fy: 0.95, fz: 0.5, parent: 'neck', class: 'head' },
+    { id: 'shoulder_r', name: 'R Shoulder', fx: 0.32, fy: 0.82, fz: 0.5, parent: 'spine', class: '', pair: 'shoulder_l' },
+    { id: 'elbow_r', name: 'R Elbow', fx: 0.15, fy: 0.82, fz: 0.5, parent: 'shoulder_r', class: '', pair: 'elbow_l' },
+    { id: 'wrist_r', name: 'R Wrist', fx: 0.02, fy: 0.82, fz: 0.5, parent: 'elbow_r', class: '', pair: 'wrist_l' },
+    { id: 'shoulder_l', name: 'L Shoulder', fx: 0.68, fy: 0.82, fz: 0.5, parent: 'spine', class: '', pair: 'shoulder_r' },
+    { id: 'elbow_l', name: 'L Elbow', fx: 0.85, fy: 0.82, fz: 0.5, parent: 'shoulder_l', class: '', pair: 'elbow_r' },
+    { id: 'wrist_l', name: 'L Wrist', fx: 0.98, fy: 0.82, fz: 0.5, parent: 'elbow_l', class: '', pair: 'wrist_r' },
+    { id: 'knee_r', name: 'R Knee', fx: 0.45, fy: 0.28, fz: 0.5, parent: 'hips', class: '', pair: 'knee_l' },
+    { id: 'ankle_r', name: 'R Ankle', fx: 0.45, fy: 0.05, fz: 0.5, parent: 'knee_r', class: '', pair: 'ankle_l' },
+    { id: 'knee_l', name: 'L Knee', fx: 0.55, fy: 0.28, fz: 0.5, parent: 'hips', class: '', pair: 'knee_r' },
+    { id: 'ankle_l', name: 'L Ankle', fx: 0.55, fy: 0.05, fz: 0.5, parent: 'knee_l', class: '', pair: 'ankle_r' }
   ];
 
   function showToast(msg) {
@@ -191,7 +192,6 @@
 
     scene.add(transformControls);
 
-    // Clean thin selection ring matching minimalist aesthetic
     const ringGeo = new THREE.RingGeometry(0.045, 0.05, 32);
     ringGeo.rotateX(Math.PI / 2);
     const ringMat = new THREE.MeshBasicMaterial({ color: 0xffffff, side: THREE.DoubleSide, depthTest: false, transparent: true, opacity: 0.8 });
@@ -228,11 +228,10 @@
     domElem.addEventListener('pointermove', onPointerMove);
     domElem.addEventListener('pointerup', onPointerUp);
 
-    showToast("Engine Ready (Clean Prisma-Style UI)");
+    showToast("Engine Ready (Precise Fit)");
     startRenderLoop();
   }
 
-  // Strict bone length clamping without rubber stretching
   function solveTwoBoneIKWithClamping(root, mid, end, targetObj, poleTarget) {
     characterGroup.updateMatrixWorld(true);
 
@@ -269,7 +268,7 @@
       const boneDir = new THREE.Vector3().subVectors(pTarget, pRoot).normalize();
       const perp = new THREE.Vector3().crossVectors(boneDir, normal).normalize();
 
-      if (perp.lengthSq> 0.0001) {
+      if (perp.lengthSq() > 0.0001) {
         const up = new THREE.Vector3().crossVectors(perp, boneDir).normalize();
         const m = new THREE.Matrix4().makeBasis(perp, up, boneDir.negate());
         tempRoot.quaternion.setFromRotationMatrix(m);
@@ -508,6 +507,7 @@
     activeSkeleton = null;
   }
 
+  // Exact Bounding Box Proportional Fit for Rig Nodes
   function openRigOverlay() {
     if (!activeModel) { showToast("Import a 3D Model First!"); return; }
 
@@ -518,19 +518,20 @@
     document.getElementById('rig-tools-bar').style.display = 'flex';
 
     const box = new THREE.Box3().setFromObject(activeModel);
-    const center = box.getCenter(new THREE.Vector3());
+    const min = box.min;
+    const max = box.max;
     const size = box.getSize(new THREE.Vector3());
 
     const nodeMap = {};
     defaultJoints.forEach(j => {
-      const sphereGeo = new THREE.SphereGeometry(0.05, 16, 16);
+      const sphereGeo = new THREE.SphereGeometry(0.04, 16, 16);
       const color = j.class === 'hip' ? 0xff3b30 : j.class === 'head' ? 0x30d158 : 0xff9500;
       const sphereMat = new THREE.MeshBasicMaterial({ color: color, depthTest: false });
       const node = new THREE.Mesh(sphereGeo, sphereMat);
       
-      const posX = center.x + j.relX * size.x;
-      const posY = center.y + (j.relY - 0.1) * size.y;
-      const posZ = center.z + j.relZ * size.z;
+      const posX = min.x + j.fx * size.x;
+      const posY = min.y + j.fy * size.y;
+      const posZ = min.z + j.fz * size.z;
 
       node.position.set(posX, posY, posZ);
       node.renderOrder = 999;
@@ -547,7 +548,7 @@
       }
     });
 
-    showToast("Touch & Drag Rig Nodes");
+    showToast("Adjust Rig Nodes on Character");
   }
 
   function closeRigOverlay() {
@@ -687,7 +688,6 @@
       boneHelpers.push(handle);
     });
 
-    // Invisible Pole Targets (working in background without visual clutter)
     const poleConfigs = [
       { key: 'r_arm', shoulder: 'shoulder_r', offset: new THREE.Vector3(-0.5, 0, 0.5) },
       { key: 'l_arm', shoulder: 'shoulder_l', offset: new THREE.Vector3(0.5, 0, 0.5) },
@@ -703,7 +703,7 @@
       const refWorldPos = new THREE.Vector3();
       refBone.getWorldPosition(refWorldPos);
       poleGroup.position.copy(refWorldPos.add(cfg.offset));
-      poleGroup.visible = false; // COMPLETELY HIDDEN (Prisma clean style)
+      poleGroup.visible = false;
       
       scene.add(poleGroup);
       poleTargetsMap[cfg.key] = poleGroup;
@@ -720,7 +720,6 @@
       const endBone = cfg.end;
       if (!endBone) return;
 
-      // Clean, subtle IK target sphere
       const targetGeo = new THREE.SphereGeometry(0.04, 16, 16);
       const targetMat = new THREE.MeshBasicMaterial({ color: 0xff3b30, depthTest: false, depthWrite: false, transparent: true, opacity: 0.8 });
       const targetMesh = new THREE.Mesh(targetGeo, targetMat);
@@ -830,7 +829,7 @@
     }
   }
   function addKeyframe() { showToast("Keyframe Added!"); }
-  function seekTimeline(e) { showToast("Timeline Seeked"); }
+  function seekTimeline(event) { showToast("Timeline Seeked"); }
 
   window.addEventListener('load', init3DEngine);
 </script>
