@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>Prisma 3D Auto-Rig Engine (No Elbow/Knee Nodes)</title>
+  <title>Prisma 3D Auto-Rig Engine (Upload Fixed)</title>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; -webkit-tap-highlight-color: transparent; }
     html, body { width: 100vw; height: 100dvh; overflow: hidden; background: #1b1b20; color: #fff; font-family: system-ui, -apple-system, sans-serif; }
@@ -41,7 +41,7 @@
 
   <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/OBJLoader.js"></script>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/examples/js/loaders/GLTFLoader.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/TransformControls.js"></script>
 </head>
@@ -110,7 +110,6 @@
   let planeIntersect = new THREE.Vector3();
   let dragOffset = new THREE.Vector3();
 
-  // Sirf main joints jinhe manually adjust kiya ja sake (Elbow/Knee removed)
   const defaultJoints = [
     { id: 'hips', name: 'Hips', fx: 0.5, fy: 0.5, fz: 0.5, parent: null, class: 'hip' },
     { id: 'spine', name: 'Spine', fx: 0.5, fy: 0.65, fz: 0.5, parent: 'hips', class: '' },
@@ -129,7 +128,7 @@
     if (!t) return;
     t.innerText = msg;
     t.style.display = 'block';
-    setTimeout(() => { t.style.display = 'none'; }, 2000);
+    setTimeout(() => { t.style.display = 'none'; }, 2500);
   }
 
   function init3DEngine() {
@@ -220,7 +219,7 @@
     domElem.addEventListener('pointermove', onPointerMove);
     domElem.addEventListener('pointerup', onPointerUp);
 
-    showToast("Engine Ready (Clean Prisma Layout)");
+    showToast("Engine Ready");
     startRenderLoop();
   }
 
@@ -286,7 +285,6 @@
       dragPlane.setFromNormalAndCoplanarPoint(camera.getWorldDirection(new THREE.Vector3()).negate(), draggedRigNode.position);
       raycaster.ray.intersectPlane(dragPlane, planeIntersect);
       dragOffset.copy(draggedRigNode.position).sub(planeIntersect);
-      showToast(`Dragging ${draggedRigNode.userData.id}`);
     }
   }
 
@@ -359,8 +357,6 @@
       selectionRing.visible = true;
       targetObj.getWorldPosition(selectionRing.position);
     }
-
-    showToast(`Target Selected`);
   }
 
   function selectBone(bone) {
@@ -379,7 +375,6 @@
     
     document.getElementById('btn-rotate').classList.add('active');
     document.getElementById('btn-move').classList.remove('active');
-    showToast(`Joint: ${bone.name}`);
 
     if (selectionRing) {
       selectionRing.visible = true;
@@ -387,13 +382,18 @@
     }
   }
 
-  function triggerImport() { document.getElementById('file-input').click(); }
+  function triggerImport() { 
+    const fileInput = document.getElementById('file-input');
+    fileInput.value = ''; // Reset input to allow selecting same file again
+    fileInput.click(); 
+  }
 
+  // Safe and Robust File Loader with Error Handling
   document.getElementById('file-input').addEventListener('change', (e) => {
     const file = e.target.files[0];
     if (!file) return;
+    
     showToast("Loading 3D Model...");
-
     const fileName = file.name.toLowerCase();
     const reader = new FileReader();
 
@@ -401,18 +401,38 @@
       reader.onload = (evt) => {
         try {
           const loader = new THREE.OBJLoader();
-          loadModelToScene(loader.parse(evt.target.result));
-        } catch (err) { showToast("OBJ Load Error!"); }
+          const obj = loader.parse(evt.target.result);
+          loadModelToScene(obj);
+        } catch (err) {
+          console.error(err);
+          showToast("Error parsing OBJ file!");
+        }
       };
+      reader.onerror = () => showToast("Failed to read file!");
       reader.readAsText(file);
-    } else if (fileName.endsWith('.gltf') || fileName.endsWith('.glb')) {
+    } 
+    else if (fileName.endsWith('.gltf') || fileName.endsWith('.glb')) {
       reader.onload = (evt) => {
         try {
           const loader = new THREE.GLTFLoader();
-          loader.parse(evt.target.result, '', (gltf) => loadModelToScene(gltf.scene), () => showToast("GLTF Error!"));
-        } catch (err) { showToast("GLTF Load Error!"); }
+          loader.parse(
+            evt.target.result, 
+            '', 
+            (gltf) => loadModelToScene(gltf.scene), 
+            (err) => {
+              console.error(err);
+              showToast("Error parsing GLTF/GLB file!");
+            }
+          );
+        } catch (err) {
+          console.error(err);
+          showToast("Failed to load GLTF data!");
+        }
       };
+      reader.onerror = () => showToast("Failed to read file!");
       reader.readAsArrayBuffer(file);
+    } else {
+      showToast("Unsupported format! Use .obj, .gltf, or .glb");
     }
   });
 
@@ -529,7 +549,6 @@
 
     closeRigOverlay();
 
-    // Automatically create intermediate joint helper positions mathematically between joints if needed for skinning
     const intermediateCalc = (p1, p2, factor) => new THREE.Vector3().lerpVectors(p1, p2, factor);
 
     const fullBonePositions = { ...calculatedWorldPositions };
@@ -665,7 +684,6 @@
       }
     });
 
-    // Sirf main interactive joints (Shoulders, Wrists, Ankles, etc.) ke visual dots render honge
     defaultJoints.forEach(j => {
       const bone = bonesMap[j.id];
       if (!bone) return;
