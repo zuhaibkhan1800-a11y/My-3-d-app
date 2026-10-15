@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>Prisma 3D Auto-Rig Engine (Wrist IK Targets & Locked Elbows)</title>
+  <title>Prisma 3D Auto-Rig Engine (Independent Targets & Locked Elbows)</title>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; -webkit-tap-highlight-color: transparent; }
     html, body { width: 100vw; height: 100dvh; overflow: hidden; background: #1b1b20; color: #fff; font-family: system-ui, -apple-system, sans-serif; }
@@ -103,6 +103,7 @@
   let selectedBone = null;
   let activeSkeleton = null;
   let selectionRing = null;
+  let debugLines = {}; // 4. Debug lines for parent-target verification
   
   let draggedRigNode = null;
   let dragPlane = new THREE.Plane();
@@ -110,6 +111,9 @@
   let mouseCoord = new THREE.Vector2();
   let planeIntersect = new THREE.Vector3();
   let dragOffset = new THREE.Vector3();
+
+  // 2. Blacklist for non-movable joints (Elbows/Knees translation lock)
+  const nonMovableJoints = ['elbow_l', 'elbow_r', 'knee_l', 'knee_r'];
 
   const defaultJoints = [
     { id: 'hips', name: 'Hips', x: 0, y: 0.1, z: 0, parent: null, class: 'hip' },
@@ -163,30 +167,6 @@
 
     transformControls.addEventListener('dragging-changed', (e) => { 
       orbitControls.enabled = !e.value; 
-
-      if (!isRiggingMode) {
-        const isDragging = e.value;
-        const activeObj = transformControls.object;
-
-        if (activeObj && activeObj.userData.isIKTarget) {
-          const boneName = activeObj.userData.boneName;
-          const bone = bonesMap[boneName];
-
-          if (isDragging) {
-            if (bone) {
-              const worldPos = new THREE.Vector3();
-              activeObj.getWorldPosition(worldPos);
-              scene.attach(activeObj);
-              activeObj.position.copy(worldPos);
-            }
-          } else {
-            if (bone) {
-              bone.add(activeObj);
-              activeObj.position.set(0, 0, 0);
-            }
-          }
-        }
-      }
     });
 
     transformControls.addEventListener('objectChange', () => {
@@ -249,7 +229,7 @@
     domElem.addEventListener('pointermove', onPointerMove);
     domElem.addEventListener('pointerup', onPointerUp);
 
-    showToast("Engine Ready (Wrist Targets Movable)");
+    showToast("Engine Ready (Independent Wrist Targets)");
     startRenderLoop();
   }
 
@@ -397,22 +377,10 @@
 
   function selectTargetOrPole(targetObj) {
     if (transformControls.dragging) return;
-    
-    if (targetObj.userData.boneName) {
-      const boneName = targetObj.userData.boneName;
-      const bone = bonesMap[boneName];
-      if (bone) {
-        characterGroup.updateMatrixWorld(true);
-        const boneWorldPos = new THREE.Vector3();
-        bone.getWorldPosition(boneWorldPos);
-        scene.attach(targetObj);
-        targetObj.position.copy(boneWorldPos);
-      }
-    }
 
     transformControls.detach();
     transformControls.attach(targetObj);
-    transformControls.setMode('translate'); // 1. Wrist/Hand Target is Movable in Move mode
+    transformControls.setMode('translate'); // Movable IK target
     transformControls.space = 'world';
 
     if (selectionRing) {
@@ -423,7 +391,7 @@
     showToast(`${targetObj.name} Selected`);
   }
 
-  // 2. Lock Elbow/Knee Translation: Intermediate joints are restricted to Rotate (FK) mode only
+  // 2. Explicitly disable translation for elbows/knees in Move mode
   function selectBone(bone) {
     if (transformControls.dragging) return;
     selectedBone = bone;
@@ -433,22 +401,27 @@
       bone.userData.helper.material.color.setHex(0xff9500);
     }
 
+    const isNonMovable = nonMovableJoints.includes(bone.name);
+    const currentMode = transformControls.getMode();
+
+    if (isNonMovable && currentMode === 'translate') {
+      // If user is in Move mode, block selection/attachment of elbows and knees
+      showToast(`${bone.name} translation is locked! Switch to Rotate mode.`);
+      transformControls.detach();
+      if (selectionRing) selectionRing.visible = false;
+      return;
+    }
+
     transformControls.detach();
     transformControls.attach(bone);
     transformControls.space = 'local';
 
-    const isIntermediateJoint = bone.name.includes('elbow') || bone.name.includes('knee');
-
-    if (isIntermediateJoint) {
-      // Force Rotate mode and disable translation for elbows/knees
+    if (isNonMovable) {
       transformControls.setMode('rotate');
       document.getElementById('btn-rotate').classList.add('active');
       document.getElementById('btn-move').classList.remove('active');
       showToast(`${bone.name}: Rotation Only (Translation Locked)`);
     } else {
-      transformControls.setMode('translate');
-      document.getElementById('btn-move').classList.add('active');
-      document.getElementById('btn-rotate').classList.remove('active');
       showToast(`Joint: ${bone.name}`);
     }
 
@@ -529,6 +502,11 @@
     Object.values(ikTargetsMap).forEach(t => scene.remove(t));
     Object.values(poleTargetsMap).forEach(p => scene.remove(p));
     rigNodes3D.forEach(n => scene.remove(n));
+    
+    // Clear debug lines
+    Object.values(debugLines).forEach(line => scene.remove(line));
+    debugLines = {};
+
     if (selectionRing) selectionRing.visible = false;
 
     bonesMap = {};
@@ -754,19 +732,33 @@
       const targetMat = new THREE.MeshBasicMaterial({ color: 0xff3b30, depthTest: false, depthWrite: false, transparent: true, opacity: 0.9 });
       const targetMesh = new THREE.Mesh(targetGeo, targetMat);
       
-      targetMesh.position.set(0, 0, 0); 
+      characterGroup.updateMatrixWorld(true);
+      const boneWorldPos = new THREE.Vector3();
+      endBone.getWorldPosition(boneWorldPos);
+
+      // 1. FIX WRIST PARENTING: Add target directly to scene root, NOT as child of the bone
+      targetMesh.position.copy(boneWorldPos);
+      scene.add(targetMesh);
+
       targetMesh.renderOrder = 1000;
       targetMesh.name = `${cfg.end}_Target`;
       targetMesh.userData = { isIKTarget: true, boneName: cfg.end, chain: [rootBone, midBone, endBone], poleTarget: cfg.pole };
 
-      endBone.add(targetMesh);
       ikTargetsMap[cfg.key] = targetMesh;
+
+      // 4. DEBUG VISUALIZATION: Colored line connecting wrist bone to wrist target
+      const lineGeo = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(), new THREE.Vector3()]);
+      const lineMat = new THREE.LineBasicMaterial({ color: 0xffff00, depthTest: false, transparent: true, opacity: 0.5 });
+      const debugLine = new THREE.Line(lineGeo, lineMat);
+      debugLine.renderOrder = 998;
+      scene.add(debugLine);
+      debugLines[cfg.end] = { line: debugLine, bone: endBone, target: targetMesh };
     });
 
     if (bonesList.length > 0) selectBone(bonesList[0]);
 
     setMode('translate');
-    showToast("Rigging Applied Successfully!");
+    showToast("Rigging Applied with Independent Targets!");
   }
 
   function updateJointLabel() {
@@ -795,7 +787,7 @@
     orbitControls.update();
 
     const activeObj = transformControls.object;
-    if (transformControls.dragging && activeObj && activeObj.userData.isIKTarget) {
+    if (activeObj && activeObj.userData.isIKTarget) {
       const chain = activeObj.userData.chain;
       const pole = activeObj.userData.poleTarget;
       if (chain && chain.length === 3) {
@@ -805,6 +797,21 @@
 
     if (activeSkeleton) {
       activeSkeleton.update();
+    }
+
+    // Update debug lines positions
+    characterGroup.updateMatrixWorld(true);
+    for (const key in debugLines) {
+      const data = debugLines[key];
+      const bPos = new THREE.Vector3();
+      const tPos = new THREE.Vector3();
+      data.bone.getWorldPosition(bPos);
+      data.target.getWorldPosition(tPos);
+
+      const positions = data.line.geometry.attributes.position;
+      positions.setXYZ(0, bPos.x, bPos.y, bPos.z);
+      positions.setXYZ(1, tPos.x, tPos.y, tPos.z);
+      positions.needsUpdate = true;
     }
 
     if (selectionRing && transformControls.object) {
