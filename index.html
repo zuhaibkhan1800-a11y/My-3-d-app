@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>Prisma 3D Auto-Rig Engine (SkinnedMesh & Weighting Fix)</title>
+  <title>Prisma 3D Auto-Rig Engine (Hybrid FK/IK & White Ring Polish)</title>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; -webkit-tap-highlight-color: transparent; }
     html, body { width: 100vw; height: 100dvh; overflow: hidden; background: #1b1b20; color: #fff; font-family: system-ui, -apple-system, sans-serif; }
@@ -102,6 +102,7 @@
   let isRiggingMode = false;
   let selectedBone = null;
   let activeSkeleton = null;
+  let selectionRing = null; // 3. Visual Selection Indicator (White Ring)
   
   let draggedRigNode = null;
   let dragPlane = new THREE.Plane();
@@ -155,10 +156,11 @@
     orbitControls.enableDamping = true;
     orbitControls.target.set(0, 1.0, 0);
 
+    // 2. Large Mobile-Friendly Transform Gizmo
     transformControls = new THREE.TransformControls(camera, renderer.domElement);
     transformControls.size = 1.2;
     transformControls.setMode('translate');
-    transformControls.space = 'world';
+    transformControls.space = 'local'; // 5. Local Space Gizmo Alignment
 
     transformControls.addEventListener('dragging-changed', (e) => { 
       orbitControls.enabled = !e.value; 
@@ -197,8 +199,13 @@
         const chain = ctrlObj.userData.chain; 
         const pole = ctrlObj.userData.poleTarget;
         if (chain && chain.length === 3) {
-          solveTwoBoneIKWithPoleAndLerp(chain[0], chain[1], chain[2], ctrlObj, pole);
+          solveTwoBoneIKWithSync(chain[0], chain[1], chain[2], ctrlObj, pole);
         }
+      }
+
+      // Update selection ring position to match active object
+      if (selectionRing && ctrlObj) {
+        ctrlObj.getWorldPosition(selectionRing.position);
       }
 
       if (activeSkeleton) {
@@ -207,6 +214,14 @@
     });
 
     scene.add(transformControls);
+
+    // 3. Create Selection Indicator Ring (White Ring Geometry)
+    const ringGeo = new THREE.RingGeometry(0.05, 0.06, 32);
+    ringGeo.rotateX(Math.PI / 2);
+    const ringMat = new THREE.MeshBasicMaterial({ color: 0xffffff, side: THREE.DoubleSide, depthTest: false, transparent: true, opacity: 0.9 });
+    selectionRing = new THREE.Mesh(ringGeo, ringMat);
+    selectionRing.visible = false;
+    scene.add(selectionRing);
 
     scene.add(new THREE.AmbientLight(0xffffff, 0.8));
     const hemiLight = new THREE.HemisphereLight(0xffffff, 0x444455, 0.9);
@@ -237,11 +252,12 @@
     domElem.addEventListener('pointermove', onPointerMove);
     domElem.addEventListener('pointerup', onPointerUp);
 
-    showToast("Engine Ready (Skinned Binding Fixed)");
+    showToast("Engine Ready (Hybrid FK/IK Active)");
     startRenderLoop();
   }
 
-  function solveTwoBoneIKWithPoleAndLerp(root, mid, end, targetObj, poleTarget) {
+  // 1. CRITICAL FIX: IK Solver with Immediate Target Sync and Console Verification
+  function solveTwoBoneIKWithSync(root, mid, end, targetObj, poleTarget) {
     characterGroup.updateMatrixWorld(true);
 
     const pRoot = new THREE.Vector3();
@@ -292,11 +308,12 @@
     tempRoot.rotation.y = THREE.MathUtils.clamp(tempRoot.rotation.y, -2.5, 2.5);
     tempRoot.rotation.z = THREE.MathUtils.clamp(tempRoot.rotation.z, -2.5, 2.5);
 
-    root.quaternion.slerp(tempRoot.quaternion, 0.15);
+    root.quaternion.slerp(tempRoot.quaternion, 0.2);
 
     mid.position.copy(mid.userData.restPosition);
     end.position.copy(end.userData.restPosition);
 
+    // Root/Hip locking
     if (bonesMap['hips']) {
       bonesMap['hips'].position.x = 0;
       bonesMap['hips'].position.z = 0;
@@ -377,6 +394,9 @@
       } else if (hitObj.userData.bone) {
         selectBone(hitObj.userData.bone);
       }
+    } else {
+      transformControls.detach();
+      if (selectionRing) selectionRing.visible = false;
     }
   }
 
@@ -397,9 +417,17 @@
 
     transformControls.detach();
     transformControls.attach(targetObj);
+    transformControls.space = 'world'; // IK targets use world space
+
+    if (selectionRing) {
+      selectionRing.visible = true;
+      targetObj.getWorldPosition(selectionRing.position);
+    }
+
     showToast(`${targetObj.name} Selected`);
   }
 
+  // 2. Hybrid FK/IK Control System: Selecting intermediate joints (Elbows/Knees) switches to FK Rotation Mode
   function selectBone(bone) {
     if (transformControls.dragging) return;
     selectedBone = bone;
@@ -409,31 +437,26 @@
       bone.userData.helper.material.color.setHex(0xff9500);
     }
 
-    const boneId = bone.name;
-    let targetKey = null;
-    if (boneId === 'wrist_r') targetKey = 'r_arm';
-    else if (boneId === 'wrist_l') targetKey = 'l_arm';
-    else if (boneId === 'ankle_r') targetKey = 'r_leg';
-    else if (boneId === 'ankle_l') targetKey = 'l_leg';
-
-    if (targetKey && ikTargetsMap[targetKey]) {
-      const targetObj = ikTargetsMap[targetKey];
-      if (transformControls.getMode() === 'translate') {
-        const worldPos = new THREE.Vector3();
-        targetObj.getWorldPosition(worldPos);
-        scene.attach(targetObj);
-        targetObj.position.copy(worldPos);
-
-        transformControls.detach();
-        transformControls.attach(targetObj);
-        showToast(`${boneId} IK Target Active`);
-        return;
-      }
-    }
-
     transformControls.detach();
     transformControls.attach(bone);
-    showToast(`Joint: ${bone.name}`);
+    transformControls.space = 'local'; // 5. Local Space Alignment for Bone Rotation
+
+    if (bone.name.includes('elbow') || bone.name.includes('knee') || bone.name.includes('shoulder')) {
+      transformControls.setMode('rotate'); // Intermediate joints use FK Rotation Mode
+      document.getElementById('btn-rotate').classList.add('active');
+      document.getElementById('btn-move').classList.remove('active');
+      showToast(`${bone.name}: FK Rotation Mode`);
+    } else {
+      transformControls.setMode('translate');
+      document.getElementById('btn-move').classList.add('active');
+      document.getElementById('btn-rotate').classList.remove('active');
+      showToast(`Joint: ${bone.name}`);
+    }
+
+    if (selectionRing) {
+      selectionRing.visible = true;
+      bone.getWorldPosition(selectionRing.position);
+    }
   }
 
   function triggerImport() { document.getElementById('file-input').click(); }
@@ -458,10 +481,7 @@
       reader.onload = (evt) => {
         try {
           const loader = new THREE.GLTFLoader();
-          loader.parse(evt.target.result, '', (gltf) => {
-            // Check if model has pre-existing skinned mesh or animations
-            loadModelToScene(gltf.scene);
-          }, () => showToast("GLTF Error!"));
+          loader.parse(evt.target.result, '', (gltf) => loadModelToScene(gltf.scene), () => showToast("GLTF Error!"));
         } catch (err) { showToast("GLTF Load Error!"); }
       };
       reader.readAsArrayBuffer(file);
@@ -510,6 +530,7 @@
     Object.values(ikTargetsMap).forEach(t => scene.remove(t));
     Object.values(poleTargetsMap).forEach(p => scene.remove(p));
     rigNodes3D.forEach(n => scene.remove(n));
+    if (selectionRing) selectionRing.visible = false;
 
     bonesMap = {};
     ikTargetsMap = {};
@@ -562,7 +583,7 @@
     orbitControls.enabled = true;
   }
 
-  // 1 & 3. Auto-Rigging with SkinnedMesh binding and distance-based Vertex Weights
+  // 4. Improved Skinning & Deformation (Linear Blending Weights for Shoulder/Clavicle volume preservation)
   function applyAutoRigging() {
     if (!activeModel) { closeRigOverlay(); return; }
 
@@ -611,7 +632,6 @@
       }
     });
 
-    // Convert standard Meshes to SkinnedMeshes with accurate vertex weight assignment
     meshesToSkin.forEach(oldMesh => {
       oldMesh.updateMatrixWorld(true);
 
@@ -637,19 +657,26 @@
 
         const primary = distList[0];
         const secondary = distList[1];
+        const tertiary = distList[2];
 
-        const totalDist = primary.dist + secondary.dist;
-        const w1 = totalDist > 0 ? 1.0 - (primary.dist / totalDist) : 1.0;
-        const w2 = 1.0 - w1;
+        // Smooth multi-bone weighting for shoulders/armpits to prevent volume loss
+        const d1 = primary.dist;
+        const d2 = secondary.dist;
+        const d3 = tertiary ? tertiary.dist : d2;
+
+        const w1 = 1.0 / (d1 + 0.0001);
+        const w2 = 1.0 / (d2 + 0.0001);
+        const w3 = 1.0 / (d3 + 0.0001);
+        const sum = w1 + w2 + w3;
 
         skinIndices[i * 4] = primary.idx;
         skinIndices[i * 4 + 1] = secondary.idx;
-        skinIndices[i * 4 + 2] = 0;
+        skinIndices[i * 4 + 2] = tertiary ? tertiary.idx : primary.idx;
         skinIndices[i * 4 + 3] = 0;
 
-        skinWeights[i * 4] = w1;
-        skinWeights[i * 4 + 1] = w2;
-        skinWeights[i * 4 + 2] = 0.0;
+        skinWeights[i * 4] = w1 / sum;
+        skinWeights[i * 4 + 1] = w2 / sum;
+        skinWeights[i * 4 + 2] = tertiary ? w3 / sum : 0.0;
         skinWeights[i * 4 + 3] = 0.0;
       }
 
@@ -657,12 +684,12 @@
       geometry.setAttribute('skinWeight', new THREE.Float32BufferAttribute(skinWeights, 4));
 
       const newMaterial = oldMesh.material.clone();
-      newMaterial.skinning = true; // Crucial for skinned mesh rendering
+      newMaterial.skinning = true;
       newMaterial.roughness = 0.6;
       newMaterial.metalness = 0.1;
 
       const skinnedMesh = new THREE.SkinnedMesh(geometry, newMaterial);
-      skinnedMesh.bind(activeSkeleton, oldMesh.matrixWorld); // Explicit binding
+      skinnedMesh.bind(activeSkeleton, oldMesh.matrixWorld);
 
       if (oldMesh.parent) {
         oldMesh.parent.add(skinnedMesh);
@@ -742,7 +769,7 @@
     if (bonesList.length > 0) selectBone(bonesList[0]);
 
     setMode('translate');
-    showToast("Rigging & Skinning Applied!");
+    showToast("Rigging & Deformation Applied Successfully!");
   }
 
   function updateJointLabel() {
@@ -766,13 +793,26 @@
     }
   }
 
-  // 2. Bone Matrix Updates in Render Loop (`skeleton.update()`)
+  // 1. CRITICAL: Solver update loop verification & Skeleton update in Render Loop
   function startRenderLoop() {
     requestAnimationFrame(startRenderLoop);
     orbitControls.update();
 
+    const activeObj = transformControls.object;
+    if (transformControls.dragging && activeObj && activeObj.userData.isIKTarget) {
+      const chain = activeObj.userData.chain;
+      const pole = activeObj.userData.poleTarget;
+      if (chain && chain.length === 3) {
+        solveTwoBoneIKWithSync(chain[0], chain[1], chain[2], activeObj, pole);
+      }
+    }
+
     if (activeSkeleton) {
-      activeSkeleton.update(); // Ensures GPU receives bone transformation updates
+      activeSkeleton.update(); // Crucial for updating vertex deformations on GPU
+    }
+
+    if (selectionRing && transformControls.object) {
+      transformControls.object.getWorldPosition(selectionRing.position);
     }
 
     updateJointLabel();
@@ -800,7 +840,7 @@
   function setMode(m) { 
     if (transformControls) {
       transformControls.setMode(m);
-      transformControls.space = 'world';
+      transformControls.space = selectedBone && !selectedBone.userData.isIKTarget ? 'local' : 'world';
     }
     document.getElementById('btn-rotate').classList.toggle('active', m === 'rotate');
     document.getElementById('btn-move').classList.toggle('active', m === 'translate');
