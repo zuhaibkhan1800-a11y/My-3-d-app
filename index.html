@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>Prisma 3D Auto-Rig Engine (Perfect Alignment Fix)</title>
+  <title>Prisma 3D Auto-Rig Engine (No Elbow/Knee Nodes)</title>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; -webkit-tap-highlight-color: transparent; }
     html, body { width: 100vw; height: 100dvh; overflow: hidden; background: #1b1b20; color: #fff; font-family: system-ui, -apple-system, sans-serif; }
@@ -41,7 +41,7 @@
 
   <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/OBJLoader.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/examples/js/loaders/GLTFLoader.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/TransformControls.js"></script>
 </head>
@@ -96,7 +96,6 @@
 
   let bonesMap = {};
   let ikTargetsMap = {}; 
-  let poleTargetsMap = {}; 
   let boneHelpers = [];
   let rigNodes3D = []; 
   let isRiggingMode = false;
@@ -111,24 +110,18 @@
   let planeIntersect = new THREE.Vector3();
   let dragOffset = new THREE.Vector3();
 
-  const nonMovableJoints = ['elbow_l', 'elbow_r', 'knee_l', 'knee_r'];
-
-  // Normalized proportional ratios based on character bounding box bounds (0.0 to 1.0)
+  // Sirf main joints jinhe manually adjust kiya ja sake (Elbow/Knee removed)
   const defaultJoints = [
     { id: 'hips', name: 'Hips', fx: 0.5, fy: 0.5, fz: 0.5, parent: null, class: 'hip' },
     { id: 'spine', name: 'Spine', fx: 0.5, fy: 0.65, fz: 0.5, parent: 'hips', class: '' },
     { id: 'neck', name: 'Neck', fx: 0.5, fy: 0.85, fz: 0.5, parent: 'spine', class: '' },
     { id: 'head', name: 'Head', fx: 0.5, fy: 0.95, fz: 0.5, parent: 'neck', class: 'head' },
     { id: 'shoulder_r', name: 'R Shoulder', fx: 0.32, fy: 0.82, fz: 0.5, parent: 'spine', class: '', pair: 'shoulder_l' },
-    { id: 'elbow_r', name: 'R Elbow', fx: 0.15, fy: 0.82, fz: 0.5, parent: 'shoulder_r', class: '', pair: 'elbow_l' },
-    { id: 'wrist_r', name: 'R Wrist', fx: 0.02, fy: 0.82, fz: 0.5, parent: 'elbow_r', class: '', pair: 'wrist_l' },
+    { id: 'wrist_r', name: 'R Wrist', fx: 0.05, fy: 0.82, fz: 0.5, parent: 'shoulder_r', class: '', pair: 'wrist_l' },
     { id: 'shoulder_l', name: 'L Shoulder', fx: 0.68, fy: 0.82, fz: 0.5, parent: 'spine', class: '', pair: 'shoulder_r' },
-    { id: 'elbow_l', name: 'L Elbow', fx: 0.85, fy: 0.82, fz: 0.5, parent: 'shoulder_l', class: '', pair: 'elbow_r' },
-    { id: 'wrist_l', name: 'L Wrist', fx: 0.98, fy: 0.82, fz: 0.5, parent: 'elbow_l', class: '', pair: 'wrist_r' },
-    { id: 'knee_r', name: 'R Knee', fx: 0.45, fy: 0.28, fz: 0.5, parent: 'hips', class: '', pair: 'knee_l' },
-    { id: 'ankle_r', name: 'R Ankle', fx: 0.45, fy: 0.05, fz: 0.5, parent: 'knee_r', class: '', pair: 'ankle_l' },
-    { id: 'knee_l', name: 'L Knee', fx: 0.55, fy: 0.28, fz: 0.5, parent: 'hips', class: '', pair: 'knee_r' },
-    { id: 'ankle_l', name: 'L Ankle', fx: 0.55, fy: 0.05, fz: 0.5, parent: 'knee_l', class: '', pair: 'ankle_r' }
+    { id: 'wrist_l', name: 'L Wrist', fx: 0.95, fy: 0.82, fz: 0.5, parent: 'shoulder_l', class: '', pair: 'wrist_r' },
+    { id: 'ankle_r', name: 'R Ankle', fx: 0.45, fy: 0.05, fz: 0.5, parent: 'hips', class: '', pair: 'ankle_l' },
+    { id: 'ankle_l', name: 'L Ankle', fx: 0.55, fy: 0.05, fz: 0.5, parent: 'hips', class: '', pair: 'ankle_r' }
   ];
 
   function showToast(msg) {
@@ -175,9 +168,8 @@
 
       if (ctrlObj.userData.isIKTarget) {
         const chain = ctrlObj.userData.chain; 
-        const pole = ctrlObj.userData.poleTarget;
         if (chain && chain.length === 3) {
-          solveTwoBoneIKWithClamping(chain[0], chain[1], chain[2], ctrlObj, pole);
+          solveTwoBoneIKWithClamping(chain[0], chain[1], chain[2], ctrlObj);
         }
       }
 
@@ -228,11 +220,11 @@
     domElem.addEventListener('pointermove', onPointerMove);
     domElem.addEventListener('pointerup', onPointerUp);
 
-    showToast("Engine Ready (Precise Fit)");
+    showToast("Engine Ready (Clean Prisma Layout)");
     startRenderLoop();
   }
 
-  function solveTwoBoneIKWithClamping(root, mid, end, targetObj, poleTarget) {
+  function solveTwoBoneIKWithClamping(root, mid, end, targetObj) {
     characterGroup.updateMatrixWorld(true);
 
     const pRoot = new THREE.Vector3();
@@ -259,21 +251,6 @@
 
     const tempRoot = root.clone();
     tempRoot.lookAt(pTarget);
-
-    if (poleTarget) {
-      const pPole = new THREE.Vector3();
-      poleTarget.getWorldPosition(pPole);
-
-      const normal = new THREE.Vector3().subVectors(pPole, pRoot).normalize();
-      const boneDir = new THREE.Vector3().subVectors(pTarget, pRoot).normalize();
-      const perp = new THREE.Vector3().crossVectors(boneDir, normal).normalize();
-
-      if (perp.lengthSq() > 0.0001) {
-        const up = new THREE.Vector3().crossVectors(perp, boneDir).normalize();
-        const m = new THREE.Matrix4().makeBasis(perp, up, boneDir.negate());
-        tempRoot.quaternion.setFromRotationMatrix(m);
-      }
-    }
 
     tempRoot.rotation.x = THREE.MathUtils.clamp(tempRoot.rotation.x, -2.4, 0.0);
     tempRoot.rotation.y = THREE.MathUtils.clamp(tempRoot.rotation.y, -1.5, 1.5);
@@ -395,28 +372,14 @@
       bone.userData.helper.material.color.setHex(0xff9500);
     }
 
-    const isNonMovable = nonMovableJoints.includes(bone.name);
-    const currentMode = transformControls.getMode();
-
-    if (isNonMovable && currentMode === 'translate') {
-      showToast(`${bone.name} translation locked! Switch to Rotate mode.`);
-      transformControls.detach();
-      if (selectionRing) selectionRing.visible = false;
-      return;
-    }
-
     transformControls.detach();
     transformControls.attach(bone);
     transformControls.space = 'local';
-
-    if (isNonMovable) {
-      transformControls.setMode('rotate');
-      document.getElementById('btn-rotate').classList.add('active');
-      document.getElementById('btn-move').classList.remove('active');
-      showToast(`${bone.name}: Rotation Mode (FK)`);
-    } else {
-      showToast(`Joint: ${bone.name}`);
-    }
+    transformControls.setMode('rotate');
+    
+    document.getElementById('btn-rotate').classList.add('active');
+    document.getElementById('btn-move').classList.remove('active');
+    showToast(`Joint: ${bone.name}`);
 
     if (selectionRing) {
       selectionRing.visible = true;
@@ -493,21 +456,18 @@
     transformControls.detach();
     boneHelpers.forEach(h => scene.remove(h));
     Object.values(ikTargetsMap).forEach(t => scene.remove(t));
-    Object.values(poleTargetsMap).forEach(p => scene.remove(p));
     rigNodes3D.forEach(n => scene.remove(n));
 
     if (selectionRing) selectionRing.visible = false;
 
     bonesMap = {};
     ikTargetsMap = {};
-    poleTargetsMap = {};
     rigNodes3D = [];
     boneHelpers = [];
     selectedBone = null;
     activeSkeleton = null;
   }
 
-  // Exact Bounding Box Proportional Fit for Rig Nodes
   function openRigOverlay() {
     if (!activeModel) { showToast("Import a 3D Model First!"); return; }
 
@@ -548,7 +508,7 @@
       }
     });
 
-    showToast("Adjust Rig Nodes on Character");
+    showToast("Adjust Rig Nodes");
   }
 
   function closeRigOverlay() {
@@ -569,10 +529,44 @@
 
     closeRigOverlay();
 
+    // Automatically create intermediate joint helper positions mathematically between joints if needed for skinning
+    const intermediateCalc = (p1, p2, factor) => new THREE.Vector3().lerpVectors(p1, p2, factor);
+
+    const fullBonePositions = { ...calculatedWorldPositions };
+    if (calculatedWorldPositions['shoulder_r'] && calculatedWorldPositions['wrist_r']) {
+      fullBonePositions['elbow_r'] = intermediateCalc(calculatedWorldPositions['shoulder_r'], calculatedWorldPositions['wrist_r'], 0.5);
+    }
+    if (calculatedWorldPositions['shoulder_l'] && calculatedWorldPositions['wrist_l']) {
+      fullBonePositions['elbow_l'] = intermediateCalc(calculatedWorldPositions['shoulder_l'], calculatedWorldPositions['wrist_l'], 0.5);
+    }
+    if (calculatedWorldPositions['hips'] && calculatedWorldPositions['ankle_r']) {
+      fullBonePositions['knee_r'] = intermediateCalc(calculatedWorldPositions['hips'], calculatedWorldPositions['ankle_r'], 0.5);
+    }
+    if (calculatedWorldPositions['hips'] && calculatedWorldPositions['ankle_l']) {
+      fullBonePositions['knee_l'] = intermediateCalc(calculatedWorldPositions['hips'], calculatedWorldPositions['ankle_l'], 0.5);
+    }
+
+    const allJointDefs = [
+      { id: 'hips', parent: null },
+      { id: 'spine', parent: 'hips' },
+      { id: 'neck', parent: 'spine' },
+      { id: 'head', parent: 'neck' },
+      { id: 'shoulder_r', parent: 'spine' },
+      { id: 'elbow_r', parent: 'shoulder_r' },
+      { id: 'wrist_r', parent: 'elbow_r' },
+      { id: 'shoulder_l', parent: 'spine' },
+      { id: 'elbow_l', parent: 'shoulder_l' },
+      { id: 'wrist_l', parent: 'elbow_l' },
+      { id: 'knee_r', parent: 'hips' },
+      { id: 'ankle_r', parent: 'knee_r' },
+      { id: 'knee_l', parent: 'hips' },
+      { id: 'ankle_l', parent: 'knee_l' }
+    ];
+
     const bonesList = [];
     const boneIndexMap = {};
 
-    defaultJoints.forEach((j, index) => {
+    allJointDefs.forEach((j, index) => {
       const bone = new THREE.Bone();
       bone.name = j.id;
       bonesMap[j.id] = bone;
@@ -580,13 +574,13 @@
       boneIndexMap[j.id] = index;
     });
 
-    defaultJoints.forEach(j => {
+    allJointDefs.forEach(j => {
       const bone = bonesMap[j.id];
-      const worldPos = calculatedWorldPositions[j.id];
+      const worldPos = fullBonePositions[j.id];
 
       if (j.parent && bonesMap[j.parent]) {
         bonesMap[j.parent].add(bone);
-        const parentWorldPos = calculatedWorldPositions[j.parent];
+        const parentWorldPos = fullBonePositions[j.parent];
         const offset = worldPos.clone().sub(parentWorldPos);
         bone.position.copy(offset);
         bone.userData.restPosition = offset.clone();
@@ -623,9 +617,9 @@
         vWorld.applyMatrix4(oldMesh.matrixWorld);
 
         let distList = [];
-        defaultJoints.forEach(j => {
-          const d = vWorld.distanceTo(calculatedWorldPositions[j.id]);
-          distList.push({ id: j.id, dist: d, idx: boneIndexMap[j.id] });
+        Object.keys(fullBonePositions).forEach(k => {
+          const d = vWorld.distanceTo(fullBonePositions[k]);
+          distList.push({ id: k, dist: d, idx: boneIndexMap[k] });
         });
 
         distList.sort((a, b) => a.dist - b.dist);
@@ -671,8 +665,10 @@
       }
     });
 
+    // Sirf main interactive joints (Shoulders, Wrists, Ankles, etc.) ke visual dots render honge
     defaultJoints.forEach(j => {
       const bone = bonesMap[j.id];
+      if (!bone) return;
       const sphereGeo = new THREE.SphereGeometry(0.035, 16, 16);
       const sphereMat = new THREE.MeshBasicMaterial({ color: 0x007aff, depthTest: false, depthWrite: false });
       const handle = new THREE.Mesh(sphereGeo, sphereMat);
@@ -680,40 +676,15 @@
       handle.userData = { bone: bone };
 
       bone.add(handle);
-      if (nonMovableJoints.includes(j.id)) {
-        handle.position.set(0, 0, 0);
-      }
-
       bone.userData.helper = handle;
       boneHelpers.push(handle);
     });
 
-    const poleConfigs = [
-      { key: 'r_arm', shoulder: 'shoulder_r', offset: new THREE.Vector3(-0.5, 0, 0.5) },
-      { key: 'l_arm', shoulder: 'shoulder_l', offset: new THREE.Vector3(0.5, 0, 0.5) },
-      { key: 'r_leg', hips: 'hips', offset: new THREE.Vector3(-0.2, -0.5, 0.5) },
-      { key: 'l_leg', hips: 'hips', offset: new THREE.Vector3(0.2, -0.5, 0.5) }
-    ];
-
-    poleConfigs.forEach(cfg => {
-      const refBone = bonesMap[cfg.shoulder || cfg.hips];
-      if (!refBone) return;
-
-      const poleGroup = new THREE.Group();
-      const refWorldPos = new THREE.Vector3();
-      refBone.getWorldPosition(refWorldPos);
-      poleGroup.position.copy(refWorldPos.add(cfg.offset));
-      poleGroup.visible = false;
-      
-      scene.add(poleGroup);
-      poleTargetsMap[cfg.key] = poleGroup;
-    });
-
     const targetConfigs = [
-      { key: 'r_arm', root: bonesMap['shoulder_r'], mid: bonesMap['elbow_r'], end: bonesMap['wrist_r'], pole: poleTargetsMap['r_arm'] },
-      { key: 'l_arm', root: bonesMap['shoulder_l'], mid: bonesMap['elbow_l'], end: bonesMap['wrist_l'], pole: poleTargetsMap['l_arm'] },
-      { key: 'r_leg', root: bonesMap['hips'], mid: bonesMap['knee_r'], end: bonesMap['ankle_r'], pole: poleTargetsMap['r_leg'] },
-      { key: 'l_leg', root: bonesMap['hips'], mid: bonesMap['knee_l'], end: bonesMap['ankle_l'], pole: poleTargetsMap['l_leg'] }
+      { key: 'r_arm', root: bonesMap['shoulder_r'], mid: bonesMap['elbow_r'], end: bonesMap['wrist_r'] },
+      { key: 'l_arm', root: bonesMap['shoulder_l'], mid: bonesMap['elbow_l'], end: bonesMap['wrist_l'] },
+      { key: 'r_leg', root: bonesMap['hips'], mid: bonesMap['knee_r'], end: bonesMap['ankle_r'] },
+      { key: 'l_leg', root: bonesMap['hips'], mid: bonesMap['knee_l'], end: bonesMap['ankle_l'] }
     ];
 
     targetConfigs.forEach(cfg => {
@@ -733,14 +704,14 @@
 
       targetMesh.renderOrder = 1000;
       targetMesh.name = `${endBone.name}_Target`;
-      targetMesh.userData = { isIKTarget: true, boneName: endBone.name, chain: [cfg.root, cfg.mid, cfg.end], poleTarget: cfg.pole };
+      targetMesh.userData = { isIKTarget: true, boneName: endBone.name, chain: [cfg.root, cfg.mid, cfg.end] };
 
       ikTargetsMap[cfg.key] = targetMesh;
     });
 
     if (bonesList.length > 0) selectBone(bonesList[0]);
 
-    setMode('translate');
+    setMode('rotate');
     showToast("Rig Applied Successfully!");
   }
 
@@ -772,9 +743,8 @@
     const activeObj = transformControls.object;
     if (activeObj && activeObj.userData.isIKTarget) {
       const chain = activeObj.userData.chain;
-      const pole = activeObj.userData.poleTarget;
       if (chain && chain.length === 3) {
-        solveTwoBoneIKWithClamping(chain[0], chain[1], chain[2], activeObj, pole);
+        solveTwoBoneIKWithClamping(chain[0], chain[1], chain[2], activeObj);
       }
     }
 
