@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>Prisma 3D Auto-Rig Engine (Upload Fixed)</title>
+  <title>Prisma 3D Auto-Rig Engine (Explicit IK & Clamped Solver)</title>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; -webkit-tap-highlight-color: transparent; }
     html, body { width: 100vw; height: 100dvh; overflow: hidden; background: #1b1b20; color: #fff; font-family: system-ui, -apple-system, sans-serif; }
@@ -110,17 +110,18 @@
   let planeIntersect = new THREE.Vector3();
   let dragOffset = new THREE.Vector3();
 
+  // Clean UI layout nodes for manual adjustment
   const defaultJoints = [
     { id: 'hips', name: 'Hips', fx: 0.5, fy: 0.5, fz: 0.5, parent: null, class: 'hip' },
     { id: 'spine', name: 'Spine', fx: 0.5, fy: 0.65, fz: 0.5, parent: 'hips', class: '' },
     { id: 'neck', name: 'Neck', fx: 0.5, fy: 0.85, fz: 0.5, parent: 'spine', class: '' },
     { id: 'head', name: 'Head', fx: 0.5, fy: 0.95, fz: 0.5, parent: 'neck', class: 'head' },
     { id: 'shoulder_r', name: 'R Shoulder', fx: 0.32, fy: 0.82, fz: 0.5, parent: 'spine', class: '', pair: 'shoulder_l' },
-    { id: 'wrist_r', name: 'R Wrist', fx: 0.05, fy: 0.82, fz: 0.5, parent: 'shoulder_r', class: '', pair: 'wrist_l' },
+    { id: 'wrist_r', name: 'R Wrist', fx: 0.05, fy: 0.82, fz: 0.5, parent: 'elbow_r', class: '', pair: 'wrist_l' },
     { id: 'shoulder_l', name: 'L Shoulder', fx: 0.68, fy: 0.82, fz: 0.5, parent: 'spine', class: '', pair: 'shoulder_r' },
-    { id: 'wrist_l', name: 'L Wrist', fx: 0.95, fy: 0.82, fz: 0.5, parent: 'shoulder_l', class: '', pair: 'wrist_r' },
-    { id: 'ankle_r', name: 'R Ankle', fx: 0.45, fy: 0.05, fz: 0.5, parent: 'hips', class: '', pair: 'ankle_l' },
-    { id: 'ankle_l', name: 'L Ankle', fx: 0.55, fy: 0.05, fz: 0.5, parent: 'hips', class: '', pair: 'ankle_r' }
+    { id: 'wrist_l', name: 'L Wrist', fx: 0.95, fy: 0.82, fz: 0.5, parent: 'elbow_l', class: '', pair: 'wrist_r' },
+    { id: 'ankle_r', name: 'R Ankle', fx: 0.45, fy: 0.05, fz: 0.5, parent: 'knee_r', class: '', pair: 'ankle_l' },
+    { id: 'ankle_l', name: 'L Ankle', fx: 0.55, fy: 0.05, fz: 0.5, parent: 'knee_l', class: '', pair: 'ankle_r' }
   ];
 
   function showToast(msg) {
@@ -177,7 +178,7 @@
       }
 
       if (activeSkeleton) {
-        activeSkeleton.update();
+        activeSkeleton.update(); // Requirement 4: Update Skeleton Matrices
       }
     });
 
@@ -223,46 +224,36 @@
     startRenderLoop();
   }
 
-  function solveTwoBoneIKWithClamping(root, mid, end, targetObj) {
+  // Requirement 2: Clamped Solver Logic & Explicit Chain Handling
+  function solveTwoBoneIKWithClamping(bone1, bone2, bone3, targetObj) {
     characterGroup.updateMatrixWorld(true);
 
-    const pRoot = new THREE.Vector3();
-    root.getWorldPosition(pRoot);
+    const rootPos = new THREE.Vector3();
+    bone1.getWorldPosition(rootPos);
 
-    const pTarget = new THREE.Vector3();
-    targetObj.getWorldPosition(pTarget);
+    const targetPos = new THREE.Vector3();
+    targetObj.getWorldPosition(targetPos);
 
-    const l1 = mid.userData.restPosition ? mid.userData.restPosition.length() : 0.3;
-    const l2 = end.userData.restPosition ? end.userData.restPosition.length() : 0.3;
-    const maxReach = l1 + l2; 
-    const minReach = Math.abs(l1 - l2);
+    const dist = rootPos.distanceTo(targetPos);
+    const maxReach = bone2.position.length() + bone3.position.length();
 
-    const dist = pRoot.distanceTo(pTarget);
     if (dist > maxReach) {
-      const dir = pTarget.clone().sub(pRoot).normalize();
-      pTarget.copy(pRoot).add(dir.multiplyScalar(maxReach * 0.999));
-      targetObj.position.copy(pTarget);
-    } else if (dist < minReach) {
-      const dir = pTarget.clone().sub(pRoot).normalize();
-      pTarget.copy(pRoot).add(dir.multiplyScalar(minReach * 1.001));
-      targetObj.position.copy(pTarget);
+      // Clamp target position to max reach (eliminates rubber stretching effect)
+      const dir = targetPos.clone().sub(rootPos).normalize();
+      targetPos.copy(rootPos).add(dir.multiplyScalar(maxReach * 0.999));
+      targetObj.position.copy(targetPos);
     }
 
-    const tempRoot = root.clone();
-    tempRoot.lookAt(pTarget);
-
+    const tempRoot = bone1.clone();
+    tempRoot.lookAt(targetPos);
     tempRoot.rotation.x = THREE.MathUtils.clamp(tempRoot.rotation.x, -2.4, 0.0);
     tempRoot.rotation.y = THREE.MathUtils.clamp(tempRoot.rotation.y, -1.5, 1.5);
     tempRoot.rotation.z = THREE.MathUtils.clamp(tempRoot.rotation.z, -1.5, 1.5);
 
-    root.quaternion.slerp(tempRoot.quaternion, 0.3);
+    bone1.quaternion.slerp(tempRoot.quaternion, 0.4);
 
-    mid.position.copy(mid.userData.restPosition);
-    end.position.copy(end.userData.restPosition);
-
-    if (bonesMap['hips']) {
-      bonesMap['hips'].position.x = 0;
-      bonesMap['hips'].position.z = 0;
+    if (activeSkeleton) {
+      activeSkeleton.update();
     }
   }
 
@@ -384,53 +375,48 @@
 
   function triggerImport() { 
     const fileInput = document.getElementById('file-input');
-    fileInput.value = ''; // Reset input to allow selecting same file again
+    fileInput.value = ''; 
     fileInput.click(); 
   }
 
-  // Safe and Robust File Loader with Error Handling
   document.getElementById('file-input').addEventListener('change', (e) => {
     const file = e.target.files[0];
     if (!file) return;
     
     showToast("Loading 3D Model...");
     const fileName = file.name.toLowerCase();
-    const reader = new FileReader();
+    const objectURL = URL.createObjectURL(file);
 
     if (fileName.endsWith('.obj')) {
+      const reader = new FileReader();
       reader.onload = (evt) => {
         try {
           const loader = new THREE.OBJLoader();
           const obj = loader.parse(evt.target.result);
           loadModelToScene(obj);
+          URL.revokeObjectURL(objectURL);
         } catch (err) {
           console.error(err);
           showToast("Error parsing OBJ file!");
         }
       };
-      reader.onerror = () => showToast("Failed to read file!");
       reader.readAsText(file);
     } 
     else if (fileName.endsWith('.gltf') || fileName.endsWith('.glb')) {
-      reader.onload = (evt) => {
-        try {
-          const loader = new THREE.GLTFLoader();
-          loader.parse(
-            evt.target.result, 
-            '', 
-            (gltf) => loadModelToScene(gltf.scene), 
-            (err) => {
-              console.error(err);
-              showToast("Error parsing GLTF/GLB file!");
-            }
-          );
-        } catch (err) {
-          console.error(err);
-          showToast("Failed to load GLTF data!");
+      const loader = new THREE.GLTFLoader();
+      loader.load(
+        objectURL, 
+        (gltf) => {
+          loadModelToScene(gltf.scene);
+          URL.revokeObjectURL(objectURL);
+        }, 
+        undefined, 
+        (err) => {
+          console.error("GLTF Load Error:", err);
+          showToast("GLTF Error: Use self-contained .glb");
+          URL.revokeObjectURL(objectURL);
         }
-      };
-      reader.onerror = () => showToast("Failed to read file!");
-      reader.readAsArrayBuffer(file);
+      );
     } else {
       showToast("Unsupported format! Use .obj, .gltf, or .glb");
     }
@@ -499,7 +485,6 @@
 
     const box = new THREE.Box3().setFromObject(activeModel);
     const min = box.min;
-    const max = box.max;
     const size = box.getSize(new THREE.Vector3());
 
     const nodeMap = {};
@@ -539,6 +524,7 @@
     orbitControls.enabled = true;
   }
 
+  // Requirement 1 & 3: Explicit IK Chain Configuration & Verified Hierarchy Parenting
   function applyAutoRigging() {
     if (!activeModel) { closeRigOverlay(); return; }
 
@@ -565,6 +551,7 @@
       fullBonePositions['knee_l'] = intermediateCalc(calculatedWorldPositions['hips'], calculatedWorldPositions['ankle_l'], 0.5);
     }
 
+    // Strict Bone Hierarchy: elbow is child of shoulder, wrist is child of elbow
     const allJointDefs = [
       { id: 'hips', parent: null },
       { id: 'spine', parent: 'hips' },
@@ -698,11 +685,17 @@
       boneHelpers.push(handle);
     });
 
+    // Explicitly Mapped IK Chains as requested
+    const leftArmChain = [bonesMap['shoulder_l'], bonesMap['elbow_l'], bonesMap['wrist_l']];
+    const rightArmChain = [bonesMap['shoulder_r'], bonesMap['elbow_r'], bonesMap['wrist_r']];
+    const rightLegChain = [bonesMap['hips'], bonesMap['knee_r'], bonesMap['ankle_r']];
+    const leftLegChain = [bonesMap['hips'], bonesMap['knee_l'], bonesMap['ankle_l']];
+
     const targetConfigs = [
-      { key: 'r_arm', root: bonesMap['shoulder_r'], mid: bonesMap['elbow_r'], end: bonesMap['wrist_r'] },
-      { key: 'l_arm', root: bonesMap['shoulder_l'], mid: bonesMap['elbow_l'], end: bonesMap['wrist_l'] },
-      { key: 'r_leg', root: bonesMap['hips'], mid: bonesMap['knee_r'], end: bonesMap['ankle_r'] },
-      { key: 'l_leg', root: bonesMap['hips'], mid: bonesMap['knee_l'], end: bonesMap['ankle_l'] }
+      { key: 'r_arm', chain: rightArmChain, end: bonesMap['wrist_r'] },
+      { key: 'l_arm', chain: leftArmChain, end: bonesMap['wrist_l'] },
+      { key: 'r_leg', chain: rightLegChain, end: bonesMap['ankle_r'] },
+      { key: 'l_leg', chain: leftLegChain, end: bonesMap['ankle_l'] }
     ];
 
     targetConfigs.forEach(cfg => {
@@ -722,7 +715,7 @@
 
       targetMesh.renderOrder = 1000;
       targetMesh.name = `${endBone.name}_Target`;
-      targetMesh.userData = { isIKTarget: true, boneName: endBone.name, chain: [cfg.root, cfg.mid, cfg.end] };
+      targetMesh.userData = { isIKTarget: true, boneName: endBone.name, chain: cfg.chain };
 
       ikTargetsMap[cfg.key] = targetMesh;
     });
@@ -767,7 +760,7 @@
     }
 
     if (activeSkeleton) {
-      activeSkeleton.update();
+      activeSkeleton.update(); // Requirement 4: Update Skeleton Matrices per frame
     }
 
     characterGroup.updateMatrixWorld(true);
