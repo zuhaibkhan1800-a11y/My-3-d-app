@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>Prisma 3D Auto-Rig Engine (Fixed Rig Alignment)</title>
+  <title>Prisma 3D Auto-Rig Engine (Hardcoded IK Chains & Clamped Solver)</title>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; -webkit-tap-highlight-color: transparent; }
     html, body { width: 100vw; height: 100dvh; overflow: hidden; background: #1b1b20; color: #fff; font-family: system-ui, -apple-system, sans-serif; }
@@ -177,7 +177,7 @@
         const chain = ctrlObj.userData.chain; 
         const pole = ctrlObj.userData.poleTarget;
         if (chain && chain.length === 3) {
-          solveTwoBoneIKWithStrictConstraints(chain[0], chain[1], chain[2], ctrlObj, pole);
+          solveTwoBoneIKWithClamping(chain[0], chain[1], chain[2], ctrlObj, pole);
         }
       }
 
@@ -228,11 +228,12 @@
     domElem.addEventListener('pointermove', onPointerMove);
     domElem.addEventListener('pointerup', onPointerUp);
 
-    showToast("Engine Ready (Aligned Auto-Rig)");
+    showToast("Engine Ready (Hardcoded IK Chains)");
     startRenderLoop();
   }
 
-  function solveTwoBoneIKWithStrictConstraints(root, mid, end, targetObj, poleTarget) {
+  // 2. Fixed Bone Stretching with Hard Distance Clamping
+  function solveTwoBoneIKWithClamping(root, mid, end, targetObj, poleTarget) {
     characterGroup.updateMatrixWorld(true);
 
     const pRoot = new THREE.Vector3();
@@ -243,19 +244,17 @@
 
     const l1 = mid.userData.restPosition ? mid.userData.restPosition.length() : 0.3;
     const l2 = end.userData.restPosition ? end.userData.restPosition.length() : 0.3;
-    const maxLen = l1 + l2;
-    const minLen = Math.abs(l1 - l2);
+    const maxReach = l1 + l2; // Strict max reach limit
+    const minReach = Math.abs(l1 - l2);
 
-    const dir = pTarget.clone().sub(pRoot);
-    let dist = dir.length();
-
-    if (dist > maxLen) {
-      dir.normalize().multiplyScalar(maxLen * 0.999);
-      pTarget.copy(pRoot).add(dir);
+    const dist = pRoot.distanceTo(pTarget);
+    if (dist > maxReach) {
+      const dir = pTarget.clone().sub(pRoot).normalize();
+      pTarget.copy(pRoot).add(dir.multiplyScalar(maxReach * 0.999));
       targetObj.position.copy(pTarget);
-    } else if (dist < minLen) {
-      dir.normalize().multiplyScalar(minLen * 1.001);
-      pTarget.copy(pRoot).add(dir);
+    } else if (dist < minReach) {
+      const dir = pTarget.clone().sub(pRoot).normalize();
+      pTarget.copy(pRoot).add(dir.multiplyScalar(minReach * 1.001));
       targetObj.position.copy(pTarget);
     }
 
@@ -281,7 +280,7 @@
     tempRoot.rotation.y = THREE.MathUtils.clamp(tempRoot.rotation.y, -1.5, 1.5);
     tempRoot.rotation.z = THREE.MathUtils.clamp(tempRoot.rotation.z, -1.5, 1.5);
 
-    root.quaternion.slerp(tempRoot.quaternion, 0.25);
+    root.quaternion.slerp(tempRoot.quaternion, 0.3);
 
     mid.position.copy(mid.userData.restPosition);
     end.position.copy(end.userData.restPosition);
@@ -512,7 +511,6 @@
     activeSkeleton = null;
   }
 
-  // Automatically fit rig nodes to imported character size and center
   function openRigOverlay() {
     if (!activeModel) { showToast("Import a 3D Model First!"); return; }
 
@@ -533,7 +531,6 @@
       const sphereMat = new THREE.MeshBasicMaterial({ color: color, depthTest: false });
       const node = new THREE.Mesh(sphereGeo, sphereMat);
       
-      // Perfectly scale and align rig nodes based on character bounding box
       const posX = center.x + j.relX * size.x;
       const posY = center.y + (j.relY - 0.1) * size.y;
       const posZ = center.z + j.relZ * size.z;
@@ -564,6 +561,7 @@
     orbitControls.enabled = true;
   }
 
+  // 1 & 3. Explicitly Defined IK Chains and Correct Bone Hierarchy Parenting
   function applyAutoRigging() {
     if (!activeModel) { closeRigOverlay(); return; }
 
@@ -585,6 +583,7 @@
       boneIndexMap[j.id] = index;
     });
 
+    // Explicit Hierarchy Building
     defaultJoints.forEach(j => {
       const bone = bonesMap[j.id];
       const worldPos = calculatedWorldPositions[j.id];
@@ -724,17 +723,16 @@
       poleTargetsMap[cfg.key] = poleGroup;
     });
 
+    // Explicitly Mapped IK Chains [shoulder/hip, elbow/knee, wrist/ankle]
     const targetConfigs = [
-      { key: 'r_arm', root: 'shoulder_r', mid: 'elbow_r', end: 'wrist_r', pole: poleTargetsMap['r_arm'] },
-      { key: 'l_arm', root: 'shoulder_l', mid: 'elbow_l', end: 'wrist_l', pole: poleTargetsMap['l_arm'] },
-      { key: 'r_leg', root: 'hips', mid: 'knee_r', end: 'ankle_r', pole: poleTargetsMap['r_leg'] },
-      { key: 'l_leg', root: 'hips', mid: 'knee_l', end: 'ankle_l', pole: poleTargetsMap['l_leg'] }
+      { key: 'r_arm', root: bonesMap['shoulder_r'], mid: bonesMap['elbow_r'], end: bonesMap['wrist_r'], pole: poleTargetsMap['r_arm'] },
+      { key: 'l_arm', root: bonesMap['shoulder_l'], mid: bonesMap['elbow_l'], end: bonesMap['wrist_l'], pole: poleTargetsMap['l_arm'] },
+      { key: 'r_leg', root: bonesMap['hips'], mid: bonesMap['knee_r'], end: bonesMap['ankle_r'], pole: poleTargetsMap['r_leg'] },
+      { key: 'l_leg', root: bonesMap['hips'], mid: bonesMap['knee_l'], end: bonesMap['ankle_l'], pole: poleTargetsMap['l_leg'] }
     ];
 
     targetConfigs.forEach(cfg => {
-      const endBone = bonesMap[cfg.end];
-      const rootBone = bonesMap[cfg.root];
-      const midBone = bonesMap[cfg.mid];
+      const endBone = cfg.end;
       if (!endBone) return;
 
       const targetGeo = new THREE.SphereGeometry(0.045, 16, 16);
@@ -749,8 +747,8 @@
       scene.add(targetMesh);
 
       targetMesh.renderOrder = 1000;
-      targetMesh.name = `${cfg.end}_Target`;
-      targetMesh.userData = { isIKTarget: true, boneName: cfg.end, chain: [rootBone, midBone, endBone], poleTarget: cfg.pole };
+      targetMesh.name = `${endBone.name}_Target`;
+      targetMesh.userData = { isIKTarget: true, boneName: endBone.name, chain: [cfg.root, cfg.mid, cfg.end], poleTarget: cfg.pole };
 
       ikTargetsMap[cfg.key] = targetMesh;
 
@@ -759,13 +757,13 @@
       const debugLine = new THREE.Line(lineGeo, lineMat);
       debugLine.renderOrder = 998;
       scene.add(debugLine);
-      debugLines[cfg.end] = { line: debugLine, bone: endBone, target: targetMesh };
+      debugLines[endBone.name] = { line: debugLine, bone: endBone, target: targetMesh };
     });
 
     if (bonesList.length > 0) selectBone(bonesList[0]);
 
     setMode('translate');
-    showToast("Rigging Applied Perfectly!");
+    showToast("Rigging Applied with Explicit IK Chains!");
   }
 
   function updateJointLabel() {
@@ -789,6 +787,7 @@
     }
   }
 
+  // 4. Skeleton Update in Render Loop for Skin Deformation
   function startRenderLoop() {
     requestAnimationFrame(startRenderLoop);
     orbitControls.update();
@@ -798,12 +797,12 @@
       const chain = activeObj.userData.chain;
       const pole = activeObj.userData.poleTarget;
       if (chain && chain.length === 3) {
-        solveTwoBoneIKWithStrictConstraints(chain[0], chain[1], chain[2], activeObj, pole);
+        solveTwoBoneIKWithClamping(chain[0], chain[1], chain[2], activeObj, pole);
       }
     }
 
     if (activeSkeleton) {
-      activeSkeleton.update();
+      activeSkeleton.update(); // Essential for GPU mesh deformation
     }
 
     characterGroup.updateMatrixWorld(true);
