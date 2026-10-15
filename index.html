@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>Prisma 3D Auto-Rig Engine (Hybrid FK/IK & White Ring Polish)</title>
+  <title>Prisma 3D Auto-Rig Engine (Wrist IK Targets & Locked Elbows)</title>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; -webkit-tap-highlight-color: transparent; }
     html, body { width: 100vw; height: 100dvh; overflow: hidden; background: #1b1b20; color: #fff; font-family: system-ui, -apple-system, sans-serif; }
@@ -102,7 +102,7 @@
   let isRiggingMode = false;
   let selectedBone = null;
   let activeSkeleton = null;
-  let selectionRing = null; // 3. Visual Selection Indicator (White Ring)
+  let selectionRing = null;
   
   let draggedRigNode = null;
   let dragPlane = new THREE.Plane();
@@ -156,11 +156,10 @@
     orbitControls.enableDamping = true;
     orbitControls.target.set(0, 1.0, 0);
 
-    // 2. Large Mobile-Friendly Transform Gizmo
     transformControls = new THREE.TransformControls(camera, renderer.domElement);
     transformControls.size = 1.2;
     transformControls.setMode('translate');
-    transformControls.space = 'local'; // 5. Local Space Gizmo Alignment
+    transformControls.space = 'world';
 
     transformControls.addEventListener('dragging-changed', (e) => { 
       orbitControls.enabled = !e.value; 
@@ -203,7 +202,6 @@
         }
       }
 
-      // Update selection ring position to match active object
       if (selectionRing && ctrlObj) {
         ctrlObj.getWorldPosition(selectionRing.position);
       }
@@ -215,7 +213,6 @@
 
     scene.add(transformControls);
 
-    // 3. Create Selection Indicator Ring (White Ring Geometry)
     const ringGeo = new THREE.RingGeometry(0.05, 0.06, 32);
     ringGeo.rotateX(Math.PI / 2);
     const ringMat = new THREE.MeshBasicMaterial({ color: 0xffffff, side: THREE.DoubleSide, depthTest: false, transparent: true, opacity: 0.9 });
@@ -252,11 +249,10 @@
     domElem.addEventListener('pointermove', onPointerMove);
     domElem.addEventListener('pointerup', onPointerUp);
 
-    showToast("Engine Ready (Hybrid FK/IK Active)");
+    showToast("Engine Ready (Wrist Targets Movable)");
     startRenderLoop();
   }
 
-  // 1. CRITICAL FIX: IK Solver with Immediate Target Sync and Console Verification
   function solveTwoBoneIKWithSync(root, mid, end, targetObj, poleTarget) {
     characterGroup.updateMatrixWorld(true);
 
@@ -313,7 +309,6 @@
     mid.position.copy(mid.userData.restPosition);
     end.position.copy(end.userData.restPosition);
 
-    // Root/Hip locking
     if (bonesMap['hips']) {
       bonesMap['hips'].position.x = 0;
       bonesMap['hips'].position.z = 0;
@@ -417,7 +412,8 @@
 
     transformControls.detach();
     transformControls.attach(targetObj);
-    transformControls.space = 'world'; // IK targets use world space
+    transformControls.setMode('translate'); // 1. Wrist/Hand Target is Movable in Move mode
+    transformControls.space = 'world';
 
     if (selectionRing) {
       selectionRing.visible = true;
@@ -427,7 +423,7 @@
     showToast(`${targetObj.name} Selected`);
   }
 
-  // 2. Hybrid FK/IK Control System: Selecting intermediate joints (Elbows/Knees) switches to FK Rotation Mode
+  // 2. Lock Elbow/Knee Translation: Intermediate joints are restricted to Rotate (FK) mode only
   function selectBone(bone) {
     if (transformControls.dragging) return;
     selectedBone = bone;
@@ -439,13 +435,16 @@
 
     transformControls.detach();
     transformControls.attach(bone);
-    transformControls.space = 'local'; // 5. Local Space Alignment for Bone Rotation
+    transformControls.space = 'local';
 
-    if (bone.name.includes('elbow') || bone.name.includes('knee') || bone.name.includes('shoulder')) {
-      transformControls.setMode('rotate'); // Intermediate joints use FK Rotation Mode
+    const isIntermediateJoint = bone.name.includes('elbow') || bone.name.includes('knee');
+
+    if (isIntermediateJoint) {
+      // Force Rotate mode and disable translation for elbows/knees
+      transformControls.setMode('rotate');
       document.getElementById('btn-rotate').classList.add('active');
       document.getElementById('btn-move').classList.remove('active');
-      showToast(`${bone.name}: FK Rotation Mode`);
+      showToast(`${bone.name}: Rotation Only (Translation Locked)`);
     } else {
       transformControls.setMode('translate');
       document.getElementById('btn-move').classList.add('active');
@@ -583,7 +582,6 @@
     orbitControls.enabled = true;
   }
 
-  // 4. Improved Skinning & Deformation (Linear Blending Weights for Shoulder/Clavicle volume preservation)
   function applyAutoRigging() {
     if (!activeModel) { closeRigOverlay(); return; }
 
@@ -659,7 +657,6 @@
         const secondary = distList[1];
         const tertiary = distList[2];
 
-        // Smooth multi-bone weighting for shoulders/armpits to prevent volume loss
         const d1 = primary.dist;
         const d2 = secondary.dist;
         const d3 = tertiary ? tertiary.dist : d2;
@@ -769,7 +766,7 @@
     if (bonesList.length > 0) selectBone(bonesList[0]);
 
     setMode('translate');
-    showToast("Rigging & Deformation Applied Successfully!");
+    showToast("Rigging Applied Successfully!");
   }
 
   function updateJointLabel() {
@@ -793,7 +790,6 @@
     }
   }
 
-  // 1. CRITICAL: Solver update loop verification & Skeleton update in Render Loop
   function startRenderLoop() {
     requestAnimationFrame(startRenderLoop);
     orbitControls.update();
@@ -808,7 +804,7 @@
     }
 
     if (activeSkeleton) {
-      activeSkeleton.update(); // Crucial for updating vertex deformations on GPU
+      activeSkeleton.update();
     }
 
     if (selectionRing && transformControls.object) {
