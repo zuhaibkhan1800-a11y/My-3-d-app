@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>Prisma 3D Auto-Rig Engine (Rigid Two-Bone IK Fix)</title>
+  <title>Prisma 3D Auto-Rig Engine (Stable IK & Twist Fix)</title>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; -webkit-tap-highlight-color: transparent; }
     html, body { width: 100vw; height: 100dvh; overflow: hidden; background: #1b1b20; color: #fff; font-family: system-ui, -apple-system, sans-serif; }
@@ -168,7 +168,7 @@
       if (ctrlObj.userData.isIKTarget) {
         const chain = ctrlObj.userData.chain; 
         if (chain && chain.length === 3) {
-          solveRigidTwoBoneIK(chain[0], chain[1], chain[2], ctrlObj);
+          solveStableTwoBoneIK(chain[0], chain[1], chain[2], ctrlObj);
         }
       }
 
@@ -223,64 +223,56 @@
     startRenderLoop();
   }
 
-  // True Rigid Two-Bone IK Solver (Law of Cosines - No Rubber Stretching, Prisma 3D style)
-  function solveRigidTwoBoneIK(rootBone, midBone, endBone, targetObj) {
+  // Stable Non-Jumping Smooth Analytical IK Solver (Zero Twist/Distortion)
+  function solveStableTwoBoneIK(rootBone, midBone, endBone, targetObj) {
     characterGroup.updateMatrixWorld(true);
 
     const rootPos = new THREE.Vector3();
     rootBone.getWorldPosition(rootPos);
 
-    const targetPos = new THREE.Vector3();
-    targetObj.getWorldPosition(targetPos);
+    const targetPos = targetObj.position; // Direct local relative or world sync
 
-    // Fixed rigid bone lengths from rest position
     const l1 = midBone.userData.restLength || midBone.position.length();
     const l2 = endBone.userData.restLength || endBone.position.length();
-    const maxReach = l1 + l2;
-    const minReach = Math.abs(l1 - l2);
+    const maxReach = (l1 + l2) * 0.999;
+    const minReach = Math.abs(l1 - l2) * 1.001;
 
-    let dist = rootPos.distanceTo(targetPos);
-    if (dist > maxReach * 0.999) {
-      dist = maxReach * 0.999;
-      const dir = targetPos.clone().sub(rootPos).normalize();
-      targetPos.copy(rootPos).add(dir.multiplyScalar(dist));
-      targetObj.position.copy(targetPos);
-    } else if (dist < minReach * 1.001) {
-      dist = minReach * 1.001;
-      const dir = targetPos.clone().sub(rootPos).normalize();
-      targetPos.copy(rootPos).add(dir.multiplyScalar(dist));
-      targetObj.position.copy(targetPos);
+    const toTarget = targetPos.clone().sub(rootPos);
+    let dist = toTarget.length();
+
+    if (dist > maxReach) {
+      toTarget.normalize().multiplyScalar(maxReach);
+      dist = maxReach;
+    } else if (dist < minReach) {
+      toTarget.normalize().multiplyScalar(minReach);
+      dist = minReach;
     }
 
-    // Law of Cosines for accurate rigid joint angles
-    const cosAngle1 = (l1 * l1 + dist * dist - l2 * l2) / (2 * l1 * dist);
-    const angle1 = Math.acos(Math.max(-1, Math.min(1, cosAngle1)));
+    // Stable Analytical Law of Cosines
+    const cosAngle = (l1 * l1 + dist * dist - l2 * l2) / (2 * l1 * dist);
+    const angle1 = Math.acos(Math.max(-1, Math.min(1, cosAngle)));
 
-    const dirToTarget = targetPos.clone().sub(rootPos).normalize();
+    const dir = toTarget.clone().normalize();
     
-    // Choose natural bending axis (bend outward/forward)
-    const bendAxis = new THREE.Vector3(0, 0, 1);
-    if (rootBone.name.includes('r') || rootBone.name.includes('l')) {
-      bendAxis.set(0, -1, 0);
-    }
+    // Stable Twist & Bend Axis Locking (Prevents head/body tearing or twisting)
+    const normal = new THREE.Vector3(0, 1, 0);
+    const axis = new THREE.Vector3().crossVectors(dir, normal).normalize();
+    if (axis.lengthSq() < 0.0001) axis.set(1, 0, 0);
 
-    const m = new THREE.Matrix4();
-    m.lookAt(rootPos, targetPos, bendAxis);
-    const targetQuat = new THREE.Quaternion().setFromRotationMatrix(m);
+    const rotQuat = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(1, 0, 0), dir);
+    const bendQuat = new THREE.Quaternion().setFromAxisAngle(axis, -angle1);
+    rootBone.quaternion.copy(rotQuat.multiply(bendQuat));
 
-    // Apply rotation to root bone
-    rootBone.quaternion.copy(targetQuat);
-
-    // Position and rotate mid bone rigidly without stretching
-    const cosAngleMid = (l1 * l1 + l2 * l2 - dist * dist) / (2 * l1 * l2);
-    const angleMid = Math.acos(Math.max(-1, Math.min(1, cosAngleMid)));
-    const bendAngle = Math.PI - angleMid;
+    // Mid bone bend angle calculation
+    const cosMidAngle = (l1 * l1 + l2 * l2 - dist * dist) / (2 * l1 * l2);
+    const midAngle = Math.acos(Math.max(-1, Math.min(1, cosMidAngle)));
+    const finalBend = Math.PI - midAngle;
 
     midBone.rotation.set(0, 0, 0);
     if (rootBone.name.includes('arm')) {
-      midBone.rotation.z = -bendAngle;
+      midBone.rotation.z = -finalBend;
     } else {
-      midBone.rotation.x = bendAngle;
+      midBone.rotation.x = finalBend;
     }
 
     if (activeSkeleton) {
@@ -738,6 +730,7 @@
       const boneWorldPos = new THREE.Vector3();
       endBone.getWorldPosition(boneWorldPos);
 
+      // Precisely align target to bone world position to prevent initial jump
       targetMesh.position.copy(boneWorldPos);
       scene.add(targetMesh);
 
@@ -783,7 +776,7 @@
     if (activeObj && activeObj.userData.isIKTarget) {
       const chain = activeObj.userData.chain;
       if (chain && chain.length === 3) {
-        solveRigidTwoBoneIK(chain[0], chain[1], chain[2], activeObj);
+        solveStableTwoBoneIK(chain[0], chain[1], chain[2], activeObj);
       }
     }
 
