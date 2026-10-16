@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>Prisma 3D Auto-Rig Engine (Attached IK Mesh Fix)</title>
+  <title>Prisma 3D Auto-Rig Engine (Visible Joints & Locked Bending)</title>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; -webkit-tap-highlight-color: transparent; }
     html, body { width: 100vw; height: 100dvh; overflow: hidden; background: #1b1b20; color: #fff; font-family: system-ui, -apple-system, sans-serif; }
@@ -96,6 +96,7 @@
 
   let bonesMap = {};
   let ikTargetsMap = {}; 
+  let boneHelpers = []; // Blue dots array for visual reference
   let rigNodes3D = []; 
   let isRiggingMode = false;
   let activeSkeleton = null;
@@ -341,7 +342,7 @@
     const raycaster = new THREE.Raycaster();
     raycaster.setFromCamera(mouse, camera);
 
-    // Only Brown/Red IK targets are clickable. Blue joint dots are fully disabled.
+    // ONLY IK targets (Brown/Red Movement dots) are clickable. Blue joint dots are visible for reference but COMPLETELY BLOCKED from interaction.
     const interactables = Object.values(ikTargetsMap);
     const intersects = raycaster.intersectObjects(interactables, false);
 
@@ -457,6 +458,7 @@
 
   function clearRig() {
     transformControls.detach();
+    boneHelpers.forEach(h => scene.remove(h));
     Object.values(ikTargetsMap).forEach(t => scene.remove(t));
     rigNodes3D.forEach(n => scene.remove(n));
 
@@ -464,6 +466,7 @@
 
     bonesMap = {};
     ikTargetsMap = {};
+    boneHelpers = [];
     rigNodes3D = [];
     activeSkeleton = null;
   }
@@ -680,6 +683,19 @@
       }
     });
 
+    // Create Blue Joint Dots for visual reference ONLY (not interactive / non-bendable)
+    defaultJoints.forEach(j => {
+      const bone = bonesMap[j.id];
+      if (!bone) return;
+      const sphereGeo = new THREE.SphereGeometry(0.035, 16, 16);
+      const sphereMat = new THREE.MeshBasicMaterial({ color: 0x007aff, depthTest: false, depthWrite: false });
+      const handle = new THREE.Mesh(sphereGeo, sphereMat);
+      handle.renderOrder = 999;
+      // We do NOT add these handles to any raycast interactable list, so they cannot be clicked/selected.
+      bone.add(handle);
+      boneHelpers.push(handle);
+    });
+
     const leftArmChain = [bonesMap['shoulder_l'], bonesMap['elbow_l'], bonesMap['wrist_l']];
     const rightArmChain = [bonesMap['shoulder_r'], bonesMap['elbow_r'], bonesMap['wrist_r']];
     const rightLegChain = [bonesMap['hips'], bonesMap['knee_r'], bonesMap['ankle_r']];
@@ -719,7 +735,7 @@
     }
 
     setMode('translate');
-    showToast("Rig Applied: Attached Mesh Ready!");
+    showToast("Rig Applied: Blue Dots Visible but Bending Blocked!");
   }
 
   function updateJointLabel() {
