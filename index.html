@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>Prisma 3D Auto-Rig Engine (Final Perfect Fix)</title>
+  <title>Prisma 3D Auto-Rig Engine (Unified Body Balance Fix)</title>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; -webkit-tap-highlight-color: transparent; }
     html, body { width: 100vw; height: 100dvh; overflow: hidden; background: #1b1b20; color: #fff; font-family: system-ui, -apple-system, sans-serif; }
@@ -632,6 +632,8 @@
     const neckIdx = boneIndexMap['neck'];
     const spineIdx = boneIndexMap['spine'];
     const hipsIdx = boneIndexMap['hips'];
+    const shoulderLIdx = boneIndexMap['shoulder_l'];
+    const shoulderRIdx = boneIndexMap['shoulder_r'];
 
     meshesToSkin.forEach(oldMesh => {
       oldMesh.updateMatrixWorld(true);
@@ -648,7 +650,7 @@
         vWorld.set(posAttr.getX(i), posAttr.getY(i), posAttr.getZ(i));
         vWorld.applyMatrix4(oldMesh.matrixWorld);
 
-        // 1. Strict Head & Face Lock (Prevents mouth/face stretching)
+        // 1. Strict Head & Face Lock
         if (vWorld.y > (fullBonePositions['neck'].y + 0.02)) {
           skinIndices[i * 4] = headIdx;
           skinIndices[i * 4 + 1] = headIdx;
@@ -662,21 +664,24 @@
           continue;
         }
 
-        // 2. Strict Torso & Stomach Volume Protection (Prevents waist/stomach pinching)
-        if (vWorld.y >= fullBonePositions['hips'].y && vWorld.y <= fullBonePositions['spine'].y + 0.08) {
+        // 2. Uniform Torso, Chest, and Shoulder Volume Blend (Prevents all pinching and hollow armpits)
+        if (vWorld.y >= fullBonePositions['hips'].y && vWorld.y <= fullBonePositions['shoulder_l'].y + 0.05) {
+          const isLeft = vWorld.x > 0;
+          const sIdx = isLeft ? shoulderLIdx : shoulderRIdx;
+          
           skinIndices[i * 4] = spineIdx;
-          skinIndices[i * 4 + 1] = hipsIdx;
-          skinIndices[i * 4 + 2] = spineIdx;
-          skinIndices[i * 4 + 3] = hipsIdx;
+          skinIndices[i * 4 + 1] = sIdx;
+          skinIndices[i * 4 + 2] = hipsIdx;
+          skinIndices[i * 4 + 3] = neckIdx;
 
-          skinWeights[i * 4] = 0.55;
-          skinWeights[i * 4 + 1] = 0.45;
-          skinWeights[i * 4 + 2] = 0.0;
-          skinWeights[i * 4 + 3] = 0.0;
+          skinWeights[i * 4] = 0.45;
+          skinWeights[i * 4 + 1] = 0.25;
+          skinWeights[i * 4 + 2] = 0.20;
+          skinWeights[i * 4 + 3] = 0.10;
           continue;
         }
 
-        // 3. Smooth Distance-Based Weighting for Limbs and Body
+        // 3. Smooth Distance-Based Weighting for Limbs
         let distList = [];
         Object.keys(fullBonePositions).forEach(k => {
           const d = vWorld.distanceTo(fullBonePositions[k]);
