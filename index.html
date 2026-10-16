@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>Prisma 3D Auto-Rig Engine (Perfect Torso Shape Fix)</title>
+  <title>Prisma 3D Auto-Rig Engine (Natural Shoulder & Torso Fix)</title>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; -webkit-tap-highlight-color: transparent; }
     html, body { width: 100vw; height: 100dvh; overflow: hidden; background: #1b1b20; color: #fff; font-family: system-ui, -apple-system, sans-serif; }
@@ -664,23 +664,23 @@
           continue;
         }
 
-        // Strict Shoulder Protection
-        if (vWorld.y >= (fullBonePositions['shoulder_l'].y - 0.08) && vWorld.y <= (fullBonePositions['neck'].y + 0.02) && Math.abs(vWorld.x) > 0.12) {
+        // Natural Smooth Shoulder Blending (Prevents boxy/stiff square shoulders)
+        if (vWorld.y >= (fullBonePositions['shoulder_l'].y - 0.06) && vWorld.y <= (fullBonePositions['neck'].y + 0.02) && Math.abs(vWorld.x) > 0.10) {
           const isLeft = vWorld.x > 0;
           const sIdx = isLeft ? shoulderLIdx : shoulderRIdx;
           skinIndices[i * 4] = sIdx;
-          skinIndices[i * 4 + 1] = neckIdx;
-          skinIndices[i * 4 + 2] = sIdx;
+          skinIndices[i * 4 + 1] = spineIdx;
+          skinIndices[i * 4 + 2] = neckIdx;
           skinIndices[i * 4 + 3] = sIdx;
 
-          skinWeights[i * 4] = 0.9;
-          skinWeights[i * 4 + 1] = 0.1;
-          skinWeights[i * 4 + 2] = 0.0;
+          skinWeights[i * 4] = 0.65;
+          skinWeights[i * 4 + 1] = 0.25;
+          skinWeights[i * 4 + 2] = 0.10;
           skinWeights[i * 4 + 3] = 0.0;
           continue;
         }
 
-        // Locked Torso & Stomach Volume (Prevents waist/stomach narrowing/pinching)
+        // Balanced Torso & Stomach Volume
         if (vWorld.y >= fullBonePositions['hips'].y && vWorld.y < fullBonePositions['spine'].y + 0.12) {
           skinIndices[i * 4] = spineIdx;
           skinIndices[i * 4 + 1] = hipsIdx;
