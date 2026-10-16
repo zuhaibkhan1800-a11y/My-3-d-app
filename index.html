@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>Prisma 3D Auto-Rig Engine (Shoulder Snap & Stretch Fixed)</title>
+  <title>Prisma 3D Auto-Rig Engine (Final Perfect Fix)</title>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; -webkit-tap-highlight-color: transparent; }
     html, body { width: 100vw; height: 100dvh; overflow: hidden; background: #1b1b20; color: #fff; font-family: system-ui, -apple-system, sans-serif; }
@@ -648,8 +648,8 @@
         vWorld.set(posAttr.getX(i), posAttr.getY(i), posAttr.getZ(i));
         vWorld.applyMatrix4(oldMesh.matrixWorld);
 
-        // Smooth Head Protection
-        if (vWorld.y > (fullBonePositions['neck'].y + 0.08)) {
+        // 1. Strict Head & Face Lock (Prevents mouth/face stretching)
+        if (vWorld.y > (fullBonePositions['neck'].y + 0.02)) {
           skinIndices[i * 4] = headIdx;
           skinIndices[i * 4 + 1] = headIdx;
           skinIndices[i * 4 + 2] = headIdx;
@@ -662,7 +662,21 @@
           continue;
         }
 
-        // Pure Distance-Based Smooth Weighting for All Bones (No hard square boxes or snaps)
+        // 2. Strict Torso & Stomach Volume Protection (Prevents waist/stomach pinching)
+        if (vWorld.y >= fullBonePositions['hips'].y && vWorld.y <= fullBonePositions['spine'].y + 0.08) {
+          skinIndices[i * 4] = spineIdx;
+          skinIndices[i * 4 + 1] = hipsIdx;
+          skinIndices[i * 4 + 2] = spineIdx;
+          skinIndices[i * 4 + 3] = hipsIdx;
+
+          skinWeights[i * 4] = 0.55;
+          skinWeights[i * 4 + 1] = 0.45;
+          skinWeights[i * 4 + 2] = 0.0;
+          skinWeights[i * 4 + 3] = 0.0;
+          continue;
+        }
+
+        // 3. Smooth Distance-Based Weighting for Limbs and Body
         let distList = [];
         Object.keys(fullBonePositions).forEach(k => {
           const d = vWorld.distanceTo(fullBonePositions[k]);
@@ -676,15 +690,10 @@
         const tertiary = distList[2];
         const quaternary = distList[3];
 
-        const d1 = primary.dist;
-        const d2 = secondary.dist;
-        const d3 = tertiary.dist;
-        const d4 = quaternary.dist;
-
-        const w1 = 1.0 / (d1 + 0.0001);
-        const w2 = 1.0 / (d2 + 0.0001);
-        const w3 = 1.0 / (d3 + 0.0001);
-        const w4 = 1.0 / (d4 + 0.0001);
+        const w1 = 1.0 / (primary.dist + 0.0001);
+        const w2 = 1.0 / (secondary.dist + 0.0001);
+        const w3 = 1.0 / (tertiary.dist + 0.0001);
+        const w4 = 1.0 / (quaternary.dist + 0.0001);
         const sum = w1 + w2 + w3 + w4;
 
         skinIndices[i * 4] = primary.idx;
