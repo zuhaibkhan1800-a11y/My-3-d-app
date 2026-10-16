@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>Prisma 3D Auto-Rig Engine (Target & Face Distortion Fixed)</title>
+  <title>Prisma 3D Auto-Rig Engine (Final Rigid Head & IK Fix)</title>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; -webkit-tap-highlight-color: transparent; }
     html, body { width: 100vw; height: 100dvh; overflow: hidden; background: #1b1b20; color: #fff; font-family: system-ui, -apple-system, sans-serif; }
@@ -168,7 +168,7 @@
       if (ctrlObj.userData.isIKTarget) {
         const chain = ctrlObj.userData.chain; 
         if (chain && chain.length === 3) {
-          solveStableTwoBoneIK(chain[0], chain[1], chain[2], ctrlObj);
+          solvePerfectTwoBoneIK(chain[0], chain[1], chain[2], ctrlObj);
         }
       }
 
@@ -223,8 +223,8 @@
     startRenderLoop();
   }
 
-  // Stable Non-Jumping Smooth Analytical IK Solver with Group Sync
-  function solveStableTwoBoneIK(rootBone, midBone, endBone, targetObj) {
+  // Perfect Analytical IK Solver with zero snapping and strict length clamping
+  function solvePerfectTwoBoneIK(rootBone, midBone, endBone, targetObj) {
     characterGroup.updateMatrixWorld(true);
 
     const rootPos = new THREE.Vector3();
@@ -244,9 +244,15 @@
     if (dist > maxReach) {
       toTarget.normalize().multiplyScalar(maxReach);
       dist = maxReach;
+      targetPos.copy(rootPos).add(toTarget);
+      targetObj.position.copy(targetPos);
+      targetObj.parent.worldToLocal(targetObj.position);
     } else if (dist < minReach) {
       toTarget.normalize().multiplyScalar(minReach);
       dist = minReach;
+      targetPos.copy(rootPos).add(toTarget);
+      targetObj.position.copy(targetPos);
+      targetObj.parent.worldToLocal(targetObj.position);
     }
 
     const cosAngle = (l1 * l1 + dist * dist - l2 * l2) / (2 * l1 * dist);
@@ -481,7 +487,7 @@
   function clearRig() {
     transformControls.detach();
     boneHelpers.forEach(h => scene.remove(h));
-    Object.values(ikTargetsMap).forEach(t => characterGroup.remove(t));
+    Object.values(ikTargetsMap).forEach(t => scene.remove(t));
     rigNodes3D.forEach(n => scene.remove(n));
 
     if (selectionRing) selectionRing.visible = false;
@@ -643,15 +649,15 @@
         vWorld.set(posAttr.getX(i), posAttr.getY(i), posAttr.getZ(i));
         vWorld.applyMatrix4(oldMesh.matrixWorld);
 
-        // Strict Head/Face Protection to prevent distortion
-        if (vWorld.y > (fullBonePositions['neck'].y + 0.05)) {
+        // Strict Head/Face Rigid Binding to eliminate all face distortions
+        if (vWorld.y > (fullBonePositions['neck'].y + 0.02)) {
           skinIndices[i * 4] = headIdx;
-          skinIndices[i * 4 + 1] = neckIdx;
+          skinIndices[i * 4 + 1] = headIdx;
           skinIndices[i * 4 + 2] = headIdx;
           skinIndices[i * 4 + 3] = headIdx;
 
-          skinWeights[i * 4] = 0.8;
-          skinWeights[i * 4 + 1] = 0.2;
+          skinWeights[i * 4] = 1.0;
+          skinWeights[i * 4 + 1] = 0.0;
           skinWeights[i * 4 + 2] = 0.0;
           skinWeights[i * 4 + 3] = 0.0;
           continue;
@@ -744,12 +750,9 @@
       const boneWorldPos = new THREE.Vector3();
       endBone.getWorldPosition(boneWorldPos);
 
-      // Convert world position to characterGroup local position to keep target locked perfectly
-      characterGroup.worldToLocal(boneWorldPos);
+      // Add target directly to scene root in exact world coordinates to prevent detachment/drifting
       targetMesh.position.copy(boneWorldPos);
-      
-      // Parent targetMesh directly to characterGroup so it moves securely with the model
-      characterGroup.add(targetMesh);
+      scene.add(targetMesh);
 
       targetMesh.renderOrder = 1000;
       targetMesh.name = `${endBone.name}_Target`;
@@ -793,7 +796,7 @@
     if (activeObj && activeObj.userData.isIKTarget) {
       const chain = activeObj.userData.chain;
       if (chain && chain.length === 3) {
-        solveStableTwoBoneIK(chain[0], chain[1], chain[2], activeObj);
+        solvePerfectTwoBoneIK(chain[0], chain[1], chain[2], activeObj);
       }
     }
 
