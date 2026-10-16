@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>Prisma 3D Auto-Rig Engine (Shoulder Pinching Fixed)</title>
+  <title>Prisma 3D Auto-Rig Engine (Torso & Stomach Volume Fix)</title>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; -webkit-tap-highlight-color: transparent; }
     html, body { width: 100vw; height: 100dvh; overflow: hidden; background: #1b1b20; color: #fff; font-family: system-ui, -apple-system, sans-serif; }
@@ -630,6 +630,8 @@
 
     const headIdx = boneIndexMap['head'];
     const neckIdx = boneIndexMap['neck'];
+    const spineIdx = boneIndexMap['spine'];
+    const hipsIdx = boneIndexMap['hips'];
     const shoulderLIdx = boneIndexMap['shoulder_l'];
     const shoulderRIdx = boneIndexMap['shoulder_r'];
 
@@ -662,7 +664,7 @@
           continue;
         }
 
-        // Strict Shoulder Protection (Lock shoulder area vertices to prevent pinching)
+        // Strict Shoulder Protection
         if (vWorld.y >= (fullBonePositions['shoulder_l'].y - 0.08) && vWorld.y <= (fullBonePositions['neck'].y + 0.02) && Math.abs(vWorld.x) > 0.12) {
           const isLeft = vWorld.x > 0;
           const sIdx = isLeft ? shoulderLIdx : shoulderRIdx;
@@ -673,6 +675,20 @@
 
           skinWeights[i * 4] = 0.9;
           skinWeights[i * 4 + 1] = 0.1;
+          skinWeights[i * 4 + 2] = 0.0;
+          skinWeights[i * 4 + 3] = 0.0;
+          continue;
+        }
+
+        // Torso & Stomach Volume Protection (Prevents pet/stomach pinching)
+        if (vWorld.y >= fullBonePositions['hips'].y && vWorld.y < fullBonePositions['spine'].y + 0.1) {
+          skinIndices[i * 4] = spineIdx;
+          skinIndices[i * 4 + 1] = hipsIdx;
+          skinIndices[i * 4 + 2] = spineIdx;
+          skinIndices[i * 4 + 3] = spineIdx;
+
+          skinWeights[i * 4] = 0.6;
+          skinWeights[i * 4 + 1] = 0.4;
           skinWeights[i * 4 + 2] = 0.0;
           skinWeights[i * 4 + 3] = 0.0;
           continue;
