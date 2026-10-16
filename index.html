@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>Prisma 3D Auto-Rig Engine (Final Rigid Head & IK Fix)</title>
+  <title>Prisma 3D Auto-Rig Engine (Shoulder & Torso Volume Fix)</title>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; -webkit-tap-highlight-color: transparent; }
     html, body { width: 100vw; height: 100dvh; overflow: hidden; background: #1b1b20; color: #fff; font-family: system-ui, -apple-system, sans-serif; }
@@ -223,7 +223,6 @@
     startRenderLoop();
   }
 
-  // Perfect Analytical IK Solver with zero snapping and strict length clamping
   function solvePerfectTwoBoneIK(rootBone, midBone, endBone, targetObj) {
     characterGroup.updateMatrixWorld(true);
 
@@ -246,13 +245,11 @@
       dist = maxReach;
       targetPos.copy(rootPos).add(toTarget);
       targetObj.position.copy(targetPos);
-      targetObj.parent.worldToLocal(targetObj.position);
     } else if (dist < minReach) {
       toTarget.normalize().multiplyScalar(minReach);
       dist = minReach;
       targetPos.copy(rootPos).add(toTarget);
       targetObj.position.copy(targetPos);
-      targetObj.parent.worldToLocal(targetObj.position);
     }
 
     const cosAngle = (l1 * l1 + dist * dist - l2 * l2) / (2 * l1 * dist);
@@ -633,6 +630,9 @@
 
     const headIdx = boneIndexMap['head'];
     const neckIdx = boneIndexMap['neck'];
+    const spineIdx = boneIndexMap['spine'];
+    const shoulderLIdx = boneIndexMap['shoulder_l'];
+    const shoulderRIdx = boneIndexMap['shoulder_r'];
 
     meshesToSkin.forEach(oldMesh => {
       oldMesh.updateMatrixWorld(true);
@@ -649,7 +649,7 @@
         vWorld.set(posAttr.getX(i), posAttr.getY(i), posAttr.getZ(i));
         vWorld.applyMatrix4(oldMesh.matrixWorld);
 
-        // Strict Head/Face Rigid Binding to eliminate all face distortions
+        // Strict Head Protection
         if (vWorld.y > (fullBonePositions['neck'].y + 0.02)) {
           skinIndices[i * 4] = headIdx;
           skinIndices[i * 4 + 1] = headIdx;
@@ -663,6 +663,7 @@
           continue;
         }
 
+        // Improved Smooth Falloff Distance Weights for Shoulders & Torso Protection
         let distList = [];
         Object.keys(fullBonePositions).forEach(k => {
           const d = vWorld.distanceTo(fullBonePositions[k]);
@@ -675,13 +676,10 @@
         const secondary = distList[1];
         const tertiary = distList[2];
 
-        const d1 = primary.dist;
-        const d2 = secondary.dist;
-        const d3 = tertiary ? tertiary.dist : d2;
-
-        const w1 = 1.0 / (d1 + 0.0001);
-        const w2 = 1.0 / (d2 + 0.0001);
-        const w3 = 1.0 / (d3 + 0.0001);
+        // Smooth Exponential Falloff to prevent pinching on shoulders
+        const w1 = Math.pow(1.0 / (primary.dist + 0.05), 2);
+        const w2 = Math.pow(1.0 / (secondary.dist + 0.05), 2);
+        const w3 = tertiary ? Math.pow(1.0 / (tertiary.dist + 0.05), 2) : 0;
         const sum = w1 + w2 + w3;
 
         skinIndices[i * 4] = primary.idx;
@@ -750,7 +748,6 @@
       const boneWorldPos = new THREE.Vector3();
       endBone.getWorldPosition(boneWorldPos);
 
-      // Add target directly to scene root in exact world coordinates to prevent detachment/drifting
       targetMesh.position.copy(boneWorldPos);
       scene.add(targetMesh);
 
