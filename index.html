@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>Prisma 3D Auto-Rig Engine (Shoulder & Torso Volume Fix)</title>
+  <title>Prisma 3D Auto-Rig Engine (Shoulder Pinching Fixed)</title>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; -webkit-tap-highlight-color: transparent; }
     html, body { width: 100vw; height: 100dvh; overflow: hidden; background: #1b1b20; color: #fff; font-family: system-ui, -apple-system, sans-serif; }
@@ -630,7 +630,6 @@
 
     const headIdx = boneIndexMap['head'];
     const neckIdx = boneIndexMap['neck'];
-    const spineIdx = boneIndexMap['spine'];
     const shoulderLIdx = boneIndexMap['shoulder_l'];
     const shoulderRIdx = boneIndexMap['shoulder_r'];
 
@@ -663,7 +662,22 @@
           continue;
         }
 
-        // Improved Smooth Falloff Distance Weights for Shoulders & Torso Protection
+        // Strict Shoulder Protection (Lock shoulder area vertices to prevent pinching)
+        if (vWorld.y >= (fullBonePositions['shoulder_l'].y - 0.08) && vWorld.y <= (fullBonePositions['neck'].y + 0.02) && Math.abs(vWorld.x) > 0.12) {
+          const isLeft = vWorld.x > 0;
+          const sIdx = isLeft ? shoulderLIdx : shoulderRIdx;
+          skinIndices[i * 4] = sIdx;
+          skinIndices[i * 4 + 1] = neckIdx;
+          skinIndices[i * 4 + 2] = sIdx;
+          skinIndices[i * 4 + 3] = sIdx;
+
+          skinWeights[i * 4] = 0.9;
+          skinWeights[i * 4 + 1] = 0.1;
+          skinWeights[i * 4 + 2] = 0.0;
+          skinWeights[i * 4 + 3] = 0.0;
+          continue;
+        }
+
         let distList = [];
         Object.keys(fullBonePositions).forEach(k => {
           const d = vWorld.distanceTo(fullBonePositions[k]);
@@ -676,10 +690,13 @@
         const secondary = distList[1];
         const tertiary = distList[2];
 
-        // Smooth Exponential Falloff to prevent pinching on shoulders
-        const w1 = Math.pow(1.0 / (primary.dist + 0.05), 2);
-        const w2 = Math.pow(1.0 / (secondary.dist + 0.05), 2);
-        const w3 = tertiary ? Math.pow(1.0 / (tertiary.dist + 0.05), 2) : 0;
+        const d1 = primary.dist;
+        const d2 = secondary.dist;
+        const d3 = tertiary ? tertiary.dist : d2;
+
+        const w1 = 1.0 / (d1 + 0.0001);
+        const w2 = 1.0 / (d2 + 0.0001);
+        const w3 = 1.0 / (d3 + 0.0001);
         const sum = w1 + w2 + w3;
 
         skinIndices[i * 4] = primary.idx;
