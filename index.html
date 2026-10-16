@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>Prisma 3D Auto-Rig Engine (Stable IK & Twist Fix)</title>
+  <title>Prisma 3D Auto-Rig Engine (Target & Face Distortion Fixed)</title>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; -webkit-tap-highlight-color: transparent; }
     html, body { width: 100vw; height: 100dvh; overflow: hidden; background: #1b1b20; color: #fff; font-family: system-ui, -apple-system, sans-serif; }
@@ -223,14 +223,15 @@
     startRenderLoop();
   }
 
-  // Stable Non-Jumping Smooth Analytical IK Solver (Zero Twist/Distortion)
+  // Stable Non-Jumping Smooth Analytical IK Solver with Group Sync
   function solveStableTwoBoneIK(rootBone, midBone, endBone, targetObj) {
     characterGroup.updateMatrixWorld(true);
 
     const rootPos = new THREE.Vector3();
     rootBone.getWorldPosition(rootPos);
 
-    const targetPos = targetObj.position; // Direct local relative or world sync
+    const targetPos = new THREE.Vector3();
+    targetObj.getWorldPosition(targetPos);
 
     const l1 = midBone.userData.restLength || midBone.position.length();
     const l2 = endBone.userData.restLength || endBone.position.length();
@@ -248,13 +249,10 @@
       dist = minReach;
     }
 
-    // Stable Analytical Law of Cosines
     const cosAngle = (l1 * l1 + dist * dist - l2 * l2) / (2 * l1 * dist);
     const angle1 = Math.acos(Math.max(-1, Math.min(1, cosAngle)));
 
     const dir = toTarget.clone().normalize();
-    
-    // Stable Twist & Bend Axis Locking (Prevents head/body tearing or twisting)
     const normal = new THREE.Vector3(0, 1, 0);
     const axis = new THREE.Vector3().crossVectors(dir, normal).normalize();
     if (axis.lengthSq() < 0.0001) axis.set(1, 0, 0);
@@ -263,7 +261,6 @@
     const bendQuat = new THREE.Quaternion().setFromAxisAngle(axis, -angle1);
     rootBone.quaternion.copy(rotQuat.multiply(bendQuat));
 
-    // Mid bone bend angle calculation
     const cosMidAngle = (l1 * l1 + l2 * l2 - dist * dist) / (2 * l1 * l2);
     const midAngle = Math.acos(Math.max(-1, Math.min(1, cosMidAngle)));
     const finalBend = Math.PI - midAngle;
@@ -484,7 +481,7 @@
   function clearRig() {
     transformControls.detach();
     boneHelpers.forEach(h => scene.remove(h));
-    Object.values(ikTargetsMap).forEach(t => scene.remove(t));
+    Object.values(ikTargetsMap).forEach(t => characterGroup.remove(t));
     rigNodes3D.forEach(n => scene.remove(n));
 
     if (selectionRing) selectionRing.visible = false;
@@ -628,6 +625,9 @@
       }
     });
 
+    const headIdx = boneIndexMap['head'];
+    const neckIdx = boneIndexMap['neck'];
+
     meshesToSkin.forEach(oldMesh => {
       oldMesh.updateMatrixWorld(true);
 
@@ -642,6 +642,20 @@
       for (let i = 0; i < vertexCount; i++) {
         vWorld.set(posAttr.getX(i), posAttr.getY(i), posAttr.getZ(i));
         vWorld.applyMatrix4(oldMesh.matrixWorld);
+
+        // Strict Head/Face Protection to prevent distortion
+        if (vWorld.y > (fullBonePositions['neck'].y + 0.05)) {
+          skinIndices[i * 4] = headIdx;
+          skinIndices[i * 4 + 1] = neckIdx;
+          skinIndices[i * 4 + 2] = headIdx;
+          skinIndices[i * 4 + 3] = headIdx;
+
+          skinWeights[i * 4] = 0.8;
+          skinWeights[i * 4 + 1] = 0.2;
+          skinWeights[i * 4 + 2] = 0.0;
+          skinWeights[i * 4 + 3] = 0.0;
+          continue;
+        }
 
         let distList = [];
         Object.keys(fullBonePositions).forEach(k => {
@@ -730,9 +744,12 @@
       const boneWorldPos = new THREE.Vector3();
       endBone.getWorldPosition(boneWorldPos);
 
-      // Precisely align target to bone world position to prevent initial jump
+      // Convert world position to characterGroup local position to keep target locked perfectly
+      characterGroup.worldToLocal(boneWorldPos);
       targetMesh.position.copy(boneWorldPos);
-      scene.add(targetMesh);
+      
+      // Parent targetMesh directly to characterGroup so it moves securely with the model
+      characterGroup.add(targetMesh);
 
       targetMesh.renderOrder = 1000;
       targetMesh.name = `${endBone.name}_Target`;
