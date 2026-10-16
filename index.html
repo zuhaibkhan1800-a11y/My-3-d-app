@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>Prisma 3D Auto-Rig Engine (Visible Joints & Locked Bending)</title>
+  <title>Prisma 3D - Pre-Rigged GLB Engine</title>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; -webkit-tap-highlight-color: transparent; }
     html, body { width: 100vw; height: 100dvh; overflow: hidden; background: #1b1b20; color: #fff; font-family: system-ui, -apple-system, sans-serif; }
@@ -16,22 +16,8 @@
     #viewport { flex: 1; position: relative; background: #2d2d35; overflow: hidden; }
     #canvas3d { width: 100%; height: 100%; display: block; touch-action: none; }
 
-    #joint-label { position: absolute; background: rgba(0, 122, 255, 0.85); color: #fff; padding: 2px 8px; border-radius: 4px; font-size: 10px; font-weight: bold; pointer-events: none; display: none; z-index: 1000; transform: translate(-50%, -150%); }
-
-    #rig-tools-bar { position: absolute; bottom: 18px; left: 50%; transform: translateX(-50%); display: flex; gap: 10px; background: rgba(34, 34, 40, 0.95); padding: 8px 16px; border-radius: 30px; border: 1px solid #444450; backdrop-filter: blur(8px); z-index: 102; pointer-events: auto; display: none; }
-    .rig-btn { background: #32323c; border: none; color: #fff; padding: 8px 18px; border-radius: 20px; font-size: 11px; font-weight: bold; cursor: pointer; }
-    .rig-btn.apply { background: #30d158; color: #000; }
-
-    #timeline-panel { height: 85px; background: #1c1c22; border-top: 1px solid #33333d; display: flex; flex-direction: column; flex-shrink: 0; z-index: 10; }
-    #tl-header { height: 24px; background: #25252d; display: flex; align-items: center; justify-content: space-between; padding: 0 12px; font-size: 10px; color: #aaa; }
-    .tl-btn.play { background: #007aff; border: none; color: #fff; font-size: 10px; padding: 2px 8px; border-radius: 3px; cursor: pointer; }
-    .tl-btn.keyframe { background: #ffcc00; border: none; color: #000; font-size: 10px; padding: 2px 8px; border-radius: 3px; font-weight: bold; cursor: pointer; }
-
-    #tl-canvas-wrap { flex: 1; position: relative; background: #121216; overflow: hidden; }
-    #tl-canvas { width: 100%; height: 100%; display: block; }
-
-    #bottom-bar { height: 54px; background: #222228; border-top: 1px solid #33333d; display: flex; align-items: center; justify-content: space-between; padding: 0 4px; z-index: 20; }
-    .dock-btn { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; color: #aaa; font-size: 10px; cursor: pointer; background: none; border: none; width: 20%; height: 100%; }
+    #bottom-bar { height: 54px; background: #222228; border-top: 1px solid #33333d; display: flex; align-items: center; justify-content: space-between; padding: 0 10px; z-index: 20; }
+    .dock-btn { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; color: #aaa; font-size: 10px; cursor: pointer; background: none; border: none; width: 25%; height: 100%; }
     .dock-btn.active, .dock-btn:active { color: #007aff; }
     .dock-btn span { font-size: 18px; }
 
@@ -40,7 +26,6 @@
   </style>
 
   <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/OBJLoader.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/TransformControls.js"></script>
@@ -50,77 +35,30 @@
 <div id="app">
   <div id="top-bar">
     <button class="icon-btn" onclick="resetCamera()">🏠 Center</button>
-    <div class="brand-title">PRISMA 3D AUTO-RIG ENGINE</div>
-    <button class="icon-btn" onclick="triggerImport()">📂 Import</button>
+    <div class="brand-title">PRISMA 3D (RIGGED GLB ENGINE)</div>
+    <button class="icon-btn" onclick="triggerImport()">📂 Import GLB</button>
   </div>
 
   <div id="viewport">
     <canvas id="canvas3d"></canvas>
-    <div id="joint-label">label</div>
-
-    <div id="rig-tools-bar">
-      <button class="rig-btn" onclick="closeRigOverlay()">Cancel</button>
-      <button class="rig-btn apply" onclick="applyAutoRigging()">✓ Apply Rig</button>
-    </div>
-
     <div id="toast">Ready</div>
   </div>
 
-  <div id="timeline-panel">
-    <div id="tl-header">
-      <button class="tl-btn play" onclick="togglePlay()">▶ Play</button>
-      <span id="time-display">00:00.00 / 05:00</span>
-      <button class="tl-btn keyframe" onclick="addKeyframe()">🔑 Keyframe</button>
-    </div>
-    <div id="tl-canvas-wrap" onclick="seekTimeline(event)">
-      <canvas id="tl-canvas"></canvas>
-    </div>
-  </div>
-
   <div id="bottom-bar">
-    <button class="dock-btn active" id="btn-rotate" onclick="setMode('rotate')"><span>🔄</span>Rotate</button>
-    <button class="dock-btn" id="btn-move" onclick="setMode('translate')"><span>✢</span>Move</button>
-    <button class="dock-btn" onclick="openRigOverlay()"><span>🦴</span>Auto Rig</button>
-    <button class="dock-btn" onclick="triggerImport()"><span>📂</span>Import</button>
-    <button class="dock-btn" onclick="deleteSelected()"><span>🗑</span>Delete</button>
+    <button class="dock-btn active" id="btn-rotate" onclick="setMode('rotate')"><span>🔄</span>Rotate Bone</button>
+    <button class="dock-btn" id="btn-move" onclick="setMode('translate')"><span>✢</span>Move Bone</button>
+    <button class="dock-btn" onclick="triggerImport()"><span>📂</span>Import GLB</button>
+    <button class="dock-btn" onclick="deleteSelected()"><span>🗑</span>Clear</button>
   </div>
 </div>
 
-<input type="file" id="file-input" accept=".obj,.gltf,.glb">
+<input type="file" id="file-input" accept=".glb,.gltf">
 
 <script>
   let scene, camera, renderer, orbitControls, transformControls;
-  let activeModel = null;
-  let characterGroup = null;
-  let isPlaying = false, currentTime = 0, duration = 5.0;
-
-  let bonesMap = {};
-  let ikTargetsMap = {}; 
-  let boneHelpers = []; // Blue dots array for visual reference
-  let rigNodes3D = []; 
-  let isRiggingMode = false;
-  let activeSkeleton = null;
-  let selectionRing = null;
-  
-  let draggedRigNode = null;
-  let dragPlane = new THREE.Plane();
-  let raycaster = new THREE.Raycaster();
-  let mouseCoord = new THREE.Vector2();
-  let planeIntersect = new THREE.Vector3();
-  let dragOffset = new THREE.Vector3();
-
-  const defaultJoints = [
-    { id: 'hips', name: 'Hips', fx: 0.5, fy: 0.5, fz: 0.5, parent: null, class: 'hip' },
-    { id: 'spine', name: 'Spine', fx: 0.5, fy: 0.65, fz: 0.5, parent: 'hips', class: '' },
-    { id: 'neck', name: 'Neck', fx: 0.5, fy: 0.85, fz: 0.5, parent: 'spine', class: '' },
-    { id: 'head', name: 'Head', fx: 0.5, fy: 0.95, fz: 0.5, parent: 'neck', class: 'head' },
-    { id: 'shoulder_r', name: 'R Shoulder', fx: 0.32, fy: 0.82, fz: 0.5, parent: 'spine', class: '', pair: 'shoulder_l' },
-    { id: 'wrist_r', name: 'R Wrist', fx: 0.05, fy: 0.82, fz: 0.5, parent: 'elbow_r', class: '', pair: 'wrist_l' },
-    { id: 'shoulder_l', name: 'L Shoulder', fx: 0.68, fy: 0.82, fz: 0.5, parent: 'spine', class: '', pair: 'shoulder_r' },
-    { id: 'wrist_l', name: 'L Wrist', fx: 0.95, fy: 0.82, fz: 0.5, parent: 'elbow_l', class: '', pair: 'wrist_r' },
-    { id: 'ankle_r', name: 'R Ankle', fx: 0.45, fy: 0.05, fz: 0.5, parent: 'knee_r', class: '', pair: 'ankle_l' },
-    { id: 'ankle_l', name: 'L Ankle', fx: 0.55, fy: 0.05, fz: 0.5, parent: 'knee_l', class: '', pair: 'ankle_r' }
-  ];
+  let loadedModel = null;
+  let bonesList = [];
+  let boneHelpers = [];
 
   function showToast(msg) {
     const t = document.getElementById('toast');
@@ -130,7 +68,7 @@
     setTimeout(() => { t.style.display = 'none'; }, 2500);
   }
 
-  function init3DEngine() {
+  function initEngine() {
     const container = document.getElementById('viewport');
     scene = new THREE.Scene();
     scene.background = new THREE.Color(0x2d2d35);
@@ -141,197 +79,101 @@
     renderer = new THREE.WebGLRenderer({ canvas: document.getElementById('canvas3d'), antialias: true });
     renderer.setSize(container.clientWidth, container.clientHeight);
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
-    
-    renderer.outputEncoding = THREE.sRGBEncoding;
-    renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    renderer.toneMappingExposure = 1.2;
 
     orbitControls = new THREE.OrbitControls(camera, renderer.domElement);
     orbitControls.enableDamping = true;
     orbitControls.target.set(0, 1.0, 0);
 
     transformControls = new THREE.TransformControls(camera, renderer.domElement);
-    transformControls.size = 1.2;
-    transformControls.setMode('translate');
-    transformControls.space = 'world';
+    transformControls.size = 1.0;
+    transformControls.setMode('rotate');
 
-    transformControls.addEventListener('dragging-changed', (e) => { 
-      orbitControls.enabled = !e.value; 
-    });
-
-    transformControls.addEventListener('objectChange', () => {
-      if (isRiggingMode) return;
-      const ctrlObj = transformControls.object;
-      if (!ctrlObj) return;
-
-      if (ctrlObj.userData.isIKTarget) {
-        const chain = ctrlObj.userData.chain; 
-        if (chain && chain.length === 3) {
-          solvePerfectTwoBoneIK(chain[0], chain[1], chain[2], ctrlObj);
-        }
-      }
-
-      if (selectionRing && ctrlObj) {
-        ctrlObj.getWorldPosition(selectionRing.position);
-      }
-
-      if (activeSkeleton) {
-        activeSkeleton.update();
-      }
+    transformControls.addEventListener('dragging-changed', (e) => {
+      orbitControls.enabled = !e.value;
     });
 
     scene.add(transformControls);
 
-    const ringGeo = new THREE.RingGeometry(0.045, 0.05, 32);
-    ringGeo.rotateX(Math.PI / 2);
-    const ringMat = new THREE.MeshBasicMaterial({ color: 0xffffff, side: THREE.DoubleSide, depthTest: false, transparent: true, opacity: 0.8 });
-    selectionRing = new THREE.Mesh(ringGeo, ringMat);
-    selectionRing.visible = false;
-    scene.add(selectionRing);
-
+    // Lights
     scene.add(new THREE.AmbientLight(0xffffff, 0.8));
-    const hemiLight = new THREE.HemisphereLight(0xffffff, 0x444455, 0.9);
-    hemiLight.position.set(0, 20, 0);
-    scene.add(hemiLight);
+    const dirLight = new THREE.DirectionalLight(0xffffff, 1.2);
+    dirLight.position.set(5, 10, 7);
+    scene.add(dirLight);
 
-    const keyLight = new THREE.DirectionalLight(0xffffff, 1.4);
-    keyLight.position.set(4, 8, 5);
-    scene.add(keyLight);
+    const grid = new THREE.GridHelper(10, 20, 0x5a5a68, 0x3d3d48);
+    grid.position.y = -0.01;
+    scene.add(grid);
 
-    const fillLight = new THREE.DirectionalLight(0x88bbff, 0.7);
-    fillLight.position.set(-5, 4, 3);
-    scene.add(fillLight);
+    renderer.domElement.addEventListener('pointerdown', onPointerDown);
 
-    const rimLight = new THREE.DirectionalLight(0xffeedd, 1.0);
-    rimLight.position.set(0, 5, -6);
-    scene.add(rimLight);
-
-    const gridHelper = new THREE.GridHelper(10, 20, 0x5a5a68, 0x3d3d48);
-    gridHelper.position.y = -0.01;
-    scene.add(gridHelper);
-
-    characterGroup = new THREE.Group();
-    scene.add(characterGroup);
-
-    const domElem = renderer.domElement;
-    domElem.addEventListener('pointerdown', onPointerDown);
-    domElem.addEventListener('pointermove', onPointerMove);
-    domElem.addEventListener('pointerup', onPointerUp);
-
-    showToast("Engine Ready");
-    startRenderLoop();
+    showToast("Import Pre-Rigged .GLB Model");
+    animate();
   }
 
-  function solvePerfectTwoBoneIK(rootBone, midBone, endBone, targetObj) {
-    characterGroup.updateMatrixWorld(true);
+  function triggerImport() {
+    document.getElementById('file-input').click();
+  }
 
-    const rootPos = new THREE.Vector3();
-    rootBone.getWorldPosition(rootPos);
+  document.getElementById('file-input').addEventListener('change', (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
 
-    const targetPos = new THREE.Vector3();
-    targetObj.getWorldPosition(targetPos);
+    showToast("Loading Rigged Model...");
+    const url = URL.createObjectURL(file);
+    const loader = new THREE.GLTFLoader();
 
-    const l1 = midBone.userData.restLength || midBone.position.length();
-    const l2 = endBone.userData.restLength || endBone.position.length();
-    const maxReach = (l1 + l2) * 0.999;
-    const minReach = Math.abs(l1 - l2) * 1.001;
+    loader.load(url, (gltf) => {
+      if (loadedModel) scene.remove(loadedModel);
+      clearBones();
 
-    const toTarget = targetPos.clone().sub(rootPos);
-    let dist = toTarget.length();
+      loadedModel = gltf.scene;
 
-    if (dist > maxReach) {
-      toTarget.normalize().multiplyScalar(maxReach);
-      dist = maxReach;
-      targetPos.copy(rootPos).add(toTarget);
-      targetObj.position.copy(targetPos);
-    } else if (dist < minReach) {
-      toTarget.normalize().multiplyScalar(minReach);
-      dist = minReach;
-      targetPos.copy(rootPos).add(toTarget);
-      targetObj.position.copy(targetPos);
-    }
+      // Find all embedded bones in the model
+      loadedModel.traverse((child) => {
+        if (child.isBone) {
+          bonesList.push(child);
+          createBoneHandle(child);
+        }
+        if (child.isMesh) {
+          child.material.roughness = 0.5;
+        }
+      });
 
-    const cosAngle = (l1 * l1 + dist * dist - l2 * l2) / (2 * l1 * dist);
-    const angle1 = Math.acos(Math.max(-1, Math.min(1, cosAngle)));
+      // Auto Adjust Scale and Position
+      const box = new THREE.Box3().setFromObject(loadedModel);
+      const size = box.getSize(new THREE.Vector3());
+      const center = box.getCenter(new THREE.Vector3());
 
-    const dir = toTarget.clone().normalize();
-    const normal = new THREE.Vector3(0, 1, 0);
-    const axis = new THREE.Vector3().crossVectors(dir, normal).normalize();
-    if (axis.lengthSq() < 0.0001) axis.set(1, 0, 0);
+      loadedModel.position.sub(center);
+      loadedModel.position.y += size.y / 2;
 
-    const rotQuat = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(1, 0, 0), dir);
-    const bendQuat = new THREE.Quaternion().setFromAxisAngle(axis, -angle1);
-    rootBone.quaternion.copy(rotQuat.multiply(bendQuat));
+      const maxDim = Math.max(size.x, size.y, size.z);
+      if (maxDim > 0) {
+        const scale = 2.0 / maxDim;
+        loadedModel.scale.set(scale, scale, scale);
+      }
 
-    const cosMidAngle = (l1 * l1 + l2 * l2 - dist * dist) / (2 * l1 * l2);
-    const midAngle = Math.acos(Math.max(-1, Math.min(1, cosMidAngle)));
-    const finalBend = Math.PI - midAngle;
+      scene.add(loadedModel);
+      showToast(`Model Loaded! Found ${bonesList.length} Bones.`);
+      URL.revokeObjectURL(url);
+    }, undefined, (err) => {
+      showToast("Error loading .GLB file!");
+      console.error(err);
+    });
+  });
 
-    midBone.rotation.set(0, 0, 0);
-    if (rootBone.name.includes('arm')) {
-      midBone.rotation.z = -finalBend;
-    } else {
-      midBone.rotation.x = finalBend;
-    }
-
-    if (activeSkeleton) {
-      activeSkeleton.update();
-    }
+  function createBoneHandle(bone) {
+    const geo = new THREE.SphereGeometry(0.03, 16, 16);
+    const mat = new THREE.MeshBasicMaterial({ color: 0x007aff, depthTest: false, depthWrite: false });
+    const handle = new THREE.Mesh(geo, mat);
+    handle.renderOrder = 999;
+    handle.userData = { targetBone: bone };
+    bone.add(handle);
+    boneHelpers.push(handle);
   }
 
   function onPointerDown(event) {
-    if (!isRiggingMode) {
-      onSceneClick(event);
-      return;
-    }
-
-    const rect = renderer.domElement.getBoundingClientRect();
-    mouseCoord.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
-    mouseCoord.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
-
-    raycaster.setFromCamera(mouseCoord, camera);
-    const intersects = raycaster.intersectObjects(rigNodes3D, false);
-
-    if (intersects.length > 0) {
-      draggedRigNode = intersects[0].object;
-      orbitControls.enabled = false;
-      dragPlane.setFromNormalAndCoplanarPoint(camera.getWorldDirection(new THREE.Vector3()).negate(), draggedRigNode.position);
-      raycaster.ray.intersectPlane(dragPlane, planeIntersect);
-      dragOffset.copy(draggedRigNode.position).sub(planeIntersect);
-    }
-  }
-
-  function onPointerMove(event) {
-    if (!isRiggingMode || !draggedRigNode) return;
-
-    const rect = renderer.domElement.getBoundingClientRect();
-    mouseCoord.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
-    mouseCoord.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
-
-    raycaster.setFromCamera(mouseCoord, camera);
-    const hitPoint = new THREE.Vector3();
-    if (raycaster.ray.intersectPlane(dragPlane, hitPoint)) {
-      draggedRigNode.position.copy(hitPoint.add(dragOffset));
-
-      if (draggedRigNode.userData.pairNode) {
-        const pair = draggedRigNode.userData.pairNode;
-        pair.position.x = -draggedRigNode.position.x;
-        pair.position.y = draggedRigNode.position.y;
-        pair.position.z = draggedRigNode.position.z;
-      }
-    }
-  }
-
-  function onPointerUp() {
-    if (isRiggingMode && draggedRigNode) {
-      draggedRigNode = null;
-      orbitControls.enabled = true;
-    }
-  }
-
-  function onSceneClick(event) {
-    if (transformControls.dragging || transformControls.hovered) return;
-    if (Object.keys(ikTargetsMap).length === 0) return;
+    if (transformControls.dragging) return;
 
     const rect = renderer.domElement.getBoundingClientRect();
     const mouse = new THREE.Vector2(
@@ -342,489 +184,50 @@
     const raycaster = new THREE.Raycaster();
     raycaster.setFromCamera(mouse, camera);
 
-    // ONLY IK targets (Brown/Red Movement dots) are clickable. Blue joint dots are visible for reference but COMPLETELY BLOCKED from interaction.
-    const interactables = Object.values(ikTargetsMap);
-    const intersects = raycaster.intersectObjects(interactables, false);
+    const intersects = raycaster.intersectObjects(boneHelpers, false);
 
     if (intersects.length > 0) {
-      const hitObj = intersects[0].object;
-      if (hitObj.userData.isIKTarget) {
-        selectTargetOrPole(hitObj);
-      }
-    } else {
+      const selectedHandle = intersects[0].object;
+      const targetBone = selectedHandle.userData.targetBone;
       transformControls.detach();
-      if (selectionRing) selectionRing.visible = false;
+      transformControls.attach(targetBone);
     }
   }
 
-  function selectTargetOrPole(targetObj) {
-    if (transformControls.dragging) return;
-
+  function clearBones() {
     transformControls.detach();
-    transformControls.attach(targetObj);
-    transformControls.setMode('translate');
-    transformControls.space = 'world';
-
-    if (selectionRing) {
-      selectionRing.visible = true;
-      targetObj.getWorldPosition(selectionRing.position);
-    }
-  }
-
-  function triggerImport() { 
-    const fileInput = document.getElementById('file-input');
-    fileInput.value = ''; 
-    fileInput.click(); 
-  }
-
-  document.getElementById('file-input').addEventListener('change', (e) => {
-    const file = e.target.files[0];
-    if (!file) return;
-    
-    showToast("Loading 3D Model...");
-    const fileName = file.name.toLowerCase();
-    const objectURL = URL.createObjectURL(file);
-
-    if (fileName.endsWith('.obj')) {
-      const reader = new FileReader();
-      reader.onload = (evt) => {
-        try {
-          const loader = new THREE.OBJLoader();
-          const obj = loader.parse(evt.target.result);
-          loadModelToScene(obj);
-          URL.revokeObjectURL(objectURL);
-        } catch (err) {
-          console.error(err);
-          showToast("Error parsing OBJ file!");
-        }
-      };
-      reader.readAsText(file);
-    } 
-    else if (fileName.endsWith('.gltf') || fileName.endsWith('.glb')) {
-      const loader = new THREE.GLTFLoader();
-      loader.load(
-        objectURL, 
-        (gltf) => {
-          loadModelToScene(gltf.scene);
-          URL.revokeObjectURL(objectURL);
-        }, 
-        undefined, 
-        (err) => {
-          console.error("GLTF Load Error:", err);
-          showToast("GLTF Error: Use self-contained .glb");
-          URL.revokeObjectURL(objectURL);
-        }
-      );
-    } else {
-      showToast("Unsupported format! Use .obj, .gltf, or .glb");
-    }
-  });
-
-  function loadModelToScene(loadedObject) {
-    if (activeModel) characterGroup.remove(activeModel);
-    clearRig();
-
-    activeModel = loadedObject;
-
-    activeModel.traverse(child => {
-      if (child.isMesh && child.material) {
-        child.material.roughness = 0.6;
-        child.material.metalness = 0.1;
-      }
-    });
-
-    characterGroup.position.set(0, 0, 0);
-    characterGroup.rotation.set(0, 0, 0);
-    characterGroup.scale.set(1, 1, 1);
-
-    const box = new THREE.Box3().setFromObject(activeModel);
-    const center = box.getCenter(new THREE.Vector3());
-    const size = box.getSize(new THREE.Vector3());
-
-    activeModel.position.sub(center); 
-    activeModel.position.y += size.y / 2;
-
-    const maxDim = Math.max(size.x, size.y, size.z);
-    if (maxDim > 0) {
-      const scale = 2.0 / maxDim;
-      activeModel.scale.set(scale, scale, scale);
-    }
-
-    characterGroup.add(activeModel);
-    transformControls.detach();
-
-    showToast("Model Loaded Successfully!");
-  }
-
-  function clearRig() {
-    transformControls.detach();
-    boneHelpers.forEach(h => scene.remove(h));
-    Object.values(ikTargetsMap).forEach(t => scene.remove(t));
-    rigNodes3D.forEach(n => scene.remove(n));
-
-    if (selectionRing) selectionRing.visible = false;
-
-    bonesMap = {};
-    ikTargetsMap = {};
     boneHelpers = [];
-    rigNodes3D = [];
-    activeSkeleton = null;
+    bonesList = [];
   }
 
-  function openRigOverlay() {
-    if (!activeModel) { showToast("Import a 3D Model First!"); return; }
-
-    resetCamera();
-    clearRig();
-    isRiggingMode = true;
-
-    document.getElementById('rig-tools-bar').style.display = 'flex';
-
-    const box = new THREE.Box3().setFromObject(activeModel);
-    const min = box.min;
-    const size = box.getSize(new THREE.Vector3());
-
-    const nodeMap = {};
-    defaultJoints.forEach(j => {
-      const sphereGeo = new THREE.SphereGeometry(0.04, 16, 16);
-      const color = j.class === 'hip' ? 0xff3b30 : j.class === 'head' ? 0x30d158 : 0xff9500;
-      const sphereMat = new THREE.MeshBasicMaterial({ color: color, depthTest: false });
-      const node = new THREE.Mesh(sphereGeo, sphereMat);
-      
-      const posX = min.x + j.fx * size.x;
-      const posY = min.y + j.fy * size.y;
-      const posZ = min.z + j.fz * size.z;
-
-      node.position.set(posX, posY, posZ);
-      node.renderOrder = 999;
-      node.userData = { id: j.id };
-
-      scene.add(node);
-      rigNodes3D.push(node);
-      nodeMap[j.id] = node;
-    });
-
-    defaultJoints.forEach(j => {
-      if (j.pair && nodeMap[j.id] && nodeMap[j.pair]) {
-        nodeMap[j.id].userData.pairNode = nodeMap[j.pair];
-      }
-    });
-
-    showToast("Adjust Rig Nodes");
+  function setMode(mode) {
+    transformControls.setMode(mode);
+    document.getElementById('btn-rotate').classList.toggle('active', mode === 'rotate');
+    document.getElementById('btn-move').classList.toggle('active', mode === 'translate');
+    showToast(`Mode: ${mode.toUpperCase()}`);
   }
 
-  function closeRigOverlay() {
-    isRiggingMode = false;
-    document.getElementById('rig-tools-bar').style.display = 'none';
-    rigNodes3D.forEach(n => scene.remove(n));
-    rigNodes3D = [];
-    orbitControls.enabled = true;
+  function resetCamera() {
+    camera.position.set(0, 1.2, 3.2);
+    orbitControls.target.set(0, 1.0, 0);
   }
 
-  function applyAutoRigging() {
-    if (!activeModel) { closeRigOverlay(); return; }
-
-    const calculatedWorldPositions = {};
-    rigNodes3D.forEach(node => {
-      calculatedWorldPositions[node.userData.id] = node.position.clone();
-    });
-
-    closeRigOverlay();
-
-    const intermediateCalc = (p1, p2, factor) => new THREE.Vector3().lerpVectors(p1, p2, factor);
-
-    const fullBonePositions = { ...calculatedWorldPositions };
-    if (calculatedWorldPositions['shoulder_r'] && calculatedWorldPositions['wrist_r']) {
-      fullBonePositions['elbow_r'] = intermediateCalc(calculatedWorldPositions['shoulder_r'], calculatedWorldPositions['wrist_r'], 0.5);
-    }
-    if (calculatedWorldPositions['shoulder_l'] && calculatedWorldPositions['wrist_l']) {
-      fullBonePositions['elbow_l'] = intermediateCalc(calculatedWorldPositions['shoulder_l'], calculatedWorldPositions['wrist_l'], 0.5);
-    }
-    if (calculatedWorldPositions['hips'] && calculatedWorldPositions['ankle_r']) {
-      fullBonePositions['knee_r'] = intermediateCalc(calculatedWorldPositions['hips'], calculatedWorldPositions['ankle_r'], 0.5);
-    }
-    if (calculatedWorldPositions['hips'] && calculatedWorldPositions['ankle_l']) {
-      fullBonePositions['knee_l'] = intermediateCalc(calculatedWorldPositions['hips'], calculatedWorldPositions['ankle_l'], 0.5);
-    }
-
-    const allJointDefs = [
-      { id: 'hips', parent: null },
-      { id: 'spine', parent: 'hips' },
-      { id: 'neck', parent: 'spine' },
-      { id: 'head', parent: 'neck' },
-      { id: 'shoulder_r', parent: 'spine' },
-      { id: 'elbow_r', parent: 'shoulder_r' },
-      { id: 'wrist_r', parent: 'elbow_r' },
-      { id: 'shoulder_l', parent: 'spine' },
-      { id: 'elbow_l', parent: 'shoulder_l' },
-      { id: 'wrist_l', parent: 'elbow_l' },
-      { id: 'knee_r', parent: 'hips' },
-      { id: 'ankle_r', parent: 'knee_r' },
-      { id: 'knee_l', parent: 'hips' },
-      { id: 'ankle_l', parent: 'knee_l' }
-    ];
-
-    const bonesList = [];
-    const boneIndexMap = {};
-
-    allJointDefs.forEach((j, index) => {
-      const bone = new THREE.Bone();
-      bone.name = j.id;
-      bonesMap[j.id] = bone;
-      bonesList.push(bone);
-      boneIndexMap[j.id] = index;
-    });
-
-    allJointDefs.forEach(j => {
-      const bone = bonesMap[j.id];
-      const worldPos = fullBonePositions[j.id];
-
-      if (j.parent && bonesMap[j.parent]) {
-        bonesMap[j.parent].add(bone);
-        const parentWorldPos = fullBonePositions[j.parent];
-        const offset = worldPos.clone().sub(parentWorldPos);
-        bone.position.copy(offset);
-        bone.userData.restLength = offset.length();
-      } else {
-        characterGroup.add(bone);
-        bone.position.copy(worldPos);
-        bone.userData.restLength = worldPos.length();
-      }
-    });
-
-    characterGroup.updateMatrixWorld(true);
-    activeSkeleton = new THREE.Skeleton(bonesList);
-
-    const meshesToSkin = [];
-    activeModel.traverse(child => {
-      if (child.isMesh && child.geometry) {
-        meshesToSkin.push(child);
-      }
-    });
-
-    const headIdx = boneIndexMap['head'];
-    const spineIdx = boneIndexMap['spine'];
-    const hipsIdx = boneIndexMap['hips'];
-
-    meshesToSkin.forEach(oldMesh => {
-      oldMesh.updateMatrixWorld(true);
-
-      const geometry = oldMesh.geometry.clone();
-      const posAttr = geometry.attributes.position;
-      const vertexCount = posAttr.count;
-
-      const skinIndices = new Uint16Array(vertexCount * 4);
-      const skinWeights = new Float32Array(vertexCount * 4);
-      const vWorld = new THREE.Vector3();
-
-      for (let i = 0; i < vertexCount; i++) {
-        vWorld.set(posAttr.getX(i), posAttr.getY(i), posAttr.getZ(i));
-        vWorld.applyMatrix4(oldMesh.matrixWorld);
-
-        // Strict Head Lock
-        if (vWorld.y > (fullBonePositions['neck'].y + 0.05)) {
-          skinIndices[i * 4] = headIdx;
-          skinIndices[i * 4 + 1] = headIdx;
-          skinIndices[i * 4 + 2] = headIdx;
-          skinIndices[i * 4 + 3] = headIdx;
-
-          skinWeights[i * 4] = 1.0;
-          skinWeights[i * 4 + 1] = 0.0;
-          skinWeights[i * 4 + 2] = 0.0;
-          skinWeights[i * 4 + 3] = 0.0;
-          continue;
-        }
-
-        // Clean Smooth Distance-Based Weighting for all body and limbs so mesh follows bones tightly
-        let distList = [];
-        Object.keys(fullBonePositions).forEach(k => {
-          const d = vWorld.distanceTo(fullBonePositions[k]);
-          distList.push({ id: k, dist: d, idx: boneIndexMap[k] });
-        });
-
-        distList.sort((a, b) => a.dist - b.dist);
-
-        const p0 = distList[0];
-        const p1 = distList[1];
-        const p2 = distList[2];
-        const p3 = distList[3];
-
-        const w0 = 1.0 / (p0.dist + 0.0001);
-        const w1 = 1.0 / (p1.dist + 0.0001);
-        const w2 = 1.0 / (p2.dist + 0.0001);
-        const w3 = 1.0 / (p3.dist + 0.0001);
-        const sum = w0 + w1 + w2 + w3;
-
-        skinIndices[i * 4] = p0.idx;
-        skinIndices[i * 4 + 1] = p1.idx;
-        skinIndices[i * 4 + 2] = p2.idx;
-        skinIndices[i * 4 + 3] = p3.idx;
-
-        skinWeights[i * 4] = w0 / sum;
-        skinWeights[i * 4 + 1] = w1 / sum;
-        skinWeights[i * 4 + 2] = w2 / sum;
-        skinWeights[i * 4 + 3] = w3 / sum;
-      }
-
-      geometry.setAttribute('skinIndex', new THREE.Uint16BufferAttribute(skinIndices, 4));
-      geometry.setAttribute('skinWeight', new THREE.Float32BufferAttribute(skinWeights, 4));
-
-      const newMaterial = oldMesh.material.clone();
-      newMaterial.skinning = true;
-      newMaterial.roughness = 0.6;
-      newMaterial.metalness = 0.1;
-
-      const skinnedMesh = new THREE.SkinnedMesh(geometry, newMaterial);
-      skinnedMesh.bind(activeSkeleton, oldMesh.matrixWorld);
-
-      if (oldMesh.parent) {
-        oldMesh.parent.add(skinnedMesh);
-        oldMesh.parent.remove(oldMesh);
-      }
-    });
-
-    // Create Blue Joint Dots for visual reference ONLY (not interactive / non-bendable)
-    defaultJoints.forEach(j => {
-      const bone = bonesMap[j.id];
-      if (!bone) return;
-      const sphereGeo = new THREE.SphereGeometry(0.035, 16, 16);
-      const sphereMat = new THREE.MeshBasicMaterial({ color: 0x007aff, depthTest: false, depthWrite: false });
-      const handle = new THREE.Mesh(sphereGeo, sphereMat);
-      handle.renderOrder = 999;
-      // We do NOT add these handles to any raycast interactable list, so they cannot be clicked/selected.
-      bone.add(handle);
-      boneHelpers.push(handle);
-    });
-
-    const leftArmChain = [bonesMap['shoulder_l'], bonesMap['elbow_l'], bonesMap['wrist_l']];
-    const rightArmChain = [bonesMap['shoulder_r'], bonesMap['elbow_r'], bonesMap['wrist_r']];
-    const rightLegChain = [bonesMap['hips'], bonesMap['knee_r'], bonesMap['ankle_r']];
-    const leftLegChain = [bonesMap['hips'], bonesMap['knee_l'], bonesMap['ankle_l']];
-
-    const targetConfigs = [
-      { key: 'r_arm', chain: rightArmChain, end: bonesMap['wrist_r'] },
-      { key: 'l_arm', chain: leftArmChain, end: bonesMap['wrist_l'] },
-      { key: 'r_leg', chain: rightLegChain, end: bonesMap['ankle_r'] },
-      { key: 'l_leg', chain: leftLegChain, end: bonesMap['ankle_l'] }
-    ];
-
-    targetConfigs.forEach(cfg => {
-      const endBone = cfg.end;
-      if (!endBone) return;
-
-      const targetGeo = new THREE.SphereGeometry(0.04, 16, 16);
-      const targetMat = new THREE.MeshBasicMaterial({ color: 0xff3b30, depthTest: false, depthWrite: false, transparent: true, opacity: 0.8 });
-      const targetMesh = new THREE.Mesh(targetGeo, targetMat);
-      
-      characterGroup.updateMatrixWorld(true);
-      const boneWorldPos = new THREE.Vector3();
-      endBone.getWorldPosition(boneWorldPos);
-
-      targetMesh.position.copy(boneWorldPos);
-      scene.add(targetMesh);
-
-      targetMesh.renderOrder = 1000;
-      targetMesh.name = `${endBone.name}_Target`;
-      targetMesh.userData = { isIKTarget: true, boneName: endBone.name, chain: cfg.chain };
-
-      ikTargetsMap[cfg.key] = targetMesh;
-    });
-
-    if (ikTargetsMap['r_arm']) {
-      selectTargetOrPole(ikTargetsMap['r_arm']);
-    }
-
-    setMode('translate');
-    showToast("Rig Applied: Blue Dots Visible but Bending Blocked!");
-  }
-
-  function updateJointLabel() {
-    const lbl = document.getElementById('joint-label');
-    const obj = transformControls.object;
-
-    if (transformControls.dragging && obj) {
-      const tempV = new THREE.Vector3();
-      obj.getWorldPosition(tempV);
-      tempV.project(camera);
-
-      const x = (tempV.x * 0.5 + 0.5) * renderer.domElement.clientWidth;
-      const y = (-(tempV.y * 0.5) + 0.5) * renderer.domElement.clientHeight;
-
-      lbl.style.display = 'block';
-      lbl.style.left = `${x}px`;
-      lbl.style.top = `${y}px`;
-      lbl.innerText = obj.name || obj.userData.id || 'Control';
-    } else {
-      lbl.style.display = 'none';
+  function deleteSelected() {
+    if (loadedModel) {
+      scene.remove(loadedModel);
+      loadedModel = null;
+      clearBones();
+      showToast("Model Cleared!");
     }
   }
 
-  function startRenderLoop() {
-    requestAnimationFrame(startRenderLoop);
+  function animate() {
+    requestAnimationFrame(animate);
     orbitControls.update();
-
-    const activeObj = transformControls.object;
-    if (activeObj && activeObj.userData.isIKTarget) {
-      const chain = activeObj.userData.chain;
-      if (chain && chain.length === 3) {
-        solvePerfectTwoBoneIK(chain[0], chain[1], chain[2], activeObj);
-      }
-    }
-
-    if (activeSkeleton) {
-      activeSkeleton.update();
-    }
-
-    characterGroup.updateMatrixWorld(true);
-
-    if (selectionRing && transformControls.object) {
-      transformControls.object.getWorldPosition(selectionRing.position);
-    }
-
-    updateJointLabel();
     renderer.render(scene, camera);
-    drawTimelineCanvas();
   }
 
-  function drawTimelineCanvas() {
-    const cvs = document.getElementById('tl-canvas');
-    const wrap = document.getElementById('tl-canvas-wrap');
-    if (!cvs || !wrap) return;
-
-    cvs.width = wrap.clientWidth; cvs.height = wrap.clientHeight;
-    const ctx = cvs.getContext('2d');
-    ctx.fillStyle = '#121216'; ctx.fillRect(0, 0, cvs.width, cvs.height);
-
-    const px = (currentTime / duration) * cvs.width;
-    ctx.strokeStyle = '#007aff'; ctx.lineWidth = 2;
-    ctx.beginPath(); ctx.moveTo(px, 0); ctx.lineTo(px, cvs.height); ctx.stroke();
-  }
-
-  function resetCamera() { camera.position.set(0, 1.2, 3.2); orbitControls.target.set(0, 1.0, 0); }
-  function togglePlay() { isPlaying = !isPlaying; }
-
-  function setMode(m) { 
-    if (transformControls) {
-      transformControls.setMode(m);
-      transformControls.space = 'world';
-    }
-    document.getElementById('btn-rotate').classList.toggle('active', m === 'rotate');
-    document.getElementById('btn-move').classList.toggle('active', m === 'translate');
-    showToast(`Mode: ${m.toUpperCase()}`);
-  }
-
-  function deleteSelected() { 
-    if (activeModel) { 
-      characterGroup.remove(activeModel); 
-      activeModel = null; 
-      clearRig();
-      showToast("Model Deleted!");
-    }
-  }
-  function addKeyframe() { showToast("Keyframe Added!"); }
-  function seekTimeline(event) { showToast("Timeline Seeked"); }
-
-  window.addEventListener('load', init3DEngine);
+  window.addEventListener('load', initEngine);
 </script>
 </body>
 </html>
