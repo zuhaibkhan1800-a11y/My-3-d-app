@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>Prisma 3D Auto-Rig Engine (Collar & Neck Gap Fixed)</title>
+  <title>Prisma 3D Auto-Rig Engine (Shoulder Snap & Stretch Fixed)</title>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; -webkit-tap-highlight-color: transparent; }
     html, body { width: 100vw; height: 100dvh; overflow: hidden; background: #1b1b20; color: #fff; font-family: system-ui, -apple-system, sans-serif; }
@@ -632,8 +632,6 @@
     const neckIdx = boneIndexMap['neck'];
     const spineIdx = boneIndexMap['spine'];
     const hipsIdx = boneIndexMap['hips'];
-    const shoulderLIdx = boneIndexMap['shoulder_l'];
-    const shoulderRIdx = boneIndexMap['shoulder_r'];
 
     meshesToSkin.forEach(oldMesh => {
       oldMesh.updateMatrixWorld(true);
@@ -650,7 +648,7 @@
         vWorld.set(posAttr.getX(i), posAttr.getY(i), posAttr.getZ(i));
         vWorld.applyMatrix4(oldMesh.matrixWorld);
 
-        // Strict Head Protection (Only upper head is 100% rigid, lower head/neck blends smoothly)
+        // Smooth Head Protection
         if (vWorld.y > (fullBonePositions['neck'].y + 0.08)) {
           skinIndices[i * 4] = headIdx;
           skinIndices[i * 4 + 1] = headIdx;
@@ -664,50 +662,7 @@
           continue;
         }
 
-        // Smooth Neck & Collar Blending (Eliminates gaps/tears at neck-to-chest junction)
-        if (vWorld.y >= (fullBonePositions['neck'].y - 0.05) && vWorld.y <= (fullBonePositions['neck'].y + 0.08)) {
-          skinIndices[i * 4] = neckIdx;
-          skinIndices[i * 4 + 1] = spineIdx;
-          skinIndices[i * 4 + 2] = headIdx;
-          skinIndices[i * 4 + 3] = neckIdx;
-
-          skinWeights[i * 4] = 0.6;
-          skinWeights[i * 4 + 1] = 0.25;
-          skinWeights[i * 4 + 2] = 0.15;
-          skinWeights[i * 4 + 3] = 0.0;
-          continue;
-        }
-
-        // Natural Shoulder Blending (Prevents boxy shoulders)
-        if (vWorld.y >= (fullBonePositions['shoulder_l'].y - 0.06) && vWorld.y <= (fullBonePositions['neck'].y) && Math.abs(vWorld.x) > 0.10) {
-          const isLeft = vWorld.x > 0;
-          const sIdx = isLeft ? shoulderLIdx : shoulderRIdx;
-          skinIndices[i * 4] = sIdx;
-          skinIndices[i * 4 + 1] = spineIdx;
-          skinIndices[i * 4 + 2] = neckIdx;
-          skinIndices[i * 4 + 3] = sIdx;
-
-          skinWeights[i * 4] = 0.6;
-          skinWeights[i * 4 + 1] = 0.3;
-          skinWeights[i * 4 + 2] = 0.1;
-          skinWeights[i * 4 + 3] = 0.0;
-          continue;
-        }
-
-        // Balanced Torso & Stomach Volume
-        if (vWorld.y >= fullBonePositions['hips'].y && vWorld.y < fullBonePositions['spine'].y + 0.12) {
-          skinIndices[i * 4] = spineIdx;
-          skinIndices[i * 4 + 1] = hipsIdx;
-          skinIndices[i * 4 + 2] = spineIdx;
-          skinIndices[i * 4 + 3] = spineIdx;
-
-          skinWeights[i * 4] = 0.5;
-          skinWeights[i * 4 + 1] = 0.5;
-          skinWeights[i * 4 + 2] = 0.0;
-          skinWeights[i * 4 + 3] = 0.0;
-          continue;
-        }
-
+        // Pure Distance-Based Smooth Weighting for All Bones (No hard square boxes or snaps)
         let distList = [];
         Object.keys(fullBonePositions).forEach(k => {
           const d = vWorld.distanceTo(fullBonePositions[k]);
@@ -719,25 +674,28 @@
         const primary = distList[0];
         const secondary = distList[1];
         const tertiary = distList[2];
+        const quaternary = distList[3];
 
         const d1 = primary.dist;
         const d2 = secondary.dist;
-        const d3 = tertiary ? tertiary.dist : d2;
+        const d3 = tertiary.dist;
+        const d4 = quaternary.dist;
 
         const w1 = 1.0 / (d1 + 0.0001);
         const w2 = 1.0 / (d2 + 0.0001);
         const w3 = 1.0 / (d3 + 0.0001);
-        const sum = w1 + w2 + w3;
+        const w4 = 1.0 / (d4 + 0.0001);
+        const sum = w1 + w2 + w3 + w4;
 
         skinIndices[i * 4] = primary.idx;
         skinIndices[i * 4 + 1] = secondary.idx;
-        skinIndices[i * 4 + 2] = tertiary ? tertiary.idx : primary.idx;
-        skinIndices[i * 4 + 3] = 0;
+        skinIndices[i * 4 + 2] = tertiary.idx;
+        skinIndices[i * 4 + 3] = quaternary.idx;
 
         skinWeights[i * 4] = w1 / sum;
         skinWeights[i * 4 + 1] = w2 / sum;
-        skinWeights[i * 4 + 2] = tertiary ? w3 / sum : 0.0;
-        skinWeights[i * 4 + 3] = 0.0;
+        skinWeights[i * 4 + 2] = w3 / sum;
+        skinWeights[i * 4 + 3] = w4 / sum;
       }
 
       geometry.setAttribute('skinIndex', new THREE.Uint16BufferAttribute(skinIndices, 4));
