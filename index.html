@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>Prisma 3D Auto-Rig Engine (Unified Body Balance Fix)</title>
+  <title>Prisma 3D Auto-Rig Engine (Pure Smooth Skinning Fix)</title>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; -webkit-tap-highlight-color: transparent; }
     html, body { width: 100vw; height: 100dvh; overflow: hidden; background: #1b1b20; color: #fff; font-family: system-ui, -apple-system, sans-serif; }
@@ -629,11 +629,6 @@
     });
 
     const headIdx = boneIndexMap['head'];
-    const neckIdx = boneIndexMap['neck'];
-    const spineIdx = boneIndexMap['spine'];
-    const hipsIdx = boneIndexMap['hips'];
-    const shoulderLIdx = boneIndexMap['shoulder_l'];
-    const shoulderRIdx = boneIndexMap['shoulder_r'];
 
     meshesToSkin.forEach(oldMesh => {
       oldMesh.updateMatrixWorld(true);
@@ -650,8 +645,8 @@
         vWorld.set(posAttr.getX(i), posAttr.getY(i), posAttr.getZ(i));
         vWorld.applyMatrix4(oldMesh.matrixWorld);
 
-        // 1. Strict Head & Face Lock
-        if (vWorld.y > (fullBonePositions['neck'].y + 0.02)) {
+        // Safe Head Lock
+        if (vWorld.y > (fullBonePositions['neck'].y + 0.05)) {
           skinIndices[i * 4] = headIdx;
           skinIndices[i * 4 + 1] = headIdx;
           skinIndices[i * 4 + 2] = headIdx;
@@ -664,24 +659,7 @@
           continue;
         }
 
-        // 2. Uniform Torso, Chest, and Shoulder Volume Blend (Prevents all pinching and hollow armpits)
-        if (vWorld.y >= fullBonePositions['hips'].y && vWorld.y <= fullBonePositions['shoulder_l'].y + 0.05) {
-          const isLeft = vWorld.x > 0;
-          const sIdx = isLeft ? shoulderLIdx : shoulderRIdx;
-          
-          skinIndices[i * 4] = spineIdx;
-          skinIndices[i * 4 + 1] = sIdx;
-          skinIndices[i * 4 + 2] = hipsIdx;
-          skinIndices[i * 4 + 3] = neckIdx;
-
-          skinWeights[i * 4] = 0.45;
-          skinWeights[i * 4 + 1] = 0.25;
-          skinWeights[i * 4 + 2] = 0.20;
-          skinWeights[i * 4 + 3] = 0.10;
-          continue;
-        }
-
-        // 3. Smooth Distance-Based Weighting for Limbs
+        // Pure Smooth Multi-Bone Blending (Standard 4-Bone Smooth Skinning without hard distortion)
         let distList = [];
         Object.keys(fullBonePositions).forEach(k => {
           const d = vWorld.distanceTo(fullBonePositions[k]);
@@ -690,26 +668,26 @@
 
         distList.sort((a, b) => a.dist - b.dist);
 
-        const primary = distList[0];
-        const secondary = distList[1];
-        const tertiary = distList[2];
-        const quaternary = distList[3];
+        const p0 = distList[0];
+        const p1 = distList[1];
+        const p2 = distList[2];
+        const p3 = distList[3];
 
-        const w1 = 1.0 / (primary.dist + 0.0001);
-        const w2 = 1.0 / (secondary.dist + 0.0001);
-        const w3 = 1.0 / (tertiary.dist + 0.0001);
-        const w4 = 1.0 / (quaternary.dist + 0.0001);
-        const sum = w1 + w2 + w3 + w4;
+        const w0 = 1.0 / (p0.dist + 0.0001);
+        const w1 = 1.0 / (p1.dist + 0.0001);
+        const w2 = 1.0 / (p2.dist + 0.0001);
+        const w3 = 1.0 / (p3.dist + 0.0001);
+        const sum = w0 + w1 + w2 + w3;
 
-        skinIndices[i * 4] = primary.idx;
-        skinIndices[i * 4 + 1] = secondary.idx;
-        skinIndices[i * 4 + 2] = tertiary.idx;
-        skinIndices[i * 4 + 3] = quaternary.idx;
+        skinIndices[i * 4] = p0.idx;
+        skinIndices[i * 4 + 1] = p1.idx;
+        skinIndices[i * 4 + 2] = p2.idx;
+        skinIndices[i * 4 + 3] = p3.idx;
 
-        skinWeights[i * 4] = w1 / sum;
-        skinWeights[i * 4 + 1] = w2 / sum;
-        skinWeights[i * 4 + 2] = w3 / sum;
-        skinWeights[i * 4 + 3] = w4 / sum;
+        skinWeights[i * 4] = w0 / sum;
+        skinWeights[i * 4 + 1] = w1 / sum;
+        skinWeights[i * 4 + 2] = w2 / sum;
+        skinWeights[i * 4 + 3] = w3 / sum;
       }
 
       geometry.setAttribute('skinIndex', new THREE.Uint16BufferAttribute(skinIndices, 4));
