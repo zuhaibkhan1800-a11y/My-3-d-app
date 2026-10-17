@@ -6,23 +6,23 @@
   <title>Prisma 3D Pro - Ultimate Precision Rigging Engine</title>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; -webkit-tap-highlight-color: transparent; }
-    html, body { width: 100%; height: 100%; overflow: hidden; background: #0f0f13; color: #fff; font-family: system-ui, -apple-system, sans-serif; }
-    #app { display: flex; flex-direction: column; width: 100vw; height: 100vh; position: relative; }
+    html, body { width: 100vw; height: 100dvh; overflow: hidden; background: #0f0f13; color: #fff; font-family: system-ui, -apple-system, sans-serif; }
+    #app { display: flex; flex-direction: column; width: 100vw; height: 100dvh; position: relative; }
 
-    #top-bar { height: 48px; background: #16161c; display: flex; align-items: center; justify-content: space-between; padding: 0 16px; border-bottom: 1px solid #252530; z-index: 10; flex-shrink: 0; }
+    #top-bar { position: fixed; top: 0; left: 0; width: 100%; height: 48px; background: #16161c; display: flex; align-items: center; justify-content: space-between; padding: 0 16px; border-bottom: 1px solid #252530; z-index: 100; }
     .brand-title { font-size: 11px; font-weight: bold; color: #007aff; letter-spacing: 1px; }
     .icon-btn { background: #22222c; border: 1px solid #333342; color: #eee; font-size: 11px; cursor: pointer; padding: 6px 12px; border-radius: 6px; }
     .icon-btn:active { background: #007aff; }
 
-    #viewport { flex-grow: 1; position: relative; background: #1c1c24; overflow: hidden; width: 100%; height: 100%; }
+    #viewport { position: absolute; top: 48px; bottom: 60px; left: 0; width: 100vw; background: #1c1c24; overflow: hidden; }
     #canvas3d { width: 100%; height: 100%; display: block; touch-action: none; }
 
-    #bottom-bar { height: 60px; background: #16161c; border-top: 1px solid #252530; display: flex; align-items: center; justify-content: space-around; padding: 0 4px; z-index: 20; flex-shrink: 0; }
+    #bottom-bar { position: fixed; bottom: 0; left: 0; width: 100%; height: 60px; background: #16161c; border-top: 1px solid #252530; display: flex; align-items: center; justify-content: space-around; padding: 0 4px; z-index: 100; }
     .dock-btn { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; color: #8e8e93; font-size: 10px; cursor: pointer; background: none; border: none; flex: 1; height: 100%; }
     .dock-btn.active { color: #007aff; font-weight: 600; }
     .dock-btn span { font-size: 16px; }
 
-    #toast { position: absolute; top: 16px; left: 50%; transform: translateX(-50%); background: rgba(0, 122, 255, 0.9); color: #fff; padding: 8px 20px; border-radius: 30px; font-size: 12px; display: none; z-index: 1000; box-shadow: 0 4px 15px rgba(0,0,0,0.6); pointer-events: none; font-weight: 500; }
+    #toast { position: absolute; top: 60px; left: 50%; transform: translateX(-50%); background: rgba(0, 122, 255, 0.9); color: #fff; padding: 8px 20px; border-radius: 30px; font-size: 12px; display: none; z-index: 1000; box-shadow: 0 4px 15px rgba(0,0,0,0.6); pointer-events: none; font-weight: 500; }
     input[type="file"] { display: none !important; }
   </style>
 
