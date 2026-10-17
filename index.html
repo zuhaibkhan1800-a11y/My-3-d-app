@@ -73,41 +73,33 @@
   function initEngine() {
     const container = document.getElementById('viewport');
     
-    // Scene setup
     scene = new THREE.Scene();
     scene.background = new THREE.Color(0x1e1e24);
 
-    // Camera setup
     camera = new THREE.PerspectiveCamera(45, container.clientWidth / container.clientHeight, 0.1, 1000);
     camera.position.set(0, 1.5, 3.5);
 
-    // Renderer setup
     renderer = new THREE.WebGLRenderer({ canvas: document.getElementById('canvas3d'), antialias: true, preserveDrawingBuffer: true });
     renderer.setSize(container.clientWidth, container.clientHeight);
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     renderer.outputEncoding = THREE.sRGBEncoding;
 
-    // Orbit Controls (Camera movement)
     orbitControls = new THREE.OrbitControls(camera, renderer.domElement);
     orbitControls.enableDamping = true;
     orbitControls.dampingFactor = 0.05;
     orbitControls.target.set(0, 1.0, 0);
 
-    // Transform Controls (Bone manipulation)
     transformControls = new THREE.TransformControls(camera, renderer.domElement);
     transformControls.size = 0.75;
     transformControls.setMode('rotate');
 
-    // Disable camera movement when manipulating bones
     transformControls.addEventListener('dragging-changed', (e) => {
       orbitControls.enabled = !e.value;
     });
 
     scene.add(transformControls);
 
-    // Professional Lighting for 3D Shading
-    const ambientLight = new THREE.AmbientLight(0xffffff, 0.7);
-    scene.add(ambientLight);
+    scene.add(new THREE.AmbientLight(0xffffff, 0.7));
 
     const dirLight1 = new THREE.DirectionalLight(0xffffff, 1.0);
     dirLight1.position.set(5, 10, 7);
@@ -117,12 +109,10 @@
     dirLight2.position.set(-5, -5, -5);
     scene.add(dirLight2);
 
-    // Grid Floor
     const grid = new THREE.GridHelper(12, 24, 0x4f4f5e, 0x2a2a35);
     grid.position.y = -0.01;
     scene.add(grid);
 
-    // Event Listeners
     renderer.domElement.addEventListener('pointerdown', onPointerDown);
     window.addEventListener('resize', onWindowResize);
 
@@ -134,7 +124,6 @@
     document.getElementById('file-input').click();
   }
 
-  // File Loader with Anti-Glitch & Anti-Bending fix
   document.getElementById('file-input').addEventListener('change', (e) => {
     const file = e.target.files[0];
     if (!file) return;
@@ -151,10 +140,9 @@
 
       loadedModel = gltf.scene;
 
-      // FIX BENDING & DISTORTION: Traverse and optimize skinned meshes and bones
       loadedModel.traverse((child) => {
         if (child.isSkinnedMesh) {
-          child.frustumCulled = false; // Prevents mesh glitching/disappearing when bones move
+          child.frustumCulled = false;
           child.castShadow = true;
           child.receiveShadow = true;
         }
@@ -164,7 +152,6 @@
         }
       });
 
-      // Auto Scale and Center Model nicely in Viewport
       const box = new THREE.Box3().setFromObject(loadedModel);
       const size = box.getSize(new THREE.Vector3());
       const center = box.getCenter(new THREE.Vector3());
@@ -179,7 +166,7 @@
       }
 
       scene.add(loadedModel);
-      showToast(Successfully Loaded! Found ${bonesList.length} Rig Bones.);
+      showToast(`Successfully Loaded! Found ${bonesList.length} Rig Bones.`);
       URL.revokeObjectURL(url);
     }, undefined, (err) => {
       showToast("Error: Failed to load GLB file format.");
@@ -187,7 +174,6 @@
     });
   });
 
-  // Create interactive visual handles for each bone
   function createBoneHandle(bone) {
     const geometry = new THREE.SphereGeometry(0.025, 12, 12);
     const material = new THREE.MeshBasicMaterial({ 
@@ -206,7 +192,6 @@
     boneHelpers.push(handle);
   }
 
-  // Raycasting to accurately select bone handles with a tap/click
   function onPointerDown(event) {
     if (transformControls.dragging) return;
 
@@ -226,7 +211,7 @@
       const targetBone = selectedHandle.userData.targetBone;
       transformControls.detach();
       transformControls.attach(targetBone);
-      showToast(Selected Bone: ${targetBone.name || 'Joint'});
+      showToast(`Selected Bone: ${targetBone.name || 'Joint'}`);
     }
   }
 
@@ -240,7 +225,7 @@
     transformControls.setMode(mode);
     document.getElementById('btn-rotate').classList.toggle('active', mode === 'rotate');
     document.getElementById('btn-move').classList.toggle('active', mode === 'translate');
-    showToast(Tool Mode: ${mode.toUpperCase()});
+    showToast(`Tool Mode: ${mode.toUpperCase()}`);
   }
 
   function resetCamera() {
@@ -264,15 +249,12 @@
     renderer.setSize(container.clientWidth, container.clientHeight);
   }
 
-  // Render Loop with Matrix Updates to eliminate deformation/stretching lags
   function animate() {
     requestAnimationFrame(animate);
     
-    // Update bone matrices and skeletal deformation info seamlessly
     if (loadedModel) {
       loadedModel.traverse((node) => {
         if (node.isSkinnedMesh && node.skeleton) {
-          // Forces the GPU skinning arrays to update according to current bone rotations
           node.skeleton.update();
         }
       });
